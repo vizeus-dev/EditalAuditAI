@@ -270,7 +270,6 @@ window.offlineAuditor = {
         return `
         <div class="offline-audit-report-container" style="font-family: 'Inter', sans-serif; color: #1e293b; line-height: 1.6;">
             
-            <!-- 1. SUMÁRIO EXECUTIVO (DASHBOARD) -->
             <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); color: #ffffff; padding: 1.5rem; border-radius: 10px; margin-bottom: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 0.75rem; margin-bottom: 1rem;">
                     <h2 style="margin: 0; font-size: 1.4rem; color: #ffffff;">📊 PAINEL EXECUTIVO DE AUDITORIA (OFFLINE)</h2>
@@ -297,18 +296,15 @@ window.offlineAuditor = {
                 </div>
             </div>
 
-            <!-- 2. AVISO DE SIMULAÇÃO (DISCLAIMER) -->
             <div style="background: #fffbeb; border: 1px solid #fef3c7; border-left: 5px solid #f59e0b; padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.85rem; color: #92400e;">
                 <strong>⚠️ AVISO DE AUDITORIA LOCAL:</strong> Este parecer foi gerado autonomamente pelo motor de inferência local (OfflineAuditor) via banco de dados IndexedDB. Quando a chave de API estiver ativa, a inteligência artificial Gemini realizará a validação final complementar.
             </div>
 
-            <!-- 3. METODOLOGIA DE ANÁLISE DE COMPLIANCE -->
             <div style="margin-bottom: 1.5rem;">
                 <h3 style="color: #1e1b4b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem;">3. Metodologia de Análise de Compliance</h3>
                 <p style="font-size: 0.9rem;">A pré-auditoria varreu o texto do projeto e planilha orçamentária, cruzando com a base de regras da legislação cultural (Leis de Acessibilidade, Cotas, Limite Administrativo de 15% e Diretrizes do Edital). Cada quesito recebeu pontuação técnica proporcional à conformidade detectada.</p>
             </div>
 
-            <!-- 4. ANÁLISE DETALHADA DOS QUESITOS -->
             <div style="margin-bottom: 1.5rem;">
                 <h3 style="color: #1e1b4b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem;">4. Análise Detalhada dos 14 Quesitos de Compliance</h3>
                 <table style="width: 100%; border-collapse: collapse; margin-top: 0.8rem; font-size: 0.85rem;">
@@ -331,7 +327,6 @@ window.offlineAuditor = {
                 </table>
             </div>
 
-            <!-- 5. PLANOS DE AÇÃO E SISTEMATIZAÇÃO PARA NOTAS BAIXAS -->
             <div style="margin-bottom: 1.5rem;">
                 <h3 style="color: #1e1b4b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem;">5. Plano de Ação para Aperfeiçoamento de Notas</h3>
                 ${agentes.filter(a => a.nota < 85).length === 0 ? '<p style="color: #16a34a;">Nenhum quesito com nota baixa detectado!</p>' : `
@@ -356,7 +351,6 @@ window.offlineAuditor = {
                 `}
             </div>
 
-            <!-- 6. RISCOS ELIMINATÓRIOS (RED FLAGS) -->
             <div style="background: #fef2f2; border: 1px solid #fecaca; border-left: 5px solid #ef4444; padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem;">
                 <h4 style="margin: 0 0 0.5rem 0; color: #991b1b;">🚨 Riscos Eliminatórios Detectados</h4>
                 ${alertas.length === 0 ? '<p style="margin: 0; font-size: 0.85rem; color: #166534;">Nenhum risco eliminatório encontrado.</p>' : `
@@ -366,7 +360,6 @@ window.offlineAuditor = {
                 `}
             </div>
 
-            <!-- 7. PONTOS FORTES A PRESERVAR -->
             <div style="margin-bottom: 1.5rem;">
                 <h3 style="color: #1e1b4b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem;">7. Pontos Fortes do Projeto</h3>
                 <ul style="font-size: 0.85rem; color: #334155;">
@@ -376,7 +369,6 @@ window.offlineAuditor = {
                 </ul>
             </div>
 
-            <!-- 8. AVALIAÇÃO CRÍTICA FINAL -->
             <div style="margin-bottom: 1.5rem;">
                 <h3 style="color: #1e1b4b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem;">8. Veredito Técnico da Banca Offline</h3>
                 <p style="font-size: 0.9rem; background: #f8fafc; padding: 1rem; border-radius: 6px; border: 1px solid #e2e8f0;">
@@ -384,7 +376,6 @@ window.offlineAuditor = {
                 </p>
             </div>
 
-            <!-- 9. CHECKLIST FINAL -->
             <div>
                 <h3 style="color: #1e1b4b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem;">9. Checklist Final de Pendências</h3>
                 <ul style="font-size: 0.85rem; list-style-type: none; padding: 0;">

@@ -38,25 +38,159 @@ def get_divider():
 
 gateway = LLMGateway()
 
+def safe_encode_cp1252(s):
+    b = bytearray()
+    for char in s:
+        cp = ord(char)
+        if 0x80 <= cp <= 0x9f:
+            try:
+                b.extend(char.encode('cp1252'))
+            except UnicodeEncodeError:
+                b.append(cp)
+        else:
+            b.extend(char.encode('cp1252'))
+    return bytes(b)
+
 def fix_double_encoded_utf8(text):
     if not isinstance(text, str) or not text:
         return text
     
     if any(c in text for c in ('Ã', 'Â', 'â', 'Ê', 'Ô')):
-        try:
-            return text.encode('latin-1').decode('utf-8')
-        except (UnicodeEncodeError, UnicodeDecodeError):
-            pass
+        for enc in ('cp1252', 'latin-1'):
+            try:
+                if enc == 'cp1252':
+                    return safe_encode_cp1252(text).decode('utf-8')
+                else:
+                    return text.encode(enc).decode('utf-8')
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                pass
             
     def _sub_fix(match):
-        try:
-            return match.group(0).encode('latin-1').decode('utf-8')
-        except (UnicodeEncodeError, UnicodeDecodeError):
-            return match.group(0)
+        for enc in ('cp1252', 'latin-1'):
+            try:
+                if enc == 'cp1252':
+                    return safe_encode_cp1252(match.group(0)).decode('utf-8')
+                else:
+                    return match.group(0).encode(enc).decode('utf-8')
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                pass
+        return match.group(0)
 
-    pattern = re.compile(r'[\u00c2-\u00df][\u0080-\u00bf]|[\u00e0-\u00ef][\u0080-\u00bf]{2}')
+    # In cp1252/latin-1 double-encoding:
+    # 2-byte UTF-8 starts with 0xc2-0xdf, followed by continuation byte
+    # 3-byte UTF-8 starts with 0xe0-0xef, followed by two continuation bytes
+    pattern = re.compile(r'[\u00c2-\u00df].|[\u00e0-\u00ef].{2}')
     text = pattern.sub(_sub_fix, text)
     return text
+
+def clean_html_tags(temp_text):
+    if not temp_text:
+        return ""
+    # 1. Strip HTML comments
+    temp_text = re.sub(r'<!--[\s\S]*?-->', '', temp_text)
+    # 2. Strip style and script tags and contents
+    temp_text = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', temp_text, flags=re.IGNORECASE)
+    temp_text = re.sub(r'<script[^>]*>[\s\S]*?</script>', '', temp_text, flags=re.IGNORECASE)
+    # 3. Headers to bold + br
+    temp_text = re.sub(r'<h[1-6][^>]*>(.*?)</h[1-6]>', r'<br/><b>\1</b><br/>', temp_text, flags=re.DOTALL | re.IGNORECASE)
+    # 4. List items to bullets
+    temp_text = re.sub(r'<li[^>]*>(.*?)</li>', r'• \1<br/>', temp_text, flags=re.DOTALL | re.IGNORECASE)
+    temp_text = re.sub(r'</?(?:ul|ol)[^>]*>', r'<br/>', temp_text, flags=re.IGNORECASE)
+    
+    # 5. Table cells and headers
+    temp_text = re.sub(r'<th[^>]*>(.*?)</th>', r' | <b>\1</b> ', temp_text, flags=re.DOTALL | re.IGNORECASE)
+    temp_text = re.sub(r'<td[^>]*>(.*?)td>', r' | \1 ', temp_text, flags=re.DOTALL | re.IGNORECASE)
+    temp_text = re.sub(r'<tr[^>]*>', '', temp_text, flags=re.IGNORECASE)
+    temp_text = re.sub(r'</tr>', '<br/>', temp_text, flags=re.IGNORECASE)
+    temp_text = re.sub(r'</?(?:table|tbody|thead|tfoot)[^>]*>', '<br/>', temp_text, flags=re.IGNORECASE)
+    
+    # 6. Strong / em to b / i
+    temp_text = re.sub(r'<strong[^>]*>', '<b>', temp_text, flags=re.IGNORECASE)
+    temp_text = re.sub(r'</strong>', '</b>', temp_text, flags=re.IGNORECASE)
+    temp_text = re.sub(r'<em[^>]*>', '<i>', temp_text, flags=re.IGNORECASE)
+    temp_text = re.sub(r'</em>', '</i>', temp_text, flags=re.IGNORECASE)
+    temp_text = re.sub(r'</?(?:p|div|section|article|header|footer)[^>]*>', r'<br/>', temp_text, flags=re.IGNORECASE)
+    
+    # 7. Strip any other tag except ReportLab allowed: b, i, u, sub, sup, font, a, br
+    allowed_prefixes = ('<b', '</b', '<i', '</i', '<u', '</u', '<sub', '</sub', '<sup', '</sup', '<font', '</font', '<a', '</a', '<br', '</br')
+    def strip_unallowed(m):
+        tag = m.group(0)
+        tag_lower = tag.lower()
+        if any(tag_lower.startswith(prefix) for prefix in allowed_prefixes):
+            return tag
+        return ''
+        
+    temp_text = re.sub(r'<[^>]+>', strip_unallowed, temp_text)
+    return temp_text
+
+def append_html_content_to_story(html_content, story, body_style, h2_style):
+    if not html_content:
+        return
+
+    clean_html = re.sub(r'<!--[\s\S]*?-->', '', html_content)
+    clean_html = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', clean_html, flags=re.IGNORECASE)
+    clean_html = re.sub(r'<script[^>]*>[\s\S]*?</script>', '', clean_html, flags=re.IGNORECASE)
+
+    table_pattern = re.compile(r'(<table[\s\S]*?>[\s\S]*?</table>)', re.IGNORECASE)
+    blocks = table_pattern.split(clean_html)
+
+    for block in blocks:
+        block_str = block.strip()
+        if not block_str:
+            continue
+
+        if block_str.lower().startswith('<table'):
+            parser = HTMLTableParser()
+            parser.feed(block_str)
+            rows = parser.rows
+            if rows:
+                N = max(len(r) for r in rows)
+                col_widths = [487.0 / N] * N
+                table_content = []
+                for row in rows:
+                    row_cells = []
+                    for cell in row:
+                        cell_text = make_reportlab_safe(cell["text"])
+                        if cell["is_header"]:
+                            cell_p = Paragraph(f"<b>{cell_text}</b>", ParagraphStyle('ThCustom', parent=body_style, fontName='Helvetica-Bold', textColor=colors.HexColor('#0f172a')))
+                        else:
+                            cell_p = Paragraph(cell_text, body_style)
+                        row_cells.append(cell_p)
+                    while len(row_cells) < N:
+                        row_cells.append(Paragraph("", body_style))
+                    table_content.append(row_cells)
+
+                report_table = Table(table_content, colWidths=col_widths)
+                t_style = TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
+                    ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+                    ('PADDING', (0,0), (-1,-1), 5),
+                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ])
+                for r_idx in range(1, len(table_content)):
+                    if r_idx % 2 == 1:
+                        t_style.add('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor('#f8fafc'))
+                report_table.setStyle(t_style)
+                story.append(Spacer(1, 4))
+                story.append(report_table)
+                story.append(Spacer(1, 6))
+        else:
+            temp_text = clean_html_tags(block_str)
+            parts = re.split(r'<br/>|<br>', temp_text)
+            for part in parts:
+                clean_part = part.strip()
+                if clean_part:
+                    safe_part = make_reportlab_safe(clean_part)
+                    if safe_part.strip():
+                        if safe_part.startswith('<b>') and safe_part.endswith('</b>') and len(safe_part) < 100:
+                            story.append(Paragraph(safe_part, h2_style))
+                        else:
+                            try:
+                                story.append(Paragraph(safe_part, body_style))
+                            except Exception as pe:
+                                plain_text = re.sub(r'<[^>]+>', '', safe_part)
+                                story.append(Paragraph(html.escape(plain_text), body_style))
+
 
 def make_reportlab_safe(text):
     if not text:
@@ -571,36 +705,7 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 
                 if relatorio_analitico:
                     story.append(Paragraph("Parecer Técnico Descritivo da Auditoria", h2_style))
-                    
-                    temp_text = relatorio_analitico
-                    temp_text = re.sub(r'<h[1-6][^>]*>(.*?)</h[1-6]>', r'<br/><b>\1</b><br/>', temp_text)
-                    temp_text = re.sub(r'<li[^>]*>(.*?)</li>', r'• \1<br/>', temp_text)
-                    temp_text = re.sub(r'</?ul[^>]*>', r'<br/>', temp_text)
-                    temp_text = re.sub(r'</?ol[^>]*>', r'<br/>', temp_text)
-                    temp_text = re.sub(r'<tr[^>]*>(.*?)</tr>', r'\1<br/>', temp_text)
-                    temp_text = re.sub(r'<td[^>]*>(.*?)</td>', r' | \1 ', temp_text)
-                    temp_text = re.sub(r'<th[^>]*>(.*?)</th>', r' | <b>\1</b> ', temp_text)
-                    temp_text = re.sub(r'</?table[^>]*>', r'<br/>', temp_text)
-                    temp_text = re.sub(r'</?tbody[^>]*>', r'', temp_text)
-                    temp_text = re.sub(r'</?thead[^>]*>', r'', temp_text)
-                    temp_text = re.sub(r'</?div[^>]*>', r'<br/>', temp_text)
-                    temp_text = re.sub(r'<strong[^>]*>', '<b>', temp_text)
-                    temp_text = re.sub(r'</strong>', '</b>', temp_text)
-                    temp_text = re.sub(r'<em[^>]*>', '<i>', temp_text)
-                    temp_text = re.sub(r'</em>', '</i>', temp_text)
-                    temp_text = re.sub(r'</?p[^>]*>', r'<br/>', temp_text)
-                    
-                    parts = re.split(r'<br/>|<br>', temp_text)
-                    for part in parts:
-                        clean_part = part.strip()
-                        if clean_part:
-                            safe_part = make_reportlab_safe(clean_part)
-                            if safe_part.strip():
-                                try:
-                                    story.append(Paragraph(safe_part, body_style))
-                                except Exception as pe:
-                                    plain_text = re.sub(r'<[^>]+>', '', safe_part)
-                                    story.append(Paragraph(html.escape(plain_text), body_style))
+                    append_html_content_to_story(relatorio_analitico, story, body_style, h2_style)
                     story.append(Spacer(1, 10))
                 
                 story.append(Paragraph("Quesitos Analisados (Instrução Normativa MinC)", h2_style))
@@ -821,40 +926,8 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 story.append(get_divider())
                 story.append(Spacer(1, 10))
                 
-                # Parse report_content HTML tags
-                temp_text = report_content
-                temp_text = re.sub(r'<h[1-6][^>]*>(.*?)</h[1-6]>', r'<br/><b>\1</b><br/>', temp_text)
-                temp_text = re.sub(r'<li[^>]*>(.*?)</li>', r'• \1<br/>', temp_text)
-                temp_text = re.sub(r'</?ul[^>]*>', r'<br/>', temp_text)
-                temp_text = re.sub(r'</?ol[^>]*>', r'<br/>', temp_text)
-                temp_text = re.sub(r'<tr[^>]*>(.*?)</tr>', r'\1<br/>', temp_text)
-                temp_text = re.sub(r'<td[^>]*>(.*?)</td>', r' | \1 ', temp_text)
-                temp_text = re.sub(r'<th[^>]*>(.*?)</th>', r' | <b>\1</b> ', temp_text)
-                temp_text = re.sub(r'</?table[^>]*>', r'<br/>', temp_text)
-                temp_text = re.sub(r'</?tbody[^>]*>', r'', temp_text)
-                temp_text = re.sub(r'</?thead[^>]*>', r'', temp_text)
-                temp_text = re.sub(r'</?div[^>]*>', r'<br/>', temp_text)
-                temp_text = re.sub(r'<strong[^>]*>', '<b>', temp_text)
-                temp_text = re.sub(r'</strong>', '</b>', temp_text)
-                temp_text = re.sub(r'<em[^>]*>', '<i>', temp_text)
-                temp_text = re.sub(r'</em>', '</i>', temp_text)
-                temp_text = re.sub(r'</?p[^>]*>', r'<br/>', temp_text)
-                
-                parts = re.split(r'<br/>|<br>', temp_text)
-                for part in parts:
-                    clean_part = part.strip()
-                    if clean_part:
-                        safe_part = make_reportlab_safe(clean_part)
-                        if safe_part.strip():
-                            # Format titles or subtitles inside content
-                            if safe_part.startswith('<b>') and safe_part.endswith('</b>'):
-                                story.append(Paragraph(safe_part, h2_style))
-                            else:
-                                try:
-                                    story.append(Paragraph(safe_part, body_style))
-                                except Exception as pe:
-                                    plain_text = re.sub(r'<[^>]+>', '', safe_part)
-                                    story.append(Paragraph(html.escape(plain_text), body_style))
+                # Parse report_content HTML tags and structure
+                append_html_content_to_story(report_content, story, body_style, h2_style)
                 
                 story.append(Spacer(1, 15))
                 story.append(get_divider())
