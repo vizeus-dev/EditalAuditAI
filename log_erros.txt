@@ -1,0 +1,2 @@
+[2026-06-18 18:49:42] URL: https://secult.es.gov.br/editais | ERRO: Erro HTTP 404 ao carregar portal.
+[2026-06-18 18:50:31] URL: https://secult.es.gov.br/editais | ERRO: Erro HTTP 404 ao carregar portal.

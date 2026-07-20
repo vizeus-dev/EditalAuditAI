@@ -1,0 +1,170 @@
+Servidor EditalAudit AI rodando em http://127.0.0.1:8085/
+127.0.0.1 - - [20/Jul/2026 07:49:58] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [20/Jul/2026 07:49:58] "GET /styles.css?v=2 HTTP/1.1" 200 -
+127.0.0.1 - - [20/Jul/2026 07:49:58] "GET /sample_data.js?v=9 HTTP/1.1" 200 -
+127.0.0.1 - - [20/Jul/2026 07:49:58] "GET /src/controllers/auditorDB.js?v=9 HTTP/1.1" 200 -
+127.0.0.1 - - [20/Jul/2026 07:49:58] "GET /src/controllers/offlineAuditor.js?v=9 HTTP/1.1" 200 -
+127.0.0.1 - - [20/Jul/2026 07:49:59] "GET /src/controllers/aiController.js?v=9 HTTP/1.1" 200 -
+127.0.0.1 - - [20/Jul/2026 07:49:59] "GET /app.js?v=9 HTTP/1.1" 200 -
+127.0.0.1 - - [20/Jul/2026 07:49:59] "GET /favicon.ico HTTP/1.1" 204 -
+[SERVER] Iniciando análise prévia do edital...
+[GEMINI][DEBUG] Tentando modelo: gemini-2.0-flash | Tentativa: 1/3 | Payload: 43823 bytes | Prompt: 36927 chars
+[GEMINI][WARN] Erro HTTP 429. Aguardando 1s antes de tentar novamente...
+[GEMINI][DEBUG] Tentando modelo: gemini-2.0-flash | Tentativa: 2/3 | Payload: 43823 bytes | Prompt: 36927 chars
+127.0.0.1 - - [20/Jul/2026 07:51:49] "GET /styles.css?v=2 HTTP/1.1" 200 -
+127.0.0.1 - - [20/Jul/2026 07:51:50] code 404, message File not found
+127.0.0.1 - - [20/Jul/2026 07:51:50] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+[GEMINI][WARN] Erro HTTP 429. Aguardando 2s antes de tentar novamente...
+[GEMINI][DEBUG] Tentando modelo: gemini-2.0-flash | Tentativa: 3/3 | Payload: 43823 bytes | Prompt: 36927 chars
+Traceback (most recent call last):
+  File "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit\server.py", line 1149, in do_POST
+    result_str = gateway.generate(
+        provider_name='gemini',
+    ...<5 lines>...
+        use_cache=True
+    )
+  File "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit\services\api.py", line 318, in generate
+    response_text = provider.generate(
+        prompt=prompt,
+    ...<4 lines>...
+        response_schema=response_schema
+    )
+  File "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit\services\api.py", line 138, in generate
+    with urllib.request.urlopen(req, timeout=self.API_TIMEOUT) as response:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 187, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 493, in open
+    response = meth(req, response)
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 602, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 531, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 464, in _call_chain
+    result = func(*args)
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 611, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 429: Too Many Requests
+127.0.0.1 - - [20/Jul/2026 07:51:53] "POST /api/analyze-edital-context HTTP/1.1" 429 -
+[SERVER] Iniciando geração da proposta em uma única chamada...
+[GEMINI][DEBUG] Tentando modelo: gemini-2.0-flash | Tentativa: 1/3 | Payload: 23599 bytes | Prompt: 19213 chars
+[GEMINI][WARN] Erro HTTP 429. Aguardando 1s antes de tentar novamente...
+[GEMINI][DEBUG] Tentando modelo: gemini-2.0-flash | Tentativa: 2/3 | Payload: 23599 bytes | Prompt: 19213 chars
+[GEMINI][WARN] Erro HTTP 429. Aguardando 2s antes de tentar novamente...
+[GEMINI][DEBUG] Tentando modelo: gemini-2.0-flash | Tentativa: 3/3 | Payload: 23599 bytes | Prompt: 19213 chars
+Traceback (most recent call last):
+  File "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit\server.py", line 1306, in do_POST
+    result_str = gateway.generate(
+        provider_name='gemini',
+    ...<5 lines>...
+        use_cache=False
+    )
+  File "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit\services\api.py", line 318, in generate
+    response_text = provider.generate(
+        prompt=prompt,
+    ...<4 lines>...
+        response_schema=response_schema
+    )
+  File "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit\services\api.py", line 138, in generate
+    with urllib.request.urlopen(req, timeout=self.API_TIMEOUT) as response:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 187, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 493, in open
+    response = meth(req, response)
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 602, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 531, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 464, in _call_chain
+    result = func(*args)
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 611, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 429: Too Many Requests
+127.0.0.1 - - [20/Jul/2026 07:52:07] "POST /api/generate-proposal-unified HTTP/1.1" 500 -
+127.0.0.1 - - [20/Jul/2026 07:52:38] "POST /api/search-web-editais HTTP/1.1" 200 -
+[SERVER][DEBUG] /api/llm/generate | Modelo: gemini-2.0-flash | Prompt final: 82678 chars | Cache: True
+[GEMINI][DEBUG] Tentando modelo: gemini-2.0-flash | Tentativa: 1/3 | Payload: 100074 bytes | Prompt: 82678 chars
+[GEMINI][WARN] Erro HTTP 429. Aguardando 1s antes de tentar novamente...
+[GEMINI][DEBUG] Tentando modelo: gemini-2.0-flash | Tentativa: 2/3 | Payload: 100074 bytes | Prompt: 82678 chars
+[GEMINI][WARN] Erro HTTP 429. Aguardando 2s antes de tentar novamente...
+[GEMINI][DEBUG] Tentando modelo: gemini-2.0-flash | Tentativa: 3/3 | Payload: 100074 bytes | Prompt: 82678 chars
+Traceback (most recent call last):
+  File "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit\server.py", line 1458, in do_POST
+    gateway_response = gateway.generate(
+        provider_name=provider,
+    ...<6 lines>...
+        response_schema=response_schema
+    )
+  File "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit\services\api.py", line 318, in generate
+    response_text = provider.generate(
+        prompt=prompt,
+    ...<4 lines>...
+        response_schema=response_schema
+    )
+  File "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit\services\api.py", line 138, in generate
+    with urllib.request.urlopen(req, timeout=self.API_TIMEOUT) as response:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 187, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 493, in open
+    response = meth(req, response)
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 602, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 531, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 464, in _call_chain
+    result = func(*args)
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 611, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 429: Too Many Requests
+127.0.0.1 - - [20/Jul/2026 07:52:45] "POST /api/llm/generate HTTP/1.1" 500 -
+127.0.0.1 - - [20/Jul/2026 07:53:07] "POST /api/search-web-editais HTTP/1.1" 200 -
+[SERVER][DEBUG] /api/llm/generate | Modelo: gemini-2.0-flash | Prompt final: 84821 chars | Cache: True
+[GEMINI][DEBUG] Tentando modelo: gemini-2.0-flash | Tentativa: 1/3 | Payload: 102617 bytes | Prompt: 84821 chars
+[GEMINI][WARN] Erro HTTP 429. Aguardando 1s antes de tentar novamente...
+[GEMINI][DEBUG] Tentando modelo: gemini-2.0-flash | Tentativa: 2/3 | Payload: 102617 bytes | Prompt: 84821 chars
+[GEMINI][WARN] Erro HTTP 429. Aguardando 2s antes de tentar novamente...
+[GEMINI][DEBUG] Tentando modelo: gemini-2.0-flash | Tentativa: 3/3 | Payload: 102617 bytes | Prompt: 84821 chars
+Traceback (most recent call last):
+  File "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit\server.py", line 1458, in do_POST
+    gateway_response = gateway.generate(
+        provider_name=provider,
+    ...<6 lines>...
+        response_schema=response_schema
+    )
+  File "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit\services\api.py", line 318, in generate
+    response_text = provider.generate(
+        prompt=prompt,
+    ...<4 lines>...
+        response_schema=response_schema
+    )
+  File "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit\services\api.py", line 138, in generate
+    with urllib.request.urlopen(req, timeout=self.API_TIMEOUT) as response:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 187, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 493, in open
+    response = meth(req, response)
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 602, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 531, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 464, in _call_chain
+    result = func(*args)
+  File "C:\Users\victo\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 611, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 429: Too Many Requests
+127.0.0.1 - - [20/Jul/2026 07:53:14] "POST /api/llm/generate HTTP/1.1" 500 -
