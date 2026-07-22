@@ -86,10 +86,10 @@ class LLMProvider:
 class GeminiProvider(LLMProvider):
     MAX_PROMPT_CHARS = 300000  # ~75k tokens safety limit
     API_TIMEOUT = 120  # seconds — increased to handle large structured JSON output
-
     def generate(self, prompt, model, api_key, system_instruction=None, ollama_url=None, response_schema=None):
-        # Default to gemini-2.0-flash if model not supplied or using legacy gemini-2.5-flash string
-        primary_model = model if (model and model != "gemini-2.5-flash") else "gemini-2.0-flash"
+        # Default to gemini-3.5-flash if model not supplied or using deprecated/legacy model strings
+        deprecated_models = {"gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-2.5-flash"}
+        primary_model = model if (model and model not in deprecated_models) else "gemini-3.5-flash"
         
         # --- TRUNCAMENTO DE SEGURANÇA ---
         if len(prompt) > self.MAX_PROMPT_CHARS:
@@ -118,9 +118,9 @@ class GeminiProvider(LLMProvider):
         headers = {"Content-Type": "application/json"}
         req_data = json.dumps(payload).encode('utf-8')
         
-        # Models to try: primary first, fallback to active gemini-2.0 models
+        # Models to try: primary first, fallback to active gemini-3.x models
         models_to_try = [primary_model]
-        for fallback in ["gemini-2.0-flash", "gemini-2.0-flash-lite"]:
+        for fallback in ["gemini-3.5-flash", "gemini-3.1-flash-lite"]:
             if fallback not in models_to_try:
                 models_to_try.append(fallback)
                 
@@ -129,7 +129,7 @@ class GeminiProvider(LLMProvider):
         
         for current_model in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={api_key}"
-            model_failed_404 = False
+            model_failed = False
             
             for attempt in range(max_retries):
                 print(f"[GEMINI][DEBUG] Tentando modelo: {current_model} | Tentativa: {attempt+1}/{max_retries} | Payload: {len(req_data)} bytes | Prompt: {len(prompt)} chars")
@@ -146,21 +146,36 @@ class GeminiProvider(LLMProvider):
                         print(f"[GEMINI][WARN] Timeout de conexão. Aguardando {sleep_time}s...")
                         time.sleep(sleep_time)
                         continue
-                    last_error = TimeoutError(f"A API do Gemini não respondeu em {self.API_TIMEOUT}s. Requisição abortada para preservar créditos.")
+                    last_error = TimeoutError(f"A API do Gemini não respondeu em {self.API_TIMEOUT}s com o modelo {current_model}.")
+                    model_failed = True
+                    break
                 except urllib.error.HTTPError as e:
                     last_error = e
+                    try:
+                        err_body = e.read().decode('utf-8', errors='ignore')
+                        print(f"[GEMINI][ERROR] HTTPError body para {current_model}: {err_body}")
+                    except Exception:
+                        err_body = ""
                     # Retry on rate limit (429) or server errors (503, 504)
                     if e.code in [429, 503, 504]:
                         if attempt < max_retries - 1:
-                            sleep_time = 2 ** attempt
+                            retry_after = e.headers.get("Retry-After")
+                            if retry_after:
+                                try:
+                                    sleep_time = int(retry_after)
+                                except ValueError:
+                                    sleep_time = 2 ** (attempt + 1)
+                            else:
+                                sleep_time = 2 ** (attempt + 1)
                             print(f"[GEMINI][WARN] Erro HTTP {e.code}. Aguardando {sleep_time}s antes de tentar novamente...")
                             time.sleep(sleep_time)
                             continue
                     elif e.code == 404:
                         print(f"[GEMINI][WARN] Modelo {current_model} retornou 404 (Não Encontrado). Tentando próximo modelo da fila...")
-                        model_failed_404 = True
-                        break
-                    raise
+                    else:
+                        print(f"[GEMINI][ERROR] Erro HTTP {e.code} com modelo {current_model}. Tentando próximo modelo...")
+                    model_failed = True
+                    break
                 except urllib.error.URLError as e:
                     last_error = e
                     if isinstance(e.reason, socket.timeout):
@@ -169,17 +184,21 @@ class GeminiProvider(LLMProvider):
                             print(f"[GEMINI][WARN] Timeout de conexão (URLError). Aguardando {sleep_time}s...")
                             time.sleep(sleep_time)
                             continue
-                        last_error = TimeoutError(f"Timeout de conexão com Gemini ({self.API_TIMEOUT}s). Verifique sua conexão ou tente novamente.")
-                    raise
+                        last_error = TimeoutError(f"Timeout de conexão com Gemini ({self.API_TIMEOUT}s) no modelo {current_model}.")
+                    else:
+                        print(f"[GEMINI][ERROR] Erro de URL {e.reason} com modelo {current_model}.")
+                    model_failed = True
+                    break
 
-            if model_failed_404:
+            if model_failed:
                 continue
 
         if last_error:
             raise last_error
 
     def stream_generate(self, prompt, model, api_key, system_instruction=None, response_schema=None):
-        primary_model = model if (model and model != "gemini-2.5-flash") else "gemini-2.0-flash"
+        deprecated_models = {"gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-2.5-flash"}
+        primary_model = model if (model and model not in deprecated_models) else "gemini-3.5-flash"
             
         # --- TRUNCAMENTO DE SEGURANÇA ---
         if len(prompt) > self.MAX_PROMPT_CHARS:
@@ -207,8 +226,9 @@ class GeminiProvider(LLMProvider):
         headers = {"Content-Type": "application/json"}
         req_data = json.dumps(payload).encode('utf-8')
         
+        # Models to try: primary first, fallback to active gemini-3.x models
         models_to_try = [primary_model]
-        for fallback in ["gemini-2.0-flash", "gemini-2.0-flash-lite"]:
+        for fallback in ["gemini-3.5-flash", "gemini-3.1-flash-lite"]:
             if fallback not in models_to_try:
                 models_to_try.append(fallback)
                 
@@ -217,7 +237,7 @@ class GeminiProvider(LLMProvider):
         
         for current_model in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:streamGenerateContent?key={api_key}"
-            model_failed_404 = False
+            model_failed = False
             
             for attempt in range(max_retries):
                 print(f"[GEMINI-STREAM][DEBUG] Tentando modelo: {current_model} | Tentativa: {attempt+1}/{max_retries} | Payload: {len(req_data)} bytes | Prompt: {len(prompt)} chars")
@@ -230,14 +250,12 @@ class GeminiProvider(LLMProvider):
                             buffer += line.decode('utf-8', errors='ignore')
                             
                             while True:
-                                # Remove espaços, quebras de linha e o caractere de início de array '[' ou separador ','
                                 buffer = buffer.lstrip(' \n\r\t,[')
                                 if not buffer:
                                     break
                                 
                                 try:
                                     obj, idx = decoder.raw_decode(buffer)
-                                    # Avança o buffer
                                     buffer = buffer[idx:]
                                     
                                     if 'error' in obj:
@@ -251,29 +269,43 @@ class GeminiProvider(LLMProvider):
                                             if text:
                                                 yield text
                                 except json.JSONDecodeError:
-                                    # Objeto incompleto, aguarda mais dados da rede
                                     break
-                        return # Success, exit from retries/models loop
+                        return # Success, exit
                 except socket.timeout:
                     if attempt < max_retries - 1:
                         sleep_time = 2 ** attempt
                         print(f"[GEMINI-STREAM][WARN] Timeout de conexão. Aguardando {sleep_time}s...")
                         time.sleep(sleep_time)
                         continue
-                    last_error = TimeoutError(f"A API do Gemini não respondeu em {self.API_TIMEOUT}s. Requisição abortada para preservar créditos.")
+                    last_error = TimeoutError(f"A API do Gemini não respondeu em {self.API_TIMEOUT}s com o modelo {current_model} (stream).")
+                    model_failed = True
+                    break
                 except urllib.error.HTTPError as e:
                     last_error = e
+                    try:
+                        err_body = e.read().decode('utf-8', errors='ignore')
+                        print(f"[GEMINI-STREAM][ERROR] HTTPError body para {current_model}: {err_body}")
+                    except Exception:
+                        err_body = ""
                     if e.code in [429, 503, 504]:
                         if attempt < max_retries - 1:
-                            sleep_time = 2 ** attempt
+                            retry_after = e.headers.get("Retry-After")
+                            if retry_after:
+                                try:
+                                    sleep_time = int(retry_after)
+                                except ValueError:
+                                    sleep_time = 2 ** (attempt + 1)
+                            else:
+                                sleep_time = 2 ** (attempt + 1)
                             print(f"[GEMINI-STREAM][WARN] Erro HTTP {e.code}. Aguardando {sleep_time}s antes de tentar novamente...")
                             time.sleep(sleep_time)
                             continue
                     elif e.code == 404:
                         print(f"[GEMINI-STREAM][WARN] Modelo {current_model} retornou 404. Tentando próximo da fila...")
-                        model_failed_404 = True
-                        break
-                    raise
+                    else:
+                        print(f"[GEMINI-STREAM][ERROR] Erro HTTP {e.code} com modelo {current_model} (stream).")
+                    model_failed = True
+                    break
                 except urllib.error.URLError as e:
                     last_error = e
                     if isinstance(e.reason, socket.timeout):
@@ -282,10 +314,13 @@ class GeminiProvider(LLMProvider):
                             print(f"[GEMINI-STREAM][WARN] Timeout de conexão (URLError). Aguardando {sleep_time}s...")
                             time.sleep(sleep_time)
                             continue
-                        last_error = TimeoutError(f"Timeout de conexão com Gemini ({self.API_TIMEOUT}s). Verifique sua conexão ou tente novamente.")
-                    raise
+                        last_error = TimeoutError(f"Timeout de conexão com Gemini ({self.API_TIMEOUT}s) no modelo {current_model} (stream).")
+                    else:
+                        print(f"[GEMINI-STREAM][ERROR] Erro de URL {e.reason} com modelo {current_model} (stream).")
+                    model_failed = True
+                    break
 
-            if model_failed_404:
+            if model_failed:
                 continue
                     
         if last_error:

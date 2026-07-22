@@ -1168,7 +1168,7 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 edital_text = data.get('editalRefText', '')
                 annexes = data.get('annexes', [])
                 api_key = data.get('api_key', '')
-                model = data.get('model') or os.environ.get('GEMINI_DEFAULT_MODEL') or 'gemini-2.0-flash'
+                model = data.get('model') or os.environ.get('GEMINI_DEFAULT_MODEL') or 'gemini-3.5-flash'
                 
                 if not edital_text.strip():
                     self.send_json_response(200, {
@@ -1182,7 +1182,7 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     return
 
                 annexes_context = "\n---\n".join([
-                    f"Anexo: {a.get('name', 'Anexo')}\nConteúdo: {a.get('content', '')[:1000]}"
+                    f"Anexo: {a.get('name', 'Anexo')}\nConteúdo: {a.get('content', '')[:30000]}"
                     for a in annexes
                 ]) if annexes else "Sem anexos adicionais."
 
@@ -1190,7 +1190,7 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
 Sua missão é analisar minuciosamente o Edital principal e seus Anexos fornecidos abaixo para mapear e extrair o perfil estrutural e as regras de conformidade que devem governar todo e qualquer texto ou proposta gerada para este edital.
 
 [CONTEÚDO DO EDITAL DE REFERÊNCIA]:
-{edital_text[:35000]}
+{edital_text[:150000]}
 
 [ANEXOS ADICIONAIS]:
 {annexes_context}
@@ -1275,7 +1275,7 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem blocos 
                 historicalMemories = data.get('historicalMemories', [])
                 editalProfile = data.get('editalProfile', {})
                 api_key = data.get('api_key', '')
-                model = data.get('model') or os.environ.get('GEMINI_DEFAULT_MODEL') or 'gemini-2.0-flash'
+                model = data.get('model') or os.environ.get('GEMINI_DEFAULT_MODEL') or 'gemini-3.5-flash'
                 
                 profile_context = f"""[PERFIL E REGRAS ESTRUTURAIS DO EDITAL (MANDATÓRIO CRUZAMENTO)]:
 - Fomento / Lei: {editalProfile.get('fomento', 'N/A')}
@@ -1286,9 +1286,9 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem blocos 
 - Anexos Mapeados: {editalProfile.get('anexos_analisados', 'N/A')}
 """ if editalProfile else ""
 
-                # Pre-processing contexts (compressed to be light as requested)
+                # Pre-processing contexts (generous limits to prevent truncation)
                 annexes_context = "\n---\n".join([
-                    f"Anexo: {a.get('name', 'Anexo')}\nConteúdo: {a.get('content', '')[:1500]}"
+                    f"Anexo: {a.get('name', 'Anexo')}\nConteúdo: {a.get('content', '')[:30000]}"
                     for a in annexes
                 ]) if annexes else "Sem anexos adicionais."
                 
@@ -1297,9 +1297,15 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem blocos 
                     for m in historicalMemories
                 ]) if historicalMemories else "Nenhuma memória anterior."
                 
-                # Single Prompt focused on proposal generation (Tarefa 1 only)
-                unified_prompt = f"""Você é uma inteligência artificial especialista em captação de recursos públicos e editais de cultura (Lei Rouanet, IN MinC, editais estaduais/municipais do Brasil).
-Sua missão é cruzar os dados do edital, anexos, memórias e rascunho fornecidos para redigir uma proposta cultural completa de forma extremamente qualificada.
+                # Single Prompt focused on proposal generation (Tarefa 1)
+                unified_prompt = f"""Você é uma inteligência artificial de elite especialista em captação de recursos públicos e editais de cultura (Lei Rouanet, Lei Aldir Blanc, IN MinC, editais estaduais e municipais do Brasil).
+Sua missão é realizar um cruzamento exaustivo e rigoroso entre os dados do edital, seus anexos, a memória de aprendizado e o rascunho fornecido para redigir uma proposta cultural completa de altíssimo nível.
+
+**INSTRUÇÕES CRÍTICAS DE REDAÇÃO (EVITE RESPOSTAS GENÉRICAS):**
+- Redija cada seção de forma densa, completa, profissional e contextualizada para o projeto. Não faça resumos, resenhas ou redações rasas.
+- Incorpore profundamente o conteúdo e as ideias presentes no [RASCUNHO DO PROPONENTE]. Use suas informações específicas como base e enriqueça-as tecnicamente.
+- Respeite e atenda estritamente aos tetos financeiros, limites percentuais, regras de acessibilidade e critérios de priorização descritos no [PERFIL E REGRAS ESTRUTURAIS DO EDITAL] e no [CONTEÚDO DO EDITAL].
+- A redação deve estar pronta para submissão oficial (sem placeholders como "[inserir nome]", "[definir data]" ou marcas/pistas de IA).
 
 {profile_context}
 
@@ -1312,7 +1318,7 @@ Sua missão é cruzar os dados do edital, anexos, memórias e rascunho fornecido
 - Orçamento Teto do Projeto: R$ {cover.get('budget', 0)}
 
 [CONTEÚDO DO EDITAL DE REFERÊNCIA (Regulamento)]:
-{editalRefText[:12000]}
+{editalRefText[:150000]}
 
 [ANEXOS ADICIONAIS DO EDITAL]:
 {annexes_context}
@@ -1321,26 +1327,26 @@ Sua missão é cruzar os dados do edital, anexos, memórias e rascunho fornecido
 {memories_context}
 
 [RASCUNHO DO PROPONENTE]:
-{proposalDraftText[:4000]}
+{proposalDraftText[:50000]}
 
 ---
 
 ### MISSÃO: REDIGIR AS 14 SEÇÕES DA PROPOSTA CULTURAL
 Gere a redação das seguintes 14 seções (deve conter tags HTML de cabeçalho h3 ou h4 e parágrafos dentro de cada texto):
-1. justificativa: Justificativa longa e detalhada defendendo o mérito cultural, relevância social e impacto no território.
-2. objetivos: Objetivo geral e objetivos específicos como itens claros de realizações físicas e pedagógicas.
-3. metodologia: Descreva a metodologia detalhando passo-a-passo Pré-produção, Execução e Pós-produção.
+1. justificativa: Justificativa longa, detalhada e persuasiva defendendo o mérito cultural, relevância social e impacto no território.
+2. objetivos: Objetivo geral claro e objetivos específicos listados como itens de realizações físicas e pedagógicas quantificáveis.
+3. metodologia: Descreva a metodologia detalhando passo-a-passo e de forma operacional as fases de Pré-produção, Execução e Pós-produção.
 4. cronograma: Formate obrigatoriamente como tabela HTML (<table>, <tr>, <td>) organizada por meses (Mês 1 a Mês 6).
-5. orcamento: Formate orçamentária como tabela HTML (<table>, <tr>, <td>) com colunas: Item, Quantidade, Unidade, Valor Unitário (R$), Valor Total (R$). Respeite as regras de limite de 15% para custos administrativos e 10% para divulgação.
-6. acessibilidade: Descreva o plano de acessibilidade física e comunicacional e políticas afirmativas/cotas.
-7. publico: Público-Alvo e Perfil dos Beneficiários.
-8. contrapartida: Contrapartida Social e Legado.
-9. comunicacao: Plano de Comunicação e Divulgação.
-10. ficha_tecnica: Ficha Técnica e Capacidade Operacional.
-11. monitoramento: Plano de Monitoramento, Avaliação e Indicadores (Matriz Lógica).
-12. compliance: Compliance, Marcos Legais e Direitos.
-13. sustentabilidade: Plano de Sustentabilidade e Mitigação Ambiental.
-14. rider: Rider Técnico e Necessidades Logísticas.
+5. orcamento: Formate orçamentária como tabela HTML (<table>, <tr>, <td>) com colunas: Item, Quantidade, Unidade, Valor Unitário (R$), Valor Total (R$). Respeite rigorosamente as regras de limite (máx 15% para custos administrativos e máx 10% para divulgação) aplicadas sobre o teto do projeto.
+6. acessibilidade: Descreva o plano de acessibilidade física, atitudinal e sensorial/comunicacional (como contratação de LIBRAS/audiodescrição) e as cotas afirmativas do projeto.
+7. publico: Público-Alvo e Perfil demográfico, social e etário detalhado dos beneficiários.
+8. contrapartida: Contrapartida Social e Legado duradouro oferecido gratuitamente à comunidade.
+9. comunicacao: Plano de Comunicação e Divulgação nas mídias sociais, imprensa e peças gráficas.
+10. ficha_tecnica: Ficha Técnica com minibios e cargos da equipe principal para atestar a exequibilidade operacional.
+11. monitoramento: Plano de Monitoramento, Avaliação e Indicadores de sucesso quantitativos e qualitativos (Matriz Lógica).
+12. compliance: Mecanismos de compliance legal, certidões negativas necessárias, Ecad, SisGen e direitos autorais.
+13. sustentabilidade: Plano de Sustentabilidade e práticas ESG para mitigação de impactos ambientais.
+14. rider: Rider Técnico detalhando necessidades físicas, mapa de palco, rider de som/luz, montagem e logística de transporte/hospedagem.
 
 Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos em markdown ou explicações fora do JSON."""
 
@@ -1403,10 +1409,22 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos
                         raise e
                 
                 self.send_json_response(200, result_json)
+            except urllib.error.HTTPError as he:
+                import traceback
+                traceback.print_exc()
+                if he.code == 429:
+                    self.send_json_response(429, {"error": "Limite de requisições do Gemini excedido (HTTP 429). Por favor, aguarde alguns instantes antes de tentar novamente ou verifique os limites de sua chave de API."})
+                elif he.code == 400:
+                    self.send_json_response(400, {"error": "Requisição inválida para a API do Gemini (HTTP 400). Verifique a chave de API ou as regras configuradas."})
+                else:
+                    self.send_json_response(he.code, {"error": f"Erro na API do Gemini (HTTP {he.code}): {he.reason}"})
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                self.send_json_response(500, {"error": f"Erro na geração unificada: {str(e)}"})
+                if "429" in str(e):
+                    self.send_json_response(429, {"error": "Limite de requisições do Gemini excedido (HTTP 429). Por favor, aguarde alguns instantes antes de tentar novamente."})
+                else:
+                    self.send_json_response(500, {"error": f"Erro na geração unificada: {str(e)}"})
 
         elif self.path == '/api/llm/generate':
             content_length = int(self.headers['Content-Length'])
@@ -1414,7 +1432,7 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 provider = 'gemini'
-                model = data.get('model') or os.environ.get('GEMINI_DEFAULT_MODEL') or 'gemini-2.0-flash'
+                model = data.get('model') or os.environ.get('GEMINI_DEFAULT_MODEL') or 'gemini-3.5-flash'
                 api_key = data.get('api_key', '')
                 prompt = data.get('prompt', '')
                 system_instruction = data.get('system_instruction', None)
@@ -1549,11 +1567,19 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos
                     error_body = e.read().decode('utf-8')
                 except:
                     error_body = str(e)
-                self.send_json_response(500, {"error": f"Erro na API do Provedor (HTTP {e.code}): {error_body}"})
+                if e.code == 429:
+                    self.send_json_response(429, {"error": "Limite de requisições do Gemini excedido (HTTP 429). Por favor, aguarde alguns instantes."})
+                elif e.code == 400:
+                    self.send_json_response(400, {"error": "Requisição inválida para a API do Gemini (HTTP 400). Verifique a chave de API ou as regras configuradas."})
+                else:
+                    self.send_json_response(500, {"error": f"Erro na API do Provedor (HTTP {e.code}): {error_body}"})
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                self.send_json_response(500, {"error": f"Erro no LLM Gateway: {str(e)}"})
+                if "429" in str(e):
+                    self.send_json_response(429, {"error": "Limite de requisições do Gemini excedido (HTTP 429). Por favor, aguarde alguns instantes."})
+                else:
+                    self.send_json_response(500, {"error": f"Erro no LLM Gateway: {str(e)}"})
         
         else:
             self.send_json_response(404, {"error": "Rota de API não encontrada."})

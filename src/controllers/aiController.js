@@ -84,24 +84,39 @@ window.aiController = {
     // =====================================================================
     // SYSTEM PROMPT — Modo Híbrido (Validador Final sobre Pré-Auditoria Local)
     // =====================================================================
-    SYSTEM_PROMPT: `Você é uma banca avaliadora técnica composta por 14 especialistas em projetos culturais financiados por editais públicos e privados (Lei Rouanet, Natura, Petrobras, Itaú, IN MinC).
+    SYSTEM_PROMPT: `Você é uma banca avaliadora técnica de alto nível composta por 14 especialistas dedicados à conformidade e excelência de projetos culturais financiados por leis de incentivo (Lei Rouanet, Lei Aldir Blanc, editais de fundações como Petrobras, Natura, Itaú e IN MinC).
 
-Sua missão é atuar como VALIDADOR FINAL sobre a pré-auditoria offline gerada pelo motor local do aplicativo (IndexedDB).
-Você deve analisar SIMULTANEAMENTE todos os documentos fornecidos — Edital de Referência, Proposta Cultural, Planilha Orçamentária e o Laudo de Pré-Auditoria Local — e produzir o laudo técnico definitivo em 14 dimensões de compliance.
+Sua missão é atuar como VALIDADOR FINAL e REVISOR CRÍTICO sobre a pré-auditoria offline do motor local.
+Você deve analisar profundamente todos os documentos (Edital de Referência, Proposta, Planilha e Pré-Auditoria) e produzir um laudo técnico robusto de 14 dimensões.
 
-**DIRETRIZ DE VALIDAÇÃO HÍBRIDA:**
-- O motor de inferência local já calculou valores orçamentários brutos, checou certidões e verificou termos de acessibilidade e cotas.
-- Revise esse pré-relatório e concentre sua capacidade analítica em adicionar pareceres qualitativos densos, refinamentos estratégicos e insights profundos de banca.
+**DIRETRIZES PARA PARECERES DE ALTA QUALIDADE (EVITE RESPOSTAS GENÉRICAS):**
+- Cada parecer deve ser denso, detalhado e altamente contextualizado (mínimo de 3 parágrafos ou lista detalhada em HTML por agente).
+- Faça um cruzamento real entre os critérios do edital e as seções correspondentes da proposta. Cite trechos específicos do edital e aponte trechos fracos ou ausentes na proposta.
+- Não use frases genéricas como "Ajuste o cronograma" ou "Inclua mais metas". Especifique exatamente o que falta, os riscos associados e como reescrever.
+- A seção "Sugestão Otimizada" de cada parecer deve conter o texto inteiramente reescrito e otimizado (em tom formal, profissional e persuasivo), pronto para que o proponente copie e cole no formulário de inscrição.
 
-**REGRAS CRÍTICAS DE ANÁLISE:**
-- Faça cruzamento real entre as regras do Edital e os dados da Proposta. Cite trechos quando relevante.
-- Calcule percentuais financeiros a partir dos valores brutos da planilha, não estime.
-- O parecer de cada agente deve ser escrito em HTML estruturado (h4, p, ul, li, strong, table), contendo um diagnóstico claro e uma seção "Sugestão Otimizada" ao final.
+**INSTRUÇÕES PARA OS 14 AGENTES (REQUISITO: RETORNAR EXATAMENTE OS 14 ITENS NO ARRAY "agentes"):**
+Você deve gerar exatamente 14 itens no array "agentes", correspondendo aos seguintes IDs:
+1. "justificativa": Avalia o mérito cultural, a relevância social, os impactos comunitários e a justificativa histórica. Sugira melhorias qualitativas densas.
+2. "objetivos": Avalia a coerência do objetivo geral e a mensurabilidade dos objetivos específicos.
+3. "metodologia": Detalha o plano de trabalho operacional dividindo explicitamente em Pré-produção, Execução e Pós-produção.
+4. "cronograma": Avalia a viabilidade física e prazos mensais das atividades.
+5. "orcamento": Analisa o orçamento, respeitando estritamente o limite administrativo de 15% e divulgação de 10%. Calcule e aponte valores reais e desvios.
+6. "acessibilidade": Examina medidas de acessibilidade física, comunicacional (LIBRAS/audiodescrição) e atitudinal, além de políticas afirmativas e cotas.
+7. "publico": Analisa a definição exata, demográfica, etária e social do público-alvo e beneficiários.
+8. "contrapartida": Avalia o retorno gratuito do projeto à sociedade (oficinas, palestras, ingressos gratuitos, doações).
+9. "comunicacao": Revisa o plano de comunicação, assessoria, mídias e comprovação de clipagem.
+10. "ficha_tecnica": Avalia a exequibilidade operacional com base na equipe técnica, suas minibios e histórico.
+11. "monitoramento": Avalia a matriz lógica, indicadores de sucesso (quantitativos e qualitativos) e meios de verificação.
+12. "compliance": Avalia regularidade fiscal, certidões negativas (CNDT, FGTS, Receita Federal), direitos autorais (Ecad), SisGen e licenciamento.
+13. "sustentabilidade": Analisa práticas ESG, mitigação ambiental, reciclagem e gestão de resíduos nas ações.
+14. "rider": Avalia necessidades físicas, mapa de palco, rider de som/luz, montagem, logística e hospedagem.
 
-**CRITÉRIO RIGOROSO DE NOTAS E PENALIDADES:**
-- Nota Técnica ("nota_tecnica"): soma ponderada dos 14 quesitos (máximo 100 pontos).
-- Nota de Priorização ("nota_priorizacao"): de 0 a 30 baseada nos 7 critérios de priorização do edital (Anexo 8).
-- Nota Final ("nota_final"): soma matemática exata de "nota_tecnica" + "nota_priorizacao" (máximo 130 pontos).`,
+**REGRA RIGOROSA DE NOTAS:**
+- Para cada agente no array "agentes", atribua um campo "nota" sendo um valor de 0 a 100 representativo da conformidade daquela seção específica. NUNCA utilize a nota técnica acumulada ou a nota final do projeto como nota individual de um agente.
+- A "nota_tecnica" global deve ser a soma ponderada de cada quesito, limitada a no máximo 100 pontos.
+- A "nota_priorizacao" deve ser de 0 a 30.
+- A "nota_final" deve ser a soma matemática exata: nota_tecnica + nota_priorizacao (máximo 130).`,
 
     // =====================================================================
     // SCHEMA DE RESPOSTA ESTRUTURADA
@@ -120,7 +135,10 @@ Você deve analisar SIMULTANEAMENTE todos os documentos fornecidos — Edital de
                 items: {
                     type: "OBJECT",
                     properties: {
-                        id: { type: "STRING" },
+                        id: {
+                            type: "STRING",
+                            enum: ["justificativa", "objetivos", "metodologia", "cronograma", "orcamento", "acessibilidade", "publico", "contrapartida", "comunicacao", "ficha_tecnica", "monitoramento", "compliance", "sustentabilidade", "rider"]
+                        },
                         nota: { type: "NUMBER" },
                         parecer: { type: "STRING" },
                         erros: { type: "ARRAY", items: { type: "STRING" } },
@@ -312,7 +330,7 @@ Revise e valide o pré-relatório local da Etapa 1 e as diretrizes da pesquisa o
             if (!localAuditResult) {
                 throw new Error("Não foi possível gerar a auditoria offline. Verifique os dados do projeto.");
             }
-            return this._transformToAppFormat(localAuditResult, workspaceState);
+            return this._transformToAppFormat(localAuditResult, workspaceState, localAuditResult);
         }
 
         // --- ETAPA 3: Refino e Validação Final via API LLM (Gemini) ---
@@ -383,7 +401,7 @@ Revise e valide o pré-relatório local da Etapa 1 e as diretrizes da pesquisa o
                 showToast("⚠️ API indisponível/timeout: Exibindo laudo pré-auditado localmente (Offline).", "warning");
             }
             if (localAuditResult) {
-                return this._transformToAppFormat(localAuditResult, workspaceState);
+                return this._transformToAppFormat(localAuditResult, workspaceState, localAuditResult);
             }
             throw fetchErr;
         }
@@ -394,7 +412,7 @@ Revise e valide o pré-relatório local da Etapa 1 e as diretrizes da pesquisa o
                 showToast("⚠️ Falha na API: Exibindo auditoria pré-processada offline.", "warning");
             }
             if (localAuditResult) {
-                return this._transformToAppFormat(localAuditResult, workspaceState);
+                return this._transformToAppFormat(localAuditResult, workspaceState, localAuditResult);
             }
             const errData = await response.json().catch(() => ({}));
             throw new Error(errData.error || `Erro HTTP ${response.status}`);
@@ -545,13 +563,13 @@ Revise e valide o pré-relatório local da Etapa 1 e as diretrizes da pesquisa o
         }
 
         // --- Transformar para o formato que o app.js espera ---
-        return this._transformToAppFormat(finalJson, workspaceState);
+        return this._transformToAppFormat(finalJson, workspaceState, localAuditResult);
     },
 
     // =====================================================================
     // TRANSFORMAÇÃO — Converte a resposta do Gemini no formato do app.js
     // =====================================================================
-    _transformToAppFormat: function (geminiJson, workspaceState) {
+    _transformToAppFormat: function (geminiJson, workspaceState, localAuditResult = null) {
         const agentesArray = geminiJson.agentes || [];
         const total = geminiJson.total_orcamento || workspaceState.cover.budget || 0;
         const adminPerc = geminiJson.custos_administrativos_percentual || 0;
@@ -566,14 +584,19 @@ Revise e valide o pré-relatório local da Etapa 1 e as diretrizes da pesquisa o
         agentIds.forEach(id => {
             const found = agentesArray.find(a => a.id === id);
             if (found) {
+                const individualNota = typeof found.nota === 'number' ? Math.min(100, Math.max(0, Math.round(found.nota))) : 70;
                 revisorAgentsResults[id] = {
-                    nota: found.nota || 70,
+                    nota: individualNota,
                     parecer: found.parecer || `<p>Análise concluída.</p>`
                 };
             } else {
+                // Tenta buscar o resultado da pré-auditoria offline local como fallback
+                const localAgent = localAuditResult && localAuditResult.agentes
+                    ? localAuditResult.agentes.find(a => a.id === id)
+                    : null;
                 revisorAgentsResults[id] = {
-                    nota: notaFinal,
-                    parecer: `<p>Este agente não retornou um parecer individualizado nesta rodada. Use "Analisar apenas este agente" para obter análise específica.</p>`
+                    nota: localAgent ? Math.min(100, Math.max(0, Math.round(localAgent.nota))) : 70,
+                    parecer: localAgent ? localAgent.parecer : `<p>Análise concluída preliminarmente.</p>`
                 };
             }
         });

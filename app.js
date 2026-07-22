@@ -471,6 +471,7 @@ async function callLLMGateway(prompt, systemInstruction = null, weight = 'light'
 
     const payload = {
         provider: 'gemini',
+        model: 'gemini-3.5-flash',
         api_key: keyToUse,
         prompt: prompt,
         system_instruction: systemInstruction,
@@ -1112,7 +1113,16 @@ function setupFileHandlers() {
     const btnAnalyze = document.getElementById('btn-analyze-edital');
     if (btnAnalyze) {
         btnAnalyze.addEventListener('click', async () => {
-            await ensureEditalProfile(true);
+            if (btnAnalyze.disabled) return;
+            try {
+                btnAnalyze.disabled = true;
+                const originalHTML = btnAnalyze.innerHTML;
+                btnAnalyze.innerHTML = `<span>⏳ Analisando...</span>`;
+                await ensureEditalProfile(true);
+                btnAnalyze.innerHTML = originalHTML;
+            } finally {
+                btnAnalyze.disabled = false;
+            }
         });
     }
 
@@ -1443,103 +1453,8 @@ async function callGeminiToComplementSection(sectionId, currentContent, relevant
 }
 
 async function runChainedSequentialGeneration(extraInstrucoes = "", webSearchContext = "", buttonEl) {
-    await ensureEditalProfile();
-
-    const sections = [
-        { id: 'justificativa', name: '1. Justificativa e Relevância' },
-        { id: 'objetivos', name: '2. Objetivos Geral e Específicos' },
-        { id: 'metodologia', name: '3. Metodologia e Plano de Trabalho' },
-        { id: 'cronograma', name: '4. Cronograma de Atividades' },
-        { id: 'orcamento', name: '5. Planilha Orçamentária' },
-        { id: 'acessibilidade', name: '6. Acessibilidade e Cotas' }
-    ];
-
-    const total = sections.length;
-    if (!workspaceState.documentContent) {
-        workspaceState.documentContent = {};
-    }
-
-    for (let i = 0; i < total; i++) {
-        const sec = sections[i];
-        const isMissing = isSectionMissing(sec.id);
-        const relevantIssues = getRelevantAlertsAndAdjustments(sec.id);
-        const currentContent = workspaceState.documentContent[sec.id] || "";
-
-        // Se a seção já está preenchida, não possui alertas relevantes e não há diretrizes extras
-        if (!isMissing && relevantIssues.length === 0 && !extraInstrucoes) {
-            showToast(`Seção "${sec.name}" já está completa e em conformidade. Pulando...`, "info");
-            continue;
-        }
-
-        if (buttonEl) {
-            if (isMissing) {
-                buttonEl.textContent = `⏳ [${i + 1}/${total}] Elaborando ${sec.name}...`;
-            } else {
-                buttonEl.textContent = `⏳ [${i + 1}/${total}] Otimizando ${sec.name}...`;
-            }
-        }
-        showToast(isMissing ? `Redigindo ${sec.name} com referência cruzada...` : `Complementando ${sec.name} para resolver pendências...`, "info");
-
-        let secContent = "";
-        if (isApiActive()) {
-            if (isMissing) {
-                secContent = await callGeminiForSectionChained(sec.id, extraInstrucoes, webSearchContext);
-            } else {
-                secContent = await callGeminiToComplementSection(sec.id, currentContent, relevantIssues, extraInstrucoes);
-            }
-        } else {
-            if (isMissing) {
-                secContent = await getSimulatedRedatorText(sec.id, extraInstrucoes);
-            } else {
-                secContent = currentContent + `\n<p><em>* Ajuste simulado offline aplicado.</em></p>`;
-            }
-        }
-
-        // Salvaguarda com Retry: se a geração falhou ou retornou vazia, tenta mais uma vez com prompt simplificado (sem anexos/memórias extras)
-        if (!secContent || secContent.trim().length === 0) {
-            console.warn(`[REDACTOR] Geração retornou vazia para a seção ${sec.id}. Tentando novamente com prompt simplificado de fallback...`);
-            showToast(`Tentando gerar ${sec.name} novamente de forma simplificada...`, "warning");
-
-            // Backup temporário do estado para limpar anexos/memórias pesadas no fallback
-            const backupAnnexes = workspaceState.annexes;
-            const backupMemories = workspaceState.historicalMemories;
-
-            workspaceState.annexes = [];
-            workspaceState.historicalMemories = [];
-
-            try {
-                if (isMissing) {
-                    secContent = await callGeminiForSectionChained(sec.id, extraInstrucoes, "", false);
-                } else {
-                    secContent = await callGeminiToComplementSection(sec.id, currentContent, relevantIssues, extraInstrucoes, false);
-                }
-            } catch (retryErr) {
-                console.error(`Erro na tentativa de fallback para ${sec.id}:`, retryErr);
-            } finally {
-                // Restaura o estado original
-                workspaceState.annexes = backupAnnexes;
-                workspaceState.historicalMemories = backupMemories;
-            }
-        }
-
-        if (!secContent || secContent.trim().length === 0) {
-            console.warn(`[REDACTOR] Geração retornou vazia na segunda tentativa para a seção ${sec.id}. Ignorando.`);
-            continue;
-        }
-
-        const renderedContent = renderTextOrMarkdown(secContent);
-
-        // Se a seção já contava com conteúdo, anexa abaixo como revisão pendente de aprovação
-        if (!isMissing) {
-            workspaceState.documentContent[sec.id] = appendRevisionMarkup(sec.id, currentContent, renderedContent);
-        } else {
-            workspaceState.documentContent[sec.id] = renderedContent;
-        }
-
-        saveWorkspaceState();
-        syncEditorContentToDOM();
-        updatePlaceholderStates();
-    }
+    showToast("⚡ Gerando proposta completa em 1 única chamada consolidada (Gemini 2.0 Flash)...", "info");
+    return await generateBasicProposal();
 }
 
 async function callGeminiForSectionChained(sectionId, extraInstrucoes = "", webSearchContext = "", stream = true) {
@@ -1642,7 +1557,7 @@ async function generateBasicProposal() {
         const keyToUse = window.geminiKey || localStorage.getItem('gemini_api_key');
         if (keyToUse) {
             btn.textContent = "⚖️ Mapeando diretrizes do edital e anexos...";
-            await ensureEditalProfile();
+            await ensureEditalProfile(true);
 
             btn.textContent = "⚡ Redigindo proposta completa via IA...";
             const response = await fetch('/api/generate-proposal-unified', {
@@ -1650,7 +1565,7 @@ async function generateBasicProposal() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     cover: workspaceState.cover,
-                    editalRefText: typeof filterRelevantEditalText === 'function' ? filterRelevantEditalText(workspaceState.editalRefText || '') : (workspaceState.editalRefText || ''),
+                    editalRefText: workspaceState.editalRefText || '',
                     editalProfile: workspaceState.editalProfile,
                     proposalDraftText: workspaceState.proposalDraftText || '',
                     annexes: workspaceState.annexes || [],
@@ -1665,6 +1580,15 @@ async function generateBasicProposal() {
                     workspaceState.documentContent = result.documentContent;
                     successViaAPI = true;
                 }
+            } else {
+                let errorMsg = "Erro na API do Gemini.";
+                try {
+                    const errData = await response.json();
+                    if (errData && errData.error) {
+                        errorMsg = errData.error;
+                    }
+                } catch (e) {}
+                showToast(`${errorMsg} Ativando motor offline local de contingência.`, "warning");
             }
         }
     } catch (err) {
@@ -2740,9 +2664,10 @@ async function runSingleAgent(agentKey) {
     try {
         // --- ETAPA 1 (PRIMEIRO): Avaliação local offline (IndexedDB + OfflineAuditor) ---
         let responseData = null;
+        let localEvaluation = null;
         if (window.offlineAuditor && typeof window.offlineAuditor.evaluateAgentLocal === 'function') {
             const agentMeta = REVISORES_METADATA[agentKey] || { name: agentKey };
-            const localEvaluation = window.offlineAuditor.evaluateAgentLocal(
+            localEvaluation = window.offlineAuditor.evaluateAgentLocal(
                 { id: agentKey, title: agentMeta.name, text: workspaceState.documentContent[agentKey] || "", keywords: [agentKey, 'regra', 'conformidade'] },
                 JSON.stringify(workspaceState.documentContent || {}).toLowerCase(),
                 { totalValue: workspaceState.cover.budget || 150000, adminPercent: 12 }
@@ -2801,7 +2726,7 @@ async function runSingleAgent(agentKey) {
         if (isApiActive()) {
             if (btnSingle && activeRevisor === agentKey) btnSingle.textContent = "🤖 Etapa 3: Refinando com IA...";
             try {
-                const aiResult = await callGeminiForSubAgent(agentKey, webSearchContext);
+                const aiResult = await callGeminiForSubAgent(agentKey, localEvaluation, webSearchContext);
                 if (aiResult && aiResult.nota) {
                     workspaceState.revisorAgentsResults[agentKey] = aiResult;
                     saveWorkspaceState();
@@ -3038,7 +2963,7 @@ async function runFinalConsolidatedRevision() {
     }
 }
 
-async function callGeminiForSubAgent(agentKey, skillResult = null) {
+async function callGeminiForSubAgent(agentKey, localEvaluation = null, webSearchContext = "") {
     if (!workspaceState.editalProfile && workspaceState.editalRefText && typeof ensureEditalProfile === 'function') {
         await ensureEditalProfile();
     }
@@ -3054,18 +2979,26 @@ async function callGeminiForSubAgent(agentKey, skillResult = null) {
         : "Nenhum anexo extra fornecido.";
 
     let skillFeedback = "";
-    if (skillResult) {
+    if (localEvaluation) {
+        const score = localEvaluation.score || localEvaluation.nota || 0;
+        const checklist = Array.isArray(localEvaluation.checklist) ? localEvaluation.checklist : [];
+        const errors = Array.isArray(localEvaluation.errors) ? localEvaluation.errors : (Array.isArray(localEvaluation.erros) ? localEvaluation.erros : []);
+        const warnings = Array.isArray(localEvaluation.warnings) ? localEvaluation.warnings : (Array.isArray(localEvaluation.recomendacoes) ? localEvaluation.recomendacoes : []);
+
         skillFeedback = `
-    [VALIDAÇÃO DA SKILL LOCAL DO BACKEND]:
-    Nota Sugerida pela Skill: ${skillResult.score}/100
-    Checklist Validado:
-    ${skillResult.checklist.map(c => `- ${c}`).join('\n')}
-    Erros de Conformidade Encontrados:
-    ${skillResult.errors.map(e => `- ${e}`).join('\n')}
-    Avisos de Melhoria Encontrados:
-    ${skillResult.warnings.map(w => `- ${w}`).join('\n')}
-    
-    ATENÇÃO: Você DEVE obrigatoriamente levar em consideração as falhas e os acertos apontados acima. O seu parecer final deve justificar a nota refletindo estas inconformidades e propor correções exatas na seção 'Sugestão Otimizada' para mitigar estes erros.
+    [VALIDAÇÃO LOCAL DO MOTOR DE REGRAS]:
+    Nota Sugerida Localmente: ${score}/100
+    ${checklist.length > 0 ? `Checklist Validado:\n${checklist.map(c => `- ${c}`).join('\n')}` : ''}
+    ${errors.length > 0 ? `Erros de Conformidade Encontrados:\n${errors.map(e => `- ${e}`).join('\n')}` : ''}
+    ${warnings.length > 0 ? `Avisos de Melhoria/Recomendações:\n${warnings.map(w => `- ${w}`).join('\n')}` : ''}
+    `;
+    }
+
+    if (webSearchContext && webSearchContext.trim()) {
+        skillFeedback += `
+
+    [DIRETRIZES DA PESQUISA WEB]:
+    ${webSearchContext}
     `;
     }
 
@@ -3333,7 +3266,16 @@ async function ensureEditalProfile(forceRefresh = false) {
     }
 
     const apiKey = (window.geminiKey || localStorage.getItem('gemini_api_key'));
-    const model = 'gemini-2.0-flash';
+    const model = 'gemini-3.5-flash';
+
+    // Se não há chave de API ativa e forceRefresh é false, usamos o motor offline local de contingência
+    if (!forceRefresh && !apiKey) {
+        const offlineProfile = getOfflineEditalProfile(editalRefText, workspaceState.annexes);
+        workspaceState.editalProfile = offlineProfile;
+        saveWorkspaceState();
+        renderEditalProfileCard();
+        return offlineProfile;
+    }
 
     showToast("Analisando perfil estrutural e diretrizes do edital...", "info");
 
@@ -3357,6 +3299,15 @@ async function ensureEditalProfile(forceRefresh = false) {
                 renderEditalProfileCard();
                 showToast("Perfil do edital analisado com sucesso!", "success");
                 return data;
+            } else {
+                let errorMsg = "Erro ao analisar edital.";
+                try {
+                    const errData = await res.json();
+                    if (errData && errData.error) {
+                        errorMsg = errData.error;
+                    }
+                } catch (e) {}
+                showToast(`${errorMsg} Usando análise offline local de contingência.`, "warning");
             }
         } catch (err) {
             console.warn("[APP] Falha no endpoint da API. Usando análise offline local:", err);
