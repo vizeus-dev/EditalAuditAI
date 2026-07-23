@@ -238,52 +238,70 @@ def make_reportlab_safe(text):
 
 PORT = 8085
 
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+]
+
 def search_ddg(query):
+    import random
+    ua = random.choice(USER_AGENTS)
+    headers = {
+        "User-Agent": ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
+    
+    # Tentativa 1: DuckDuckGo HTML
     url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-    )
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=12) as response:
             html_content = response.read().decode('utf-8', errors='ignore')
-            
             results = []
-            
-            # Match result links: <a class="result__a" href="...">TITLE</a>
             pattern = re.compile(r'<a[^>]+class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>')
             matches = pattern.findall(html_content)
             
             for href, title in matches:
                 title_clean = re.sub(r'<[^>]+>', '', title).strip()
-                # Clean entities
-                title_clean = title_clean.replace('&amp;', '&').replace('&quot;', '"').replace('&#39;', "'")
+                title_clean = html.unescape(title_clean)
                 if "/l/?kh=" in href or "uddg=" in href:
                     parsed_url = urllib.parse.urlparse(href)
                     qs = urllib.parse.parse_qs(parsed_url.query)
                     if 'uddg' in qs:
                         href = qs['uddg'][0]
-                
-                results.append({
-                    "title": title_clean,
-                    "url": href,
-                    "snippet": ""
-                })
+                results.append({"title": title_clean, "url": href, "snippet": ""})
             
-            # Match snippets
             snippet_pattern = re.compile(r'<a class="result__snippet"[^>]*>([\s\S]*?)</a>')
             snippets = snippet_pattern.findall(html_content)
             for i, snip in enumerate(snippets):
                 if i < len(results):
                     snippet_clean = re.sub(r'<[^>]+>', '', snip).strip()
-                    snippet_clean = snippet_clean.replace('&amp;', '&').replace('&quot;', '"').replace('&#39;', "'")
+                    snippet_clean = html.unescape(snippet_clean)
                     results[i]["snippet"] = snippet_clean
                     
-            return results[:15]
+            if results:
+                return results[:15]
     except Exception as e:
-        print(f"Error in search_ddg: {e}")
+        print(f"[SEARCH][WARN] DuckDuckGo HTML falhou: {e}. Tentando fallback Lite...")
+
+    # Tentativa 2: DuckDuckGo Lite Fallback
+    try:
+        lite_url = "https://lite.duckduckgo.com/lite/?" + urllib.parse.urlencode({"q": query})
+        req_lite = urllib.request.Request(lite_url, headers=headers)
+        with urllib.request.urlopen(req_lite, timeout=12) as response:
+            html_content = response.read().decode('utf-8', errors='ignore')
+            results = []
+            link_matches = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)</a>', html_content)
+            for href, title in link_matches:
+                title_clean = html.unescape(re.sub(r'<[^>]+>', '', title).strip())
+                if href.startswith('http') and len(title_clean) > 5:
+                    results.append({"title": title_clean, "url": href, "snippet": "Diretriz / Edital de fomento cultural público."})
+            return results[:15]
+    except Exception as e2:
+        print(f"[SEARCH][ERROR] Fallback DuckDuckGo Lite falhou: {e2}")
         return []
 
 def extract_document_links(html_content, base_url):
@@ -834,11 +852,11 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_header('Content-Type', 'application/pdf')
                 import unicodedata
                 filename_clean = ''.join(c for c in unicodedata.normalize('NFD', project_title) if unicodedata.category(c) != 'Mn')
-                filename_clean = filename_clean.lower().replace(" ", "_")
-                filename_clean = re.sub(r'[^a-z0-9_\-]', '', filename_clean)
-                if not filename_clean:
-                    filename_clean = "projeto"
-                self.send_header('Content-Disposition', f'attachment; filename="Relatorio_Auditoria_{filename_clean}.pdf"')
+                filename_clean = re.sub(r'[^a-zA-Z0-9]', '_', filename_clean)
+                filename_clean = re.sub(r'_+', '_', filename_clean).strip('_')
+                if not filename_clean or filename_clean.lower() == 'titulo_do_projeto_cultural':
+                    filename_clean = "Projeto_Cultural"
+                self.send_header('Content-Disposition', f'attachment; filename="Laudo_Auditoria_Compliance_{filename_clean}.pdf"')
                 self.send_header('Content-Length', str(len(pdf_bytes)))
                 self.end_headers()
                 self.wfile.write(pdf_bytes)
@@ -962,11 +980,11 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_header('Content-Type', 'application/pdf')
                 import unicodedata
                 filename_clean = ''.join(c for c in unicodedata.normalize('NFD', project_title) if unicodedata.category(c) != 'Mn')
-                filename_clean = filename_clean.lower().replace(" ", "_")
-                filename_clean = re.sub(r'[^a-z0-9_\-]', '', filename_clean)
-                if not filename_clean:
-                    filename_clean = "revisao"
-                self.send_header('Content-Disposition', f'attachment; filename="Relatorio_Revisao_{filename_clean}.pdf"')
+                filename_clean = re.sub(r'[^a-zA-Z0-9]', '_', filename_clean)
+                filename_clean = re.sub(r'_+', '_', filename_clean).strip('_')
+                if not filename_clean or filename_clean.lower() == 'titulo_do_projeto_cultural':
+                    filename_clean = "Projeto_Cultural"
+                self.send_header('Content-Disposition', f'attachment; filename="Relatorio_Detalhado_Revisor_{filename_clean}.pdf"')
                 self.send_header('Content-Length', str(len(pdf_bytes)))
                 self.end_headers()
                 self.wfile.write(pdf_bytes)
@@ -1124,10 +1142,10 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_header('Content-Type', 'application/pdf')
                 import unicodedata
                 filename_clean = ''.join(c for c in unicodedata.normalize('NFD', project_title) if unicodedata.category(c) != 'Mn')
-                filename_clean = filename_clean.lower().replace(" ", "_")
-                filename_clean = re.sub(r'[^a-z0-9_\-]', '', filename_clean)
-                if not filename_clean:
-                    filename_clean = "financeiro"
+                filename_clean = re.sub(r'[^a-zA-Z0-9]', '_', filename_clean)
+                filename_clean = re.sub(r'_+', '_', filename_clean).strip('_')
+                if not filename_clean or filename_clean.lower() == 'titulo_do_projeto_cultural':
+                    filename_clean = "Projeto_Cultural"
                 self.send_header('Content-Disposition', f'attachment; filename="Planilha_Financeira_{filename_clean}.pdf"')
                 self.send_header('Content-Length', str(len(pdf_bytes)))
                 self.end_headers()

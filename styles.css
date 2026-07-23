@@ -2690,3 +2690,84 @@ table,
 #audit-analytic-report-content, #revisor-report-content, #revisor-panel-feedback {
     overflow-x: auto !important;
 }
+
+/* ==========================================================================
+   Estilos do Chatbot Assistente de Redação e Aba Finalização
+   ========================================================================== */
+.redator-chat-card {
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    transition: all 0.3s ease;
+}
+
+.redator-chat-messages {
+    scroll-behavior: smooth;
+}
+
+.chat-message {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    padding: 0.6rem 0.85rem;
+    border-radius: var(--radius-md);
+    max-width: 92%;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    animation: fadeInMsg 0.25s ease-out forwards;
+}
+
+@keyframes fadeInMsg {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-message.user {
+    align-self: flex-end;
+    background: var(--color-primary-ghost, rgba(99, 102, 241, 0.12));
+    color: var(--text-primary);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-bottom-right-radius: 2px;
+}
+
+.chat-message.agent {
+    align-self: flex-start;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border-left: 3.5px solid var(--color-primary);
+    border-bottom-left-radius: 2px;
+    box-shadow: var(--shadow-sm);
+}
+
+#pane-finalizacao .card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#pane-finalizacao .card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+/* ============================================
+   Missão 4: Resiliência Visual & Auto-Fit
+   ============================================ */
+.editor-container,
+.report-card,
+.report-content,
+.revisor-card,
+.revisor-history-item {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.auto-fit-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    white-space: normal;
+    transition: font-size 0.15s ease-out;
+}
+
+

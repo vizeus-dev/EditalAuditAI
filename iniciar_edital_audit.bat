@@ -1,6 +1,6 @@
 @echo off
 :: Navega para o diretório do projeto
-cd /d "c:\Users\victo\.gemini\antigravity-ide\scratch\EditalAuditAI"
+cd /d "c:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit"
 
 :: Verifica se a porta 8085 já está em uso (servidor já rodando)
 netstat -ano | findstr /R "8085.*LISTENING" >nul 2>&1

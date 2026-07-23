@@ -19,7 +19,9 @@ window.offlineAuditor = {
         const cover = workspaceState.cover || {};
         const editalText = (workspaceState.editalRefText || "").toLowerCase();
         const draftText = (workspaceState.proposalDraftText || "").toLowerCase();
-        const fullContext = `${editalText}\n${draftText}\n${JSON.stringify(doc).toLowerCase()}`;
+        const annexesText = (workspaceState.annexes || []).map(a => `${a.name}\n${a.content || ''}`).join('\n').toLowerCase();
+        const profileText = workspaceState.editalProfile ? JSON.stringify(workspaceState.editalProfile).toLowerCase() : "";
+        const fullContext = `${editalText}\n${annexesText}\n${profileText}\n${draftText}\n${JSON.stringify(doc).toLowerCase()}`;
 
         // Carregar regras universais do IndexedDB se disponíveis
         let regrasUniversais = [];

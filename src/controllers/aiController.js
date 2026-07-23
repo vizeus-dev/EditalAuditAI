@@ -182,8 +182,7 @@ Você deve gerar exatamente 14 itens no array "agentes", correspondendo aos segu
         const editalText = workspaceState.editalRefText || "Nenhum edital de referência fornecido.";
         const draftText = workspaceState.proposalDraftText || "";
         const annexes = workspaceState.annexes || [];
-
-        const MAX_DRAFT = 25000;
+        const profile = workspaceState.editalProfile || {};
 
         const docSections = [
             doc.justificativa ? `### 1. Justificativa e Relevância\n${doc.justificativa}` : '',
@@ -202,11 +201,26 @@ Você deve gerar exatamente 14 itens no array "agentes", correspondendo aos segu
             doc.rider ? `### 14. Rider Técnico\n${doc.rider}` : ''
         ].filter(Boolean).join('\n\n');
 
+        let profileBlock = "";
+        if (profile && (profile.fomento || profile.objetivos || profile.tetos_e_limites)) {
+            profileBlock = `
+## DIRETRIZES E REGRAS ESTRUTURAIS DO EDITAL (Mapeados pelo Ingestor)
+- **Lei / Fomento:** ${profile.fomento || 'Não especificado'}
+- **Objetivos e Elegibilidade:** ${profile.objetivos || 'Não especificado'}
+- **Tetos e Limites Orçamentários:** ${profile.tetos_e_limites || 'Não especificado'}
+- **Acessibilidade e Cotas Obligatórias:** ${profile.acessibilidade_e_cotas || 'Não especificado'}
+- **Critérios de Priorização (Anexo de Pontuação):** ${profile.prioridades_critérios || 'Não especificado'}
+- **Mapeamento dos Anexos Ingeridos:** ${profile.anexos_analisados || 'Nenhum anexo extra'}
+---
+`;
+        }
+
         let annexesSection = "Nenhum anexo extra fornecido.";
         if (annexes.length > 0) {
             annexesSection = annexes.map((a, i) => {
-                return `- **ANEXO ${i + 1}:** ${a.name} (${((a.size || 0) / 1024).toFixed(1)} KB)`;
-            }).join('\n');
+                const contentText = a.content ? a.content.substring(0, 30000) : "Sem conteúdo textual extraído.";
+                return `### ANEXO ${i + 1}: ${a.name} (${((a.size || 0) / 1024).toFixed(1)} KB)\n${contentText}`;
+            }).join('\n\n---\n\n');
         }
 
         let localAuditBlock = "";
@@ -243,6 +257,7 @@ ${webSearchContext}
 - **Orçamento Total Declarado:** R$ ${(cover.budget || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
 
 ---
+${profileBlock}
 ${localAuditBlock}
 ${webSearchBlock}
 
@@ -252,16 +267,16 @@ ${docSections || "Nenhuma seção redigida no editor ainda."}
 
 ---
 
-## ANEXOS EXTRAS DO EDITAL
+## ANEXOS EXTRAS DO EDITAL (CONTEÚDO TEXTUAL COMPLETO DOS ANEXOS)
 
 ${annexesSection}
 
 ---
 
 **INSTRUÇÃO FINAL E DIRETRIZES DO RELATÓRIO GERAL (HTML):**
-Revise e valide o pré-relatório local da Etapa 1 e as diretrizes da pesquisa online da Etapa 2. Gere na chave "relatorio_geral" o laudo definitivo em HTML.`;
+Revise e valide o pré-relatório local da Etapa 1, as diretrizes da pesquisa online da Etapa 2 e o conteúdo integral dos Anexos. Verifique se os critérios de pontuação prioritária dos anexos (como paridade de gênero, vulnerabilidade, mestres tradicionais, territórios atingidos) estão atendidos na proposta. Gere na chave "relatorio_geral" o laudo definitivo em HTML.`;
 
-        console.log(`[AI-CONTROLLER] Payload Híbrido 3 Etapas construído: ${payload.length} chars`);
+        console.log(`[AI-CONTROLLER] Payload Híbrido 3 Etapas construído: ${payload.length} chars (com Anexos e Profile)`);
         return payload;
     },
 

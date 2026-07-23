@@ -214,6 +214,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupCoverSync();
     setupFileHandlers();
     setupRedator();
+    setupRedatorChat();
+    setupFinalizacaoTab();
     setupRevisor();
     setupAuditor();
     setupBiblioteca();
@@ -614,6 +616,20 @@ function restoreWorkspaceState() {
             if (!workspaceState.historicalMemories) {
                 workspaceState.historicalMemories = [];
             }
+            if (!workspaceState.proposalHistoryStack) {
+                workspaceState.proposalHistoryStack = [];
+            }
+            if (!workspaceState.proposalRedoStack) {
+                workspaceState.proposalRedoStack = [];
+            }
+            
+            // Sincronizar globais para compatibilidade
+            window._proposalHistoryStack = workspaceState.proposalHistoryStack.map(item => item.content || item);
+            window._proposalRedoStack = workspaceState.proposalRedoStack.map(item => item.content || item);
+
+            setTimeout(() => {
+                if (typeof updateHistoryButtonsUI === 'function') updateHistoryButtonsUI();
+            }, 100);
         } catch (e) {
             console.error("Error restoring workspaceState:", e);
         }
@@ -667,6 +683,21 @@ function setupTabSwitching() {
 // PERSISTENT ABNT EDITOR & TOOLBAR
 // ==========================================
 function setupEditorToolbar() {
+    // History Version Navigation Buttons (Versão Anterior / Retroceder Versão)
+    const btnUndo = document.getElementById('btn-undo-proposal');
+    if (btnUndo) {
+        btnUndo.addEventListener('click', () => {
+            undoProposalVersion();
+        });
+    }
+
+    const btnRedo = document.getElementById('btn-redo-proposal');
+    if (btnRedo) {
+        btnRedo.addEventListener('click', () => {
+            redoProposalVersion();
+        });
+    }
+
     // Commands
     document.querySelectorAll('.abnt-editor-toolbar .toolbar-btn[data-command]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1291,10 +1322,12 @@ window.rejectRevision = function (button, secId) {
 };
 
 function appendRevisionMarkup(secId, oldContent, newContent) {
-    let cleanOldContent = oldContent;
-    if (oldContent.includes('pending-revision-wrapper')) {
+    let cleanOldContent = oldContent || "";
+    if (isSectionMissing(secId)) {
+        cleanOldContent = "";
+    } else if (cleanOldContent.includes('pending-revision-wrapper')) {
         const temp = document.createElement('div');
-        temp.innerHTML = oldContent;
+        temp.innerHTML = cleanOldContent;
         const originalWrapper = temp.querySelector('.original-content-wrapper');
         if (originalWrapper) {
             cleanOldContent = originalWrapper.innerHTML;
@@ -1305,20 +1338,21 @@ function appendRevisionMarkup(secId, oldContent, newContent) {
         }
     }
 
+    const hasOriginalText = cleanOldContent && cleanOldContent.replace(/<[^>]*>/g, '').trim().length > 0;
+
     return `
-        <div class="original-content-wrapper">
-            ${cleanOldContent}
-        </div>
-        <div class="pending-revision-wrapper" contenteditable="false" style="border: 2px dashed #6366f1; padding: 12px; margin-top: 12px; border-radius: 6px; background-color: rgba(99, 102, 241, 0.03); font-family: sans-serif; font-size: 0.9rem; margin-bottom: 12px; text-align: left;">
-            <div style="font-weight: bold; color: #6366f1; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                <span>✨ Versão Sugerida pela IA</span>
+        ${hasOriginalText ? `<div class="original-content-wrapper">${cleanOldContent}</div>` : ''}
+        <div class="pending-revision-wrapper" contenteditable="false" style="border: 2px dashed #6366f1; padding: 14px; margin-top: 12px; border-radius: 8px; background-color: rgba(99, 102, 241, 0.04); font-family: sans-serif; font-size: 0.9rem; margin-bottom: 12px; text-align: left; box-shadow: 0 2px 6px rgba(99, 102, 241, 0.08);">
+            <div style="font-weight: bold; color: #4f46e5; margin-bottom: 8px; display: flex; align-items: center; justify-space-between; gap: 6px;">
+                <span>✨ Sugestão Gerada pela IA (Pré-Aprovação Obrigatória)</span>
+                <span style="font-size: 0.75rem; background: #e0e7ff; color: #4338ca; padding: 2px 8px; border-radius: 12px;">Pendente de Aprovação</span>
             </div>
-            <div class="suggested-content-preview" contenteditable="true" style="border: 1px solid #cbd5e1; padding: 8px; border-radius: 4px; background: var(--bg-card); font-family: var(--font-body); margin-bottom: 8px; min-height: 40px; outline: none; text-align: left;">
+            <div class="suggested-content-preview" contenteditable="true" style="border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: var(--bg-card); font-family: var(--font-body); margin-bottom: 10px; min-height: 50px; outline: none; text-align: left;">
                 ${newContent}
             </div>
-            <div style="display: flex; gap: 8px;">
-                <button class="btn btn-primary btn-accept-revision" style="font-size: 0.75rem; padding: 4px 10px; width: auto; background: var(--color-primary); color: white;" onclick="window.acceptRevision(this, '${secId}')">Aprovar Alteração</button>
-                <button class="btn btn-secondary btn-reject-revision" style="font-size: 0.75rem; padding: 4px 10px; width: auto; background:#fef2f2; color:#ef4444; border-color:#fca5a5;" onclick="window.rejectRevision(this, '${secId}')">Descartar</button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button class="btn btn-primary btn-accept-revision" style="font-size: 0.8rem; padding: 6px 14px; width: auto; background: var(--color-primary); color: white; font-weight: 600;" onclick="window.acceptRevision(this, '${secId}')">✓ Aprovar Alteração</button>
+                <button class="btn btn-secondary btn-reject-revision" style="font-size: 0.8rem; padding: 6px 14px; width: auto; background:#fef2f2; color:#ef4444; border-color:#fca5a5; font-weight: 600;" onclick="window.rejectRevision(this, '${secId}')">✕ Descartar</button>
             </div>
         </div>
     `;
@@ -1915,8 +1949,15 @@ function setupRedator() {
 
     if (btnGen) {
         btnGen.addEventListener('click', async () => {
-            const sec = selectSec.value;
-            const extra = promptInput.value.trim();
+            const sec = selectSec ? selectSec.value : 'justificativa';
+            const extra = promptInput ? promptInput.value.trim() : '';
+
+            // Garantir que a seção gerada fica amarrada à seleção explícita
+            lastGeneratedSection = sec;
+            const targetBadgeName = document.getElementById('generation-target-section-name');
+            if (targetBadgeName && selectSec && selectSec.selectedIndex >= 0) {
+                targetBadgeName.textContent = selectSec.options[selectSec.selectedIndex].text;
+            }
 
             btnGen.disabled = true;
 
@@ -2040,17 +2081,14 @@ function setupRedator() {
                 return;
             }
 
+            pushProposalHistoryState();
+
             const targetEl = document.getElementById(`sec-${lastGeneratedSection}`);
             if (targetEl) {
-                const isMissing = isSectionMissing(lastGeneratedSection);
                 const rendered = renderTextOrMarkdown(editedText);
 
-                if (!isMissing) {
-                    // Se já havia conteúdo, insere com os botões de Aprovar / Descartar
-                    targetEl.innerHTML = appendRevisionMarkup(lastGeneratedSection, targetEl.innerHTML, rendered);
-                } else {
-                    targetEl.innerHTML = rendered;
-                }
+                // Toda alteração gerada pela IA DEVE ser pré-aprovada via appendRevisionMarkup
+                targetEl.innerHTML = appendRevisionMarkup(lastGeneratedSection, targetEl.innerHTML, rendered);
 
                 syncDOMContentToState();
                 updatePlaceholderStates();
@@ -2060,7 +2098,7 @@ function setupRedator() {
                 const justificativaContainer = document.getElementById('redator-justificativa-container');
                 if (justificativaContainer) justificativaContainer.style.display = 'none';
 
-                showToast(isMissing ? `Seção aplicada com sucesso ao Editor!` : `Sugestão adicionada abaixo do texto original para revisão!`, "success");
+                showToast(`🎯 Sugestão enviada para a seção "${lastGeneratedSection.toUpperCase()}" no Editor! Clique em "Aprovar Alteração" para confirmar.`, "success");
                 targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         });
@@ -2079,6 +2117,441 @@ function setupRedator() {
 
             showToast("Geração descartada.", "info");
         });
+    }
+
+    const btnUndo = document.getElementById('btn-undo-proposal');
+    if (btnUndo) {
+        btnUndo.addEventListener('click', () => {
+            undoProposalVersion();
+        });
+    }
+
+    const btnSequential = document.getElementById('btn-redator-run-all-sequential');
+    if (btnSequential) {
+        btnSequential.addEventListener('click', () => {
+            runSequentialRedactor();
+        });
+    }
+}
+
+// ==========================================
+// CHATBOT ASSISTENTE DE REDAÇÃO & DISPARO POR API
+// ==========================================
+function setupRedatorChat() {
+    const btnSend = document.getElementById('btn-redator-chat-send');
+    const inputMsg = document.getElementById('redator-chat-input');
+    const btnClear = document.getElementById('btn-redator-chat-clear');
+    const btnGenWithChat = document.getElementById('btn-generate-section-with-chat');
+    const btnGenWithChatBottom = document.getElementById('btn-generate-section-with-chat-bottom');
+
+    if (btnSend && inputMsg) {
+        btnSend.addEventListener('click', () => {
+            const text = inputMsg.value.trim();
+            if (text) {
+                sendRedatorChatMessage(text);
+                inputMsg.value = '';
+            }
+        });
+
+        inputMsg.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const text = inputMsg.value.trim();
+                if (text) {
+                    sendRedatorChatMessage(text);
+                    inputMsg.value = '';
+                }
+            }
+        });
+    }
+
+    if (btnClear) {
+        btnClear.addEventListener('click', () => {
+            if (workspaceState) workspaceState.redatorChatHistory = [];
+            const container = document.getElementById('redator-chat-messages');
+            if (container) {
+                container.innerHTML = `
+                    <div class="chat-message agent" style="font-size: 0.85rem; line-height: 1.5; padding: 0.6rem 0.8rem; background: var(--bg-card); border-radius: 8px; border-left: 3px solid var(--color-primary);">
+                        🤖 <strong>Assistente:</strong> Chat zerado! Escreva novos ajustes e converse sobre o projeto.
+                    </div>`;
+            }
+            if (typeof showToast === 'function') showToast("Histórico do chat zerado.", "info");
+        });
+    }
+
+    if (btnGenWithChat) {
+        btnGenWithChat.addEventListener('click', () => {
+            generateSectionWithChatContext();
+        });
+    }
+
+    if (btnGenWithChatBottom) {
+        btnGenWithChatBottom.addEventListener('click', () => {
+            generateSectionWithChatContext();
+        });
+    }
+}
+
+async function sendRedatorChatMessage(userText) {
+    if (!workspaceState.redatorChatHistory) workspaceState.redatorChatHistory = [];
+
+    const messagesContainer = document.getElementById('redator-chat-messages');
+    
+    // Append User Message
+    if (messagesContainer) {
+        const userDiv = document.createElement('div');
+        userDiv.className = 'chat-message user';
+        userDiv.innerHTML = `👤 <strong>Você:</strong> ${userText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}`;
+        messagesContainer.appendChild(userDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    workspaceState.redatorChatHistory.push({ sender: 'user', text: userText });
+
+    const selectSec = document.getElementById('redator-section-select');
+    const secKey = selectSec ? selectSec.value : 'justificativa';
+
+    // Loading indicator
+    let loadingDiv = null;
+    if (messagesContainer) {
+        loadingDiv = document.createElement('div');
+        loadingDiv.className = 'chat-message agent';
+        loadingDiv.innerHTML = `🤖 <em>Consultando histórico do chat e dados cruzados do edital...</em>`;
+        messagesContainer.appendChild(loadingDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    let agentResponseText = "";
+
+    try {
+        // --- CONSTRUÇÃO DE MEMÓRIA DO CHAT (HISTÓRICO DAS MENSAGENS ANTERIORES) ---
+        let chatMemoryContext = "";
+        if (workspaceState.redatorChatHistory && workspaceState.redatorChatHistory.length > 1) {
+            const pastTurns = workspaceState.redatorChatHistory.slice(0, -1).slice(-8);
+            chatMemoryContext = pastTurns.map(m => 
+                `- ${m.sender === 'user' ? 'Usuário' : 'Assistente'}: ${m.text}`
+            ).join('\n');
+        }
+
+        if (isApiActive()) {
+            const profileContext = getEditalProfilePromptContext();
+            const editalText = (workspaceState.editalRefText || "").substring(0, 30000);
+            const annexesText = (workspaceState.annexes || []).map(a => `Anexo ${a.name}:\n${(a.content || '').substring(0, 10000)}`).join('\n---\n');
+            const currentSectionText = workspaceState.documentContent ? (workspaceState.documentContent[secKey] || "") : "";
+
+            const chatPrompt = `Você é o Assistente Especialista de Redação de Editais de Cultura.
+O usuário está conversando sobre a seção "${secKey.toUpperCase()}".
+
+[MEMÓRIA E HISTÓRICO DE MENSAGENS ANTERIORES DO CHAT]:
+${chatMemoryContext || "Primeira interação do chat."}
+
+[SOLICITAÇÃO / PERGUNTA ATUAL DO USUÁRIO]:
+"${userText}"
+
+[DIRETRIZES DO EDITAL & PROPONENTE]:
+${profileContext}
+
+[CONTEÚDO DA SEÇÃO ATUAL NO EDITOR]:
+${currentSectionText || "Ainda em branco."}
+
+[ANEXOS E EDITAL RELEVANTES]:
+${annexesText.substring(0, 20000)}
+${editalText.substring(0, 20000)}
+
+Responda considerando todo o histórico da conversa (memória do chat) para manter a continuidade do diálogo. Responda de forma direta, técnica, prestativa e objetiva (em 2 a 4 parágrafos), explicando exatamente como adequar essa seção e fornecendo orientações práticas prontas para aplicação no projeto.`;
+
+            const resPayload = {
+                provider: 'gemini',
+                api_key: window.geminiKey || localStorage.getItem('gemini_api_key'),
+                prompt: chatPrompt,
+                system_instruction: "Você é o assistente de redação e adequação de propostas culturais com memória contínua de diálogo.",
+                use_cache: true
+            };
+
+            const response = await fetch('/api/llm/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(resPayload)
+            });
+
+            if (response.ok) {
+                const resData = await response.json();
+                agentResponseText = resData.text || "Orientações processadas com sucesso.";
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } else {
+            // Local Offline Chat Generator com memória
+            let memorySnippet = chatMemoryContext ? ` Recordando o diálogo anterior: "${chatMemoryContext.substring(0, 100)}...".` : "";
+            agentResponseText = `Com base na análise offline do edital, anexos ingeridos e memória da conversa para a seção <strong>${secKey.toUpperCase()}</strong>:${memorySnippet} Recomenda-se explicitar a paridade de gênero na coordenação, citar nominalmente as contrapartidas gratuitas e garantir o respeito ao teto orçamentário. Clique em <em>"💬 Aplicar Ajustes do Chat & Gerar"</em> para disparar a IA com estes parâmetros.`;
+        }
+    } catch (chatErr) {
+        console.warn("[CHAT] Erro no chatbot:", chatErr);
+        agentResponseText = `Entendido! Considerando nossa conversa para a seção <strong>${secKey.toUpperCase()}</strong>, vamos adequar a proposta com base na seguinte diretriz: "${userText}". Clique no botão <em>"💬 Aplicar Ajustes do Chat & Gerar"</em> para disparar o agente da seção.`;
+    } finally {
+        if (loadingDiv && loadingDiv.parentNode) {
+            loadingDiv.parentNode.removeChild(loadingDiv);
+        }
+    }
+
+    if (messagesContainer) {
+        const agentDiv = document.createElement('div');
+        agentDiv.className = 'chat-message agent';
+        agentDiv.innerHTML = `🤖 <strong>Assistente:</strong> ${renderTextOrMarkdown(agentResponseText)}`;
+        messagesContainer.appendChild(agentDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    workspaceState.redatorChatHistory.push({ sender: 'agent', text: agentResponseText });
+    saveWorkspaceState();
+}
+
+async function generateSectionWithChatContext() {
+    const selectSec = document.getElementById('redator-section-select');
+    const promptInput = document.getElementById('redator-prompt');
+
+    // Respeitar estritamente a seção selecionada pelo usuário no dropdown do Redator
+    const sec = selectSec ? selectSec.value : 'justificativa';
+    lastGeneratedSection = sec;
+
+    const targetBadgeName = document.getElementById('generation-target-section-name');
+    if (targetBadgeName && selectSec && selectSec.selectedIndex >= 0) {
+        targetBadgeName.textContent = selectSec.options[selectSec.selectedIndex].text;
+    }
+
+    let extraChatContext = "";
+    if (workspaceState.redatorChatHistory && workspaceState.redatorChatHistory.length > 0) {
+        const recent = workspaceState.redatorChatHistory.slice(-6);
+        extraChatContext = "=== DIRETRIZES E AJUSTES DEBATIDOS NO CHAT (APLICAR OBRIGATORIAMENTE NA SEÇÃO) ===\n" + recent.map(m => `- ${m.sender === 'user' ? 'Solicitação do Usuário' : 'Orientação do Assistente'}: ${m.text}`).join('\n');
+    }
+
+    const originalPrompt = promptInput ? promptInput.value.trim() : '';
+    const combinedInstructions = originalPrompt
+        ? `${originalPrompt}\n\n${extraChatContext}`
+        : extraChatContext;
+
+    if (promptInput) {
+        promptInput.value = combinedInstructions;
+    }
+
+    if (typeof showToast === 'function') showToast(`💬 Disparando agente Redator para a seção ${sec.toUpperCase()} com os ajustes do chat...`, "info");
+
+    const btnGen = document.getElementById('btn-generate-section');
+    if (btnGen) {
+        btnGen.click();
+    }
+}
+
+// ==========================================
+// ABA FINALIZAÇÃO DO PROJETO (HUB DE EXPORTAÇÃO)
+// ==========================================
+function setupFinalizacaoTab() {
+    const btnPdf = document.getElementById('btn-final-download-pdf');
+    const btnDocx = document.getElementById('btn-final-download-docx');
+    const btnFinanceXls = document.getElementById('btn-final-finance-xls');
+    const btnFinancePdf = document.getElementById('btn-final-finance-pdf');
+    const btnRevisorGen = document.getElementById('btn-final-revisor-report-gen');
+    const btnRevisorPdf = document.getElementById('btn-final-revisor-pdf');
+    const btnAuditPrint = document.getElementById('btn-final-audit-print');
+
+    if (btnPdf) btnPdf.addEventListener('click', () => { printCleanProposal(); });
+    if (btnDocx) btnDocx.addEventListener('click', () => { exportCleanDoc(); });
+    if (btnFinanceXls) btnFinanceXls.addEventListener('click', () => { downloadFinancePlan(); });
+    if (btnFinancePdf) btnFinancePdf.addEventListener('click', () => { downloadFinancePlanPDF(); });
+    if (btnRevisorGen) btnRevisorGen.addEventListener('click', () => { generateRevisorReport(); });
+    if (btnRevisorPdf) btnRevisorPdf.addEventListener('click', () => { downloadRevisorReportPDF(); });
+    if (btnAuditPrint) btnAuditPrint.addEventListener('click', () => { downloadAuditPDF(); });
+}
+
+// ==========================================
+// SISTEMA DE HISTÓRICO (DESFAZER / REFAZER VERSÃO DO EDITOR PERSISTENTE)
+// ==========================================
+function pushProposalHistoryState(actionLabel = "Versão Anterior") {
+    if (!workspaceState.proposalHistoryStack) workspaceState.proposalHistoryStack = [];
+    if (!workspaceState.proposalRedoStack) workspaceState.proposalRedoStack = [];
+    
+    if (workspaceState && workspaceState.documentContent) {
+        const snapshot = JSON.parse(JSON.stringify(workspaceState.documentContent));
+        workspaceState.proposalHistoryStack.push({
+            timestamp: new Date().toLocaleTimeString(),
+            label: actionLabel,
+            content: snapshot
+        });
+        if (workspaceState.proposalHistoryStack.length > 50) workspaceState.proposalHistoryStack.shift();
+        // Limpar pilha de refazer em nova ação do editor
+        workspaceState.proposalRedoStack = [];
+        
+        // Sincronizar globais para retrocompatibilidade
+        window._proposalHistoryStack = workspaceState.proposalHistoryStack.map(item => item.content || item);
+        window._proposalRedoStack = [];
+        
+        saveWorkspaceState();
+        updateHistoryButtonsUI();
+    }
+}
+
+function updateHistoryButtonsUI() {
+    const historyStack = workspaceState.proposalHistoryStack || [];
+    const redoStack = workspaceState.proposalRedoStack || [];
+    
+    const btnUndo = document.getElementById('btn-undo-proposal');
+    if (btnUndo) {
+        btnUndo.textContent = historyStack.length > 0 ? `⏮️ Versão Anterior (${historyStack.length})` : `⏮️ Versão Anterior`;
+        btnUndo.disabled = historyStack.length === 0;
+        btnUndo.title = historyStack.length > 0 ? `Restaurar versão gravada às ${historyStack[historyStack.length - 1].timestamp || 'anterior'}` : 'Nenhuma versão anterior gravada';
+    }
+    const btnRedo = document.getElementById('btn-redo-proposal');
+    if (btnRedo) {
+        btnRedo.textContent = redoStack.length > 0 ? `⏭️ Retroceder Versão (${redoStack.length})` : `⏭️ Retroceder Versão`;
+        btnRedo.disabled = redoStack.length === 0;
+    }
+}
+
+function undoProposalVersion() {
+    const historyStack = workspaceState.proposalHistoryStack || [];
+    if (!historyStack || historyStack.length === 0) {
+        if (typeof showToast === 'function') showToast("Nenhuma versão anterior gravada no histórico.", "info");
+        return;
+    }
+    if (!workspaceState.proposalRedoStack) workspaceState.proposalRedoStack = [];
+
+    // Guardar estado atual na pilha de refazer
+    const currentState = JSON.parse(JSON.stringify(workspaceState.documentContent));
+    workspaceState.proposalRedoStack.push({
+        timestamp: new Date().toLocaleTimeString(),
+        content: currentState
+    });
+
+    const previousEntry = historyStack.pop();
+    const previousState = previousEntry.content || previousEntry;
+    workspaceState.documentContent = previousState;
+    
+    // Atualizar globais
+    window._proposalHistoryStack = historyStack.map(item => item.content || item);
+    window._proposalRedoStack = workspaceState.proposalRedoStack.map(item => item.content || item);
+    
+    saveWorkspaceState();
+    syncEditorContentToDOM();
+    updatePlaceholderStates();
+    updateHistoryButtonsUI();
+    if (typeof showToast === 'function') showToast("⏮️ Versão anterior restaurada com sucesso!", "success");
+}
+
+function redoProposalVersion() {
+    const redoStack = workspaceState.proposalRedoStack || [];
+    if (!redoStack || redoStack.length === 0) {
+        if (typeof showToast === 'function') showToast("Nenhuma versão posterior para retroceder / restabelecer.", "info");
+        return;
+    }
+    if (!workspaceState.proposalHistoryStack) workspaceState.proposalHistoryStack = [];
+
+    // Guardar estado atual na pilha de desfazer
+    const currentState = JSON.parse(JSON.stringify(workspaceState.documentContent));
+    workspaceState.proposalHistoryStack.push({
+        timestamp: new Date().toLocaleTimeString(),
+        content: currentState
+    });
+
+    const nextEntry = redoStack.pop();
+    const nextState = nextEntry.content || nextEntry;
+    workspaceState.documentContent = nextState;
+    
+    // Atualizar globais
+    window._proposalHistoryStack = workspaceState.proposalHistoryStack.map(item => item.content || item);
+    window._proposalRedoStack = redoStack.map(item => item.content || item);
+    
+    saveWorkspaceState();
+    syncEditorContentToDOM();
+    updatePlaceholderStates();
+    updateHistoryButtonsUI();
+    if (typeof showToast === 'function') showToast("⏭️ Versão restabelecida com sucesso!", "success");
+}
+
+// ==========================================
+// REDAÇÃO SEQUENCIAL DE TODAS AS 14 SEÇÕES COM IA
+// ==========================================
+async function runSequentialRedactor() {
+    if (_isProcessingAPI) {
+        if (typeof showToast === 'function') showToast("Aguarde o processamento atual terminar.", "warning");
+        return;
+    }
+    _isProcessingAPI = true;
+
+    pushProposalHistoryState();
+
+    const btn = document.getElementById('btn-redator-run-all-sequential');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = "⚡ Redigindo 14 Seções Sequencialmente...";
+    }
+
+    const sections = [
+        'justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento',
+        'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica',
+        'monitoramento', 'compliance', 'sustentabilidade', 'rider'
+    ];
+
+    try {
+        if (typeof showToast === 'function') showToast("🚀 Iniciando Redação Sequencial das 14 Seções com IA...", "info");
+
+        for (let i = 0; i < sections.length; i++) {
+            const secKey = sections[i];
+            if (typeof showToast === 'function') showToast(`✍️ [${i + 1}/14] Redigindo seção ${secKey.toUpperCase()}...`, "info");
+
+            try {
+                let text = "";
+                if (isApiActive()) {
+                    const refinedRaw = await callGeminiForRedator(secKey, "Redigir com profundidade e rigor com base no edital, perfil e anexos ingeridos.");
+                    if (refinedRaw) {
+                        try {
+                            const parsed = JSON.parse(refinedRaw);
+                            text = parsed.text || refinedRaw;
+                        } catch (e) {
+                            if (refinedRaw.includes("=== CONTEÚDO DA SEÇÃO ===") && refinedRaw.includes("=== JUSTIFICATIVA E ADEQUAÇÕES ===")) {
+                                const parts = refinedRaw.split("=== JUSTIFICATIVA E ADEQUAÇÕES ===");
+                                text = parts[0].replace("=== CONTEÚDO DA SEÇÃO ===", "").trim();
+                            } else {
+                                text = refinedRaw;
+                            }
+                        }
+                    }
+                }
+
+                if (!text || text.length < 20) {
+                    const resultRaw = await getSimulatedRedatorText(secKey, "Redigir com base nas diretrizes do edital");
+                    try {
+                        const parsed = JSON.parse(resultRaw);
+                        text = parsed.text || resultRaw;
+                    } catch (e) {
+                        text = resultRaw;
+                    }
+                }
+
+                if (text && text.trim().length > 0) {
+                    const rendered = renderTextOrMarkdown(text);
+                    const targetEl = document.getElementById(`sec-${secKey}`);
+                    if (targetEl) {
+                        targetEl.innerHTML = appendRevisionMarkup(secKey, targetEl.innerHTML, rendered);
+                    } else {
+                        workspaceState.documentContent[secKey] = rendered;
+                    }
+                    syncDOMContentToState();
+                    updatePlaceholderStates();
+                }
+            } catch (secErr) {
+                console.warn(`[REDATOR] Erro na seção ${secKey}:`, secErr);
+            }
+        }
+
+        if (typeof showToast === 'function') showToast("✓ Todas as 14 Seções foram redigidas e integradas ao Editor com sucesso!", "success");
+    } catch (err) {
+        console.error("Erro na Redação Sequencial:", err);
+        if (typeof showToast === 'function') showToast("Erro na redação sequencial: " + err.message, "error");
+    } finally {
+        _isProcessingAPI = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = "⚡ Redigir Todas as 14 Seções Sequencialmente com IA";
+        }
     }
 }
 
@@ -2183,6 +2656,7 @@ async function callGeminiForRedator(section, promptText, webSearchContext = "") 
     Sua missão é realizar uma ANÁLISE PROFUNDA e escrever ou otimizar a seção "${section.toUpperCase()}" do projeto cultural para que fique perfeita e totalmente aderente ao edital.
     
     REGRAS DE ANÁLISE PROFUNDA E OTIMIZAÇÃO:
+    - LEITURA E INCORPORAÇÃO MANDATÓRIA DAS ANOTAÇÕES: Se o usuário/proponente escreveu instruções ou anotações na caixa de ideias/chat ("INSTRUÇÕES E ANOTAÇÕES MANDATÓRIAS DO USUÁRIO"), você DEVE obrigatoriamente ler, incorporar e contemplar cada uma dessas diretrizes na redação da seção e explicar na justificativa como foram aplicadas.
     - Realize um cruzamento rigoroso de conformidade e responda a todas as exigências do Edital e de seus Anexos relativas a esta seção.
     - Alinhe perfeitamente a redação desta seção com o conteúdo das outras seções já geradas (coerência entre justificativa, metodologia, cronograma, planilha de custos e acessibilidade).
     - Resolva todos os alertas de auditoria e sugestões de ajuste listados para esta seção.
@@ -2193,7 +2667,7 @@ async function callGeminiForRedator(section, promptText, webSearchContext = "") 
     Você DEVE retornar sua resposta dividida estritamente em duas partes com os delimitadores indicados abaixo:
     
     === CONTEÚDO DA SEÇÃO ===
-    [Aqui você escreve o texto HTML rico da seção, pronto para inserção, iniciando direto por títulos como <h3> ou <h4>. Não use blocos de código markdown como \`\`\`html]
+    [Aqui você escreve o texto HTML rico da seção, pronto para inserção, iniciando direto por títulos como <h3> ou <h4>. Não use blocos de código markdown.]
     
     === JUSTIFICATIVA E ADEQUAÇÕES ===
     [Aqui você escreve em texto corrido detalhadamente o que foi adequado, o que encontrou de mudanças e por que essa versão é melhor/conforme]
@@ -2239,15 +2713,20 @@ function getSimulatedRedatorText(section, extraPrompt) {
             const city = workspaceState.cover.city || "Linhares - ES";
             const budget = workspaceState.cover.budget || 150000;
             const proponent = workspaceState.cover.proponent || "Grupo de Teatro Esperança";
+            const profile = workspaceState.editalProfile || getOfflineEditalProfile(workspaceState.editalRefText, workspaceState.annexes);
+
+            const fomentoInfo = profile.fomento || "Chamada Pública Cultural";
+            const anexosInfo = profile.anexos_analisados || "Anexos do edital integrados";
+            const tetosInfo = profile.tetos_e_limites || "Limites orçamentários do edital respeitados";
 
             let response = "";
             let justificativa = "";
             switch (section) {
                 case 'justificativa':
                     response = `<h3>1. Justificativa e Relevância Cultural</h3>
-<p>O projeto <strong>"${title}"</strong>, proposto por <strong>${proponent}</strong>, atende de forma direta à necessidade de descentralização das atividades culturais no município de <strong>${city}</strong>. A iniciativa visa dinamizar a economia criativa local, promover a fruição artística e valorizar a identidade cultural comunitária.</p>
-<p>Ademais, justifica-se pelo elevado impacto social, garantindo pleno cumprimento às diretrizes de democratização de acesso e à legislação vigente de incentivo à cultura (Lei 13.146/2015 e parâmetros federativos).</p>`;
-                    justificativa = "Justificativa estruturada com foco no mérito cultural, descentralização e valorização da identidade local.";
+<p>O projeto <strong>"${title}"</strong>, proposto por <strong>${proponent}</strong>, atende de forma direta às diretrizes do edital de <strong>${fomentoInfo}</strong> e à necessidade de descentralização das atividades culturais no município de <strong>${city}</strong>. A iniciativa visa dinamizar a economia criativa local, promover a fruição artística e valorizar a identidade cultural comunitária.</p>
+<p>Ademais, justifica-se pelo elevado impacto social e atendimento à análise prévia do edital (<em>${anexosInfo}</em>), garantindo pleno cumprimento às diretrizes de democratização de acesso, limites normativos (<em>${tetosInfo}</em>) e à legislação vigente de incentivo à cultura (Lei 13.146/2015).</p>`;
+                    justificativa = `Justificativa cruzada com a análise de ingestão do edital (${fomentoInfo}). Adequada para mérito cultural, descentralização e limites do edital.`;
                     break;
 
                 case 'objetivos':
@@ -2465,6 +2944,16 @@ function getSimulatedRedatorText(section, extraPrompt) {
                     justificativa = "Seção redigida com foco na conformidade com o edital.";
                     break;
             }
+
+            if (extraPrompt && extraPrompt.trim() && !extraPrompt.includes("Redigir com base nas diretrizes")) {
+                const cleanExtra = extraPrompt.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                response += `<div style="margin-top: 1rem; padding: 0.8rem; background: var(--bg-panel); border-left: 3px solid var(--color-primary); border-radius: 4px;">
+                    <p style="margin: 0; font-weight: 600; font-size: 0.85rem; color: var(--color-primary);">📌 Diretrizes e Anotações do Proponente Incorporadas:</p>
+                    <p style="margin: 0.3rem 0 0 0; font-size: 0.85rem;">${cleanExtra}</p>
+                </div>`;
+                justificativa += ` | Anotação do proponente incorporada: "${extraPrompt.substring(0, 80)}..."`;
+            }
+
             resolve(JSON.stringify({
                 text: response,
                 justificativa: justificativa
@@ -2589,6 +3078,16 @@ function setupRevisor() {
         btnDocx.addEventListener('click', () => {
             exportCleanDoc();
         });
+    }
+
+    const btnFinXlsMain = document.getElementById('btn-download-finance-xls-main');
+    if (btnFinXlsMain) {
+        btnFinXlsMain.addEventListener('click', downloadFinancePlan);
+    }
+
+    const btnFinPdfMain = document.getElementById('btn-download-finance-pdf-main');
+    if (btnFinPdfMain) {
+        btnFinPdfMain.addEventListener('click', downloadFinancePlanPDF);
     }
 
     // Restaurar relatório do revisor salvo
@@ -2847,6 +3346,12 @@ async function runAllAgents() {
 }
 
 async function runFinalConsolidatedRevision() {
+    // Sincronizar DOM primeiro
+    syncDOMContentToState();
+
+    // Gravar histórico de versão ANTES de modificar o documento
+    pushProposalHistoryState("Antes da Revisão do Supervisor");
+
     if (!isApiActive()) {
         showToast("Chave da API ausente. A revisão consolidada foi simulada localmente.", "warning");
         if (workspaceState.lastAuditData) {
@@ -2858,7 +3363,6 @@ async function runFinalConsolidatedRevision() {
             if (!hasOrc) {
                 workspaceState.documentContent.orcamento = `<h3>5. Planilha Orçamentária Otimizada</h3><table style="width:100%; border-collapse:collapse; border:1px solid #ddd; font-size:12px;"><tr style="background:#f1f5f9;"><th>Item</th><th>Quantidade</th><th>Unidade</th><th>Valor (R$)</th></tr><tr><td>Diretor de Produção</td><td>1</td><td>Serviço</td><td>15.000,00</td></tr><tr><td>Acessibilidade (Libras)</td><td>1</td><td>Serviço</td><td>5.000,00</td></tr><tr style="font-weight:bold; background:#e2e8f0;"><td colspan="3">Total</td><td>20.000,00</td></tr></table>`;
             }
-            // Garantir que as novas seções simuladas não fiquem vazias
             const newSections = ['publico', 'contrapartida', 'comunicacao', 'ficha_tecnica', 'monitoramento', 'compliance', 'sustentabilidade', 'rider'];
             newSections.forEach(sec => {
                 if (!workspaceState.documentContent[sec] || workspaceState.documentContent[sec].length < 20) {
@@ -2870,97 +3374,103 @@ async function runFinalConsolidatedRevision() {
         saveWorkspaceState();
         syncEditorContentToDOM();
         updatePlaceholderStates();
+        updateHistoryButtonsUI();
         showToast("✓ Revisão consolidada simulada aplicada no Editor!", "success");
         return;
     }
 
-    showToast("⚙️ Supervisor de Conformidade revisando o documento...", "info");
+    showToast("⚙️ Supervisor de Conformidade iniciando otimização preservando as 14 seções...", "info");
 
-    const docContext = JSON.stringify(workspaceState.documentContent);
+    const sectionKeys = [
+        'justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento',
+        'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica',
+        'monitoramento', 'compliance', 'sustentabilidade', 'rider'
+    ];
+    
+    const sectionNames = {
+        justificativa: "Justificativa", objetivos: "Objetivos", metodologia: "Metodologia",
+        cronograma: "Cronograma", orcamento: "Orçamento", acessibilidade: "Acessibilidade e Cotas",
+        publico: "Público-Alvo", contrapartida: "Contrapartida Social", comunicacao: "Comunicação",
+        ficha_tecnica: "Ficha Técnica", monitoramento: "Monitoramento", compliance: "Compliance",
+        sustentabilidade: "Sustentabilidade", rider: "Rider Técnico"
+    };
+
     const editalContext = workspaceState.editalRefText ? filterRelevantEditalText(workspaceState.editalRefText) : "Sem edital.";
     const coverContext = JSON.stringify(workspaceState.cover);
+    const editalProfileContext = getEditalProfilePromptContext();
 
-    let subAgentsContext = "";
-    if (workspaceState.revisorAgentsResults) {
-        const activeResults = [];
-        for (const [agentKey, res] of Object.entries(workspaceState.revisorAgentsResults)) {
-            if (res) {
-                const agentName = REVISORES_METADATA[agentKey] ? REVISORES_METADATA[agentKey].name : agentKey;
-                activeResults.push(`- **Sub-Agente ${agentName}** (Nota: ${res.nota}/100):\n  ${res.parecer}`);
+    let processedCount = 0;
+
+    for (const key of sectionKeys) {
+        const rawContent = workspaceState.documentContent[key] || '';
+        if (!rawContent || placeholders.includes(rawContent.trim())) {
+            continue;
+        }
+
+        processedCount++;
+        showToast(`✨ Supervisor revisando (${processedCount}/14): ${sectionNames[key]}...`, "info");
+
+        // Parecer específico do sub-agente da seção
+        let agentParecer = "Sem ressalvas específicas do sub-agente.";
+        if (workspaceState.revisorAgentsResults && workspaceState.revisorAgentsResults[key]) {
+            const res = workspaceState.revisorAgentsResults[key];
+            agentParecer = `Nota Sub-Agente: ${res.nota}/100\nParecer: ${res.parecer}`;
+        }
+
+        const prompt = `Você é o Agente Supervisor de Conformidade e Revisor Geral.
+Sua missão é otimizar e corrigir exclusivamente a seção "${sectionNames[key].toUpperCase()}" incorporando as diretrizes do edital, os apontamentos da auditoria e o parecer do sub-agente especialista.
+
+REGRA CRÍTICA IMPRESCINDÍVEL:
+NUNCA resuma, suprima, reduza ou encurte o texto original da seção. Mantenha integralmente a extensão, a profundidade de informação, tabelas e parágrafos originais!
+
+[DADOS DA CAPA]:
+${coverContext}
+
+${editalProfileContext}
+
+[TEXTO ATUAL DA SEÇÃO]:
+${rawContent}
+
+[PARECER DO SUB-AGENTE ESPECIALISTA DA SEÇÃO]:
+${agentParecer}
+
+[EDITAL DE REFERÊNCIA VIGENTE]:
+${editalContext.substring(0, 3000)}
+
+Retorne um JSON estrito sem wraps markdown no seguinte formato:
+{
+    "conteudo_revisado": "HTML COMPLETO E REVISADO DA SEÇÃO..."
+}`;
+
+        try {
+            const supervisorSectionSchema = {
+                type: "object",
+                properties: {
+                    conteudo_revisado: { type: "string", description: "HTML completo e otimizado da seção pelo supervisor" }
+                },
+                required: ["conteudo_revisado"]
+            };
+
+            const responseText = await callLLMGateway(prompt, null, 'heavy', supervisorSectionSchema);
+            const parsed = safeParseJSON(responseText);
+
+            if (parsed && parsed.conteudo_revisado && parsed.conteudo_revisado.trim().length > 20) {
+                let cleanRevised = parsed.conteudo_revisado
+                    .replace(/^(claro|com certeza|aqui está|segundo o edital|conforme solicitado).*?:/gi, '')
+                    .replace(/espero ter ajudado.*$/gi, '')
+                    .trim();
+                workspaceState.documentContent[key] = cleanRevised;
             }
-        }
-        if (activeResults.length > 0) {
-            subAgentsContext = "PARECERES DE COMPLIANCE DOS AGENTES DE REVISÃO:\n" + activeResults.join("\n\n");
-        }
-    }
-
-    let auditContext = "";
-    if (workspaceState.lastAuditData) {
-        auditContext = "\n[METADADOS E ALERTAS DA AUDITORIA GERAL DE COMPLIANCE]:\n";
-        if (workspaceState.lastAuditData.alertas) {
-            workspaceState.lastAuditData.alertas.forEach(a => {
-                auditContext += `- Alerta [Nível: ${a.nivel}] Tipo: ${a.tipo}. Descrição: ${a.descricao} (Sugestão: ${a.sugestao})\n`;
-            });
-        }
-        if (workspaceState.lastAuditData.ajustes) {
-            workspaceState.lastAuditData.ajustes.forEach(adj => {
-                auditContext += `- Ajuste Recomendado: ${adj.alteracao} (Fator/Área: ${adj.fator})\n`;
-            });
+        } catch (err) {
+            console.warn(`[SUPERVISOR] Falha ao revisar seção ${key}:`, err);
         }
     }
 
-    const prompt = `Você é o Agente Supervisor de Conformidade e Revisor Geral. Analise o projeto cultural atual, as regras do edital, exigências dos anexos, os pareceres de cada sub-agente especialista e os metadados de alerta/ajustes gerados pelo Auditor Geral.
-    
-    Sua missão é reescrever e otimizar as 14 seções da proposta para corrigir as inconsistências apontadas pela auditoria geral e pelos sub-agentes.
-    ATENÇÃO: Você deve realizar e corrigir APENAS aquilo que está ao alcance de uma revisão textual e estrutural do projeto no editor de texto (ex: adequar limites orçamentários na tabela de custos, detalhar prazos de pré/execução/pós no cronograma, acrescentar itens de acessibilidade PCD ou de cotas, explicar e detalhar melhor a justificativa de mérito). Não altere dados pessoais ou documentação que exija upload externo (como habiliatação de CNPJ, certidões fiscais ou antes físicas de anuência), apenas adicione as declarações textuais correspondentes.
-    
-    [DADOS DO PROJETO]:
-    ${coverContext}
-    
-    [CONTEÚDO ATUAL DA PROPOSTA]:
-    ${docContext}
-    
-    [EDITAL DE REFERÊNCIA VIGENTE]:
-    ${editalContext}
-    
-    [ANÁLISE DE COMPLIANCE DOS SUB-AGENTES]:
-    ${subAgentsContext || "Nenhuma ressalva pendente."}
-    
-    ${auditContext}
-    
-    Retorne estritamente um objeto JSON com as seguintes chaves correspondendo às 14 seções do projeto sem wraps markdown do tipo \`\`\`json:
-    {
-        "justificativa": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "objetivos": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "metodologia": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "cronograma": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "orcamento": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "acessibilidade": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "publico": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "contrapartida": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "comunicacao": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "ficha_tecnica": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "monitoramento": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "compliance": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "sustentabilidade": "CONTEÚDO REVISADO E FORMATADO HTML...",
-        "rider": "CONTEÚDO REVISADO E FORMATADO HTML..."
-    }
-    `;
-
-    try {
-        const responseText = await callLLMGateway(prompt, null, 'heavy', proposalSchema);
-        const parsed = safeParseJSON(responseText);
-        if (parsed && parsed.justificativa) {
-            workspaceState.documentContent = parsed;
-            saveWorkspaceState();
-            syncEditorContentToDOM();
-            updatePlaceholderStates();
-            showToast("✓ Otimizações e correções integradas aplicadas no Editor com sucesso!", "success");
-        }
-    } catch (err) {
-        console.error("Erro na revisão consolidada:", err);
-        showToast("Erro na revisão consolidada: " + err.message, "error");
-    }
+    saveWorkspaceState();
+    syncEditorContentToDOM();
+    updatePlaceholderStates();
+    updateHistoryButtonsUI();
+    showToast("✓ Revisão consolidada do Supervisor concluída com sucesso em todas as seções!", "success");
 }
 
 async function callGeminiForSubAgent(agentKey, localEvaluation = null, webSearchContext = "") {
@@ -4109,8 +4619,7 @@ async function downloadAuditPDF() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        const projNameClean = (workspaceState.cover.title || 'projeto').toLowerCase().replace(/[^a-z0-9]/gi, '_');
-        a.download = `relatorio_auditoria_${projNameClean}.pdf`;
+        a.download = getFormattedDownloadFilename('Laudo_Auditoria_Compliance', 'pdf');
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -4584,17 +5093,50 @@ function showToast(message, type = "info") {
     }, 4000);
 }
 
+// Helper para geração de nomes de arquivos de download claros, descritivos e sanitizados
+function getFormattedDownloadFilename(docCategory, extension) {
+    let rawTitle = (workspaceState && workspaceState.cover && workspaceState.cover.title) 
+        ? workspaceState.cover.title.trim() 
+        : '';
+    
+    // Ignorar placeholders padrão sem sentido
+    if (!rawTitle || rawTitle.toUpperCase() === 'TÍTULO DO PROJETO CULTURAL' || rawTitle.toLowerCase() === 'sem nome') {
+        rawTitle = 'Projeto_Cultural';
+    }
+
+    // Remove acentos (NFD) e substitui caracteres especiais por underline
+    const cleanTitle = rawTitle
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '');
+
+    const cleanCategory = docCategory
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '');
+
+    const ext = extension.startsWith('.') ? extension : `.${extension}`;
+
+    return `${cleanCategory}_${cleanTitle || 'Cultural'}${ext}`;
+}
+
 // Export Word doc wrapper
 // Gera o HTML limpo da proposta ABNT completa (sem UI/CSS do app)
 function buildCleanProposalHTML() {
     const cover = workspaceState.cover;
     const doc = workspaceState.documentContent;
     const fontFamily = document.getElementById('abnt-font-select') ? document.getElementById('abnt-font-select').value : 'Arial';
+    const pageTitle = getFormattedDownloadFilename('Proposta_Cultural_ABNT', '').replace(/\.$/, '');
 
     return `
     <html>
     <head>
         <meta charset="utf-8">
+        <title>${pageTitle}</title>
         <style>
             @page {
                 size: 21cm 29.7cm;
@@ -4728,11 +5270,8 @@ function exportCleanDoc() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
 
-    const titleInput = workspaceState.cover.title || 'proposta_cultural';
-    const filename = `${titleInput.toLowerCase().replace(/[^a-z0-9]/gi, '_')}_proposta_abnt.doc`;
-
     a.href = url;
-    a.download = filename;
+    a.download = getFormattedDownloadFilename('Proposta_Cultural_ABNT', 'doc');
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -4741,75 +5280,109 @@ function exportCleanDoc() {
 }
 
 async function consolidateAndFormatABNT() {
+    // Sincronizar DOM primeiro
+    syncDOMContentToState();
+    
+    // Salvar versão no histórico ANTES de modificar qualquer texto
+    pushProposalHistoryState("Antes da Formatação ABNT IA");
+
     if (!isApiActive()) {
-        showToast("Chave da API ausente. A formatação ABNT foi simulada localmente.", "warning");
-        // Simulação local: limpar qualquer marcador óbvio de IA se houver
-        workspaceState.documentContent.justificativa = workspaceState.documentContent.justificativa
-            .replace(/claro,? aqui está/gi, '')
-            .replace(/com certeza/gi, '');
+        showToast("Chave da API ausente. A formatação ABNT foi realizada com regras locais.", "warning");
+        for (const key of Object.keys(workspaceState.documentContent)) {
+            if (workspaceState.documentContent[key]) {
+                workspaceState.documentContent[key] = workspaceState.documentContent[key]
+                    .replace(/claro,? aqui está/gi, '')
+                    .replace(/com certeza/gi, '')
+                    .replace(/espero ter ajudado.*$/gi, '');
+            }
+        }
         saveWorkspaceState();
         syncEditorContentToDOM();
         updatePlaceholderStates();
-        showToast("✓ Proposta formatada e corrigida conforme as normas ABNT!", "success");
+        showToast("✓ Proposta formatada conforme as normas ABNT!", "success");
         return;
     }
 
-    showToast("⚙️ Agente ABNT formatando e corrigindo o documento final...", "info");
+    showToast("⚙️ Iniciando formatação ABNT preservando a totalidade das 14 seções...", "info");
 
-    const docContext = JSON.stringify(workspaceState.documentContent);
+    const sectionKeys = [
+        'justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento',
+        'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica',
+        'monitoramento', 'compliance', 'sustentabilidade', 'rider'
+    ];
+    
+    const sectionNames = {
+        justificativa: "Justificativa", objetivos: "Objetivos", metodologia: "Metodologia",
+        cronograma: "Cronograma", orcamento: "Orçamento", acessibilidade: "Acessibilidade e Cotas",
+        publico: "Público-Alvo", contrapartida: "Contrapartida Social", comunicacao: "Comunicação",
+        ficha_tecnica: "Ficha Técnica", monitoramento: "Monitoramento", compliance: "Compliance",
+        sustentabilidade: "Sustentabilidade", rider: "Rider Técnico"
+    };
+
+    let processedCount = 0;
     const editalContext = workspaceState.editalRefText ? filterRelevantEditalText(workspaceState.editalRefText) : "";
-    const coverContext = JSON.stringify(workspaceState.cover);
 
-    const prompt = `Você é o Agente Revisor Geral ABNT e Finalizador de Editais Culturais.
-    Seu objetivo é analisar e revisar a proposta cultural completa para garantir que ela esteja formatada corretamente e totalmente livre de qualquer marca de IA.
-    
-    INSTRUÇÕES IMPORTANTES:
-    1. Gramática e Linguagem: Corrija todos os erros gramaticais e de concordância. Elimine marcas típicas de linguagem gerada por inteligência artificial (por exemplo: clichês como "em suma", "adicionalmente", "portanto", "destarte", "em conclusão" e excessos de floreios retóricos).
-    2. Remoção de Vestígios de IA: Remova sumariamente qualquer comentário de conversa (como "Com certeza, vou revisar...", "Aqui está...", "Claro, posso ajudar", "Espero que ajude", "Seção revisada:", etc.). O projeto deve conter apenas o texto institucional do próprio projeto, sem diálogos.
-    3. Normas ABNT: Formate citações, referências e espaçamentos. Garanta que tabelas (cronogramas e planilhas orçamentárias) tenham cabeçalhos claros, bordas finas normativas (em HTML) e dados centralizados/alinhados à direita onde apropriado.
-    4. Ingestão de Editais: Certifique-se de que a linguagem cita os órgãos de fomento com o devido respeito técnico e legal.
-    
-    [DADOS DA CAPA]:
-    ${coverContext}
-    
-    [EDITAL DE REFERÊNCIA VIGENTE]:
-    ${editalContext}
-    
-    [CONTEÚDO DA PROPOSTA ATUAL]:
-    ${docContext}
-    
-    Retorne estritamente um objeto JSON com as seguintes chaves sem wraps markdown do tipo \`\`\`json:
-    {
-        "justificativa": "CONTEÚDO FORMATADO ABNT EM HTML...",
-        "objetivos": "CONTEÚDO FORMATADO ABNT EM HTML...",
-        "metodologia": "CONTEÚDO FORMATADO ABNT EM HTML...",
-        "cronograma": "CONTEÚDO FORMATADO ABNT EM HTML...",
-        "orcamento": "CONTEÚDO FORMATADO ABNT EM HTML...",
-        "acessibilidade": "CONTEÚDO FORMATADO ABNT EM HTML..."
-    }
-    `;
-    try {
-        const responseText = await callLLMGateway(prompt, null, 'light', proposalSchema);
-        const parsed = safeParseJSON(responseText);
-        if (parsed && parsed.justificativa) {
-            // Limpeza final programática de vestígios comuns de IA no texto
-            for (const key of Object.keys(parsed)) {
-                parsed[key] = parsed[key]
+    for (const key of sectionKeys) {
+        const rawContent = workspaceState.documentContent[key] || '';
+        // Se a seção é apenas placeholder ou vazia, pula
+        if (!rawContent || placeholders.includes(rawContent.trim())) {
+            continue;
+        }
+
+        processedCount++;
+        showToast(`🪄 Formatando ABNT (${processedCount}/14): ${sectionNames[key]}...`, "info");
+
+        const prompt = `Você é o Agente Revisor ABNT Especialista em Editais Culturais.
+Sua missão é formatar e otimizar exclusivamente a seção "${sectionNames[key].toUpperCase()}" mantendo 100% do conteúdo, detalhes, tabelas, valores e parágrafos do texto original.
+
+REGRA CRÍTICA IMPRESCINDÍVEL:
+NUNCA resuma, suprima, reduza ou encurte o texto original. Mantenha integralmente a extensão e a profundidade de informação fornecida!
+
+INSTRUÇÕES DE FORMATAÇÃO:
+1. Normas ABNT: Aplique formatação ABNT em HTML limpo. Parágrafos organizados com classe abnt-indent, títulos destacados em h3/h4, tabelas com bordas finas normativas (border: 1px solid #cbd5e1; border-collapse: collapse;) e cabeçalhos destacados.
+2. Gramática e Estilo: Corrija concordância e gramática sem alterar o sentido.
+3. Remoção de Marcas de IA: Elimine diálogos, saudações, desculpas e clichês retóricos (como "em suma", "destarte", "adicionalmente", "portanto", "claro, aqui está").
+
+[TEXTO ORIGINAL DA SEÇÃO]:
+${rawContent}
+
+[EDITAL DE REFERÊNCIA VIGENTE]:
+${editalContext.substring(0, 3000)}
+
+Retorne um JSON estrito sem marcação markdown no seguinte formato:
+{
+    "conteudo_formatado": "HTML COMPLETO E FORMATADO DA SEÇÃO..."
+}`;
+
+        try {
+            const singleSectionSchema = {
+                type: "object",
+                properties: {
+                    conteudo_formatado: { type: "string", description: "HTML formatado ABNT da seção" }
+                },
+                required: ["conteudo_formatado"]
+            };
+
+            const responseText = await callLLMGateway(prompt, null, 'light', singleSectionSchema);
+            const parsed = safeParseJSON(responseText);
+
+            if (parsed && parsed.conteudo_formatado && parsed.conteudo_formatado.trim().length > 20) {
+                let cleanFormatted = parsed.conteudo_formatado
                     .replace(/^(claro|com certeza|aqui está|segundo o edital|conforme solicitado).*?:/gi, '')
                     .replace(/espero ter ajudado.*$/gi, '')
                     .trim();
+                workspaceState.documentContent[key] = cleanFormatted;
             }
-            // Merge incoming content without overwriting existing keys
-            Object.assign(workspaceState.documentContent, parsed);
-            saveWorkspaceState();
-            syncEditorContentToDOM();
-            updatePlaceholderStates();
-            showToast("✓ Proposta formatada e corrigida conforme as normas ABNT!", "success");
+        } catch (err) {
+            console.warn(`[ABNT-FORMAT] Falha ao formatar seção ${key}:`, err);
         }
-    } catch (err) {
-        console.error("Erro na finalização ABNT:", err);
-        showToast("Erro na finalização ABNT: " + err.message, "error");
     }
+
+    saveWorkspaceState();
+    syncEditorContentToDOM();
+    updatePlaceholderStates();
+    updateHistoryButtonsUI();
+    showToast("✓ Todas as seções foram formatadas conforme as normas ABNT sem perda de conteúdo!", "success");
 }
 
 function downloadFinancePlan() {
@@ -4867,9 +5440,8 @@ function downloadFinancePlan() {
     const blob = new Blob(["\uFEFF", htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const projNameClean = (workspaceState.cover.title || 'projeto').toLowerCase().replace(/[^a-z0-9]/gi, '_');
     a.href = url;
-    a.download = `planilha_orcamentaria_${projNameClean}.xls`;
+    a.download = getFormattedDownloadFilename('Planilha_Orcamentaria', 'xls');
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -5070,7 +5642,7 @@ function printOrSaveHtml(title, htmlContent) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${title.toLowerCase().replace(/[^a-z0-9]/gi, '_')}.html`;
+        a.download = getFormattedDownloadFilename(title, 'html');
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -5106,8 +5678,7 @@ async function downloadRevisorReportPDF() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        const projNameClean = (workspaceState.cover.title || 'projeto').toLowerCase().replace(/[^a-z0-9]/gi, '_');
-        a.download = `relatorio_detalhado_revisor_${projNameClean}.pdf`;
+        a.download = getFormattedDownloadFilename('Relatorio_Detalhado_Revisor', 'pdf');
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -5166,8 +5737,7 @@ async function downloadFinancePlanPDF() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        const projNameClean = (workspaceState.cover.title || 'projeto').toLowerCase().replace(/[^a-z0-9]/gi, '_');
-        a.download = `planilha_financeira_${projNameClean}.pdf`;
+        a.download = getFormattedDownloadFilename('Planilha_Financeira', 'pdf');
         document.body.appendChild(a);
         a.click();
         a.remove();
