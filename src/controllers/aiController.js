@@ -33,20 +33,20 @@ window.aiController = {
         if (!fullText) return "";
 
         const keywordMap = {
-            justificativa: /(justificativa|relevância|histórico|proponente|objeto|cultural|social)/i,
-            objetivos: /(objetivo|meta|público|beneficiário|alcance|fim|finalidade)/i,
-            metodologia: /(metodologia|plano de trabalho|fases|etapas|execução|desenvolvimento)/i,
-            cronograma: /(cronograma|prazo|mês|meses|fases|etapa|duração)/i,
-            orcamento: /(orçamento|custo|teto|limite|administrativo|rubrica|planilha|r\$|preço|valor|despesa)/i,
-            acessibilidade: /(acessibilidade|pcd|libras|audiodescrição|rampa|braille|legenda|deficiência)/i,
-            publico: /(público|beneficiário|faixa etária|gratuito|acesso|comunidade)/i,
-            contrapartida: /(contrapartida|legado|doação|oficina|palestra|social|retorno)/i,
-            comunicacao: /(comunicação|divulgação|assessoria|mídia|peças|marca|propaganda)/i,
-            ficha_tecnica: /(ficha técnica|currículo|equipe|função|experiência)/i,
-            monitoramento: /(monitoramento|indicador|avaliação|pesquisa|relatório|matriz)/i,
-            compliance: /(compliance|direito|certidão|regularidade|fgts|cnd|cndt|receita|lei|legal)/i,
-            sustentabilidade: /(sustentabilidade|esg|resíduo|carbono|ecológico|meio ambiente)/i,
-            rider: /(rider|palco|som|luz|montagem|logística|transporte|hospedagem|técnico)/i
+            justificativa: /(justificativa|relevância|histórico|proponente|objeto|cultural|social|justificar)/i,
+            objetivos: /(objetivo|meta|público|beneficiário|alcance|fim|finalidade|resultados)/i,
+            metodologia: /(metodologia|plano de trabalho|fases|etapas|execução|desenvolvimento|etapa)/i,
+            cronograma: /(cronograma|prazo|mês|meses|fases|etapa|duração|período)/i,
+            orcamento: /(orçamento|custo|teto|limite|administrativo|rubrica|planilha|r\$|preço|valor|despesa|encargos|iss|inss|imposto)/i,
+            acessibilidade: /(acessibilidade|pcd|libras|audiodescrição|rampa|braille|legenda|deficiência|cotas|afirmativa)/i,
+            publico: /(público|beneficiário|faixa etária|gratuito|acesso|comunidade|demográfico)/i,
+            contrapartida: /(contrapartida|legado|doação|oficina|palestra|social|retorno|gratuita)/i,
+            comunicacao: /(comunicação|divulgação|assessoria|mídia|peças|marca|propaganda|clipagem)/i,
+            ficha_tecnica: /(ficha técnica|currículo|equipe|função|experiência|profissionais)/i,
+            monitoramento: /(monitoramento|indicador|avaliação|pesquisa|relatório|matriz|mensuração)/i,
+            compliance: /(compliance|direito|certidão|regularidade|fgts|cnd|cndt|receita|lei|legal|ecad|sisgen)/i,
+            sustentabilidade: /(sustentabilidade|esg|resíduo|carbono|ecológico|meio ambiente|reciclagem)/i,
+            rider: /(rider|palco|som|luz|montagem|logística|transporte|hospedagem|técnico|camarim|iluminação|sonorização)/i
         };
 
         const regex = keywordMap[sectionType] || /(edital|regra|norma|requisito)/i;
@@ -54,17 +54,18 @@ window.aiController = {
         const matchedChunks = [];
         let totalLength = 0;
         let currentChunk = "";
+        const MAX_LIMIT = 35000; // Suporta editais gigantes sem truncar regras críticas
 
         for (let i = 0; i < lines.length; i++) {
             currentChunk += lines[i] + "\n";
             if (lines[i].trim() === "" || i === lines.length - 1) {
                 if (regex.test(currentChunk)) {
-                    if (totalLength + currentChunk.length <= 4000) {
+                    if (totalLength + currentChunk.length <= MAX_LIMIT) {
                         matchedChunks.push(currentChunk.trim());
                         totalLength += currentChunk.length;
                     } else {
-                        const remaining = 4000 - totalLength;
-                        if (remaining > 50) {
+                        const remaining = MAX_LIMIT - totalLength;
+                        if (remaining > 100) {
                             matchedChunks.push(currentChunk.substring(0, remaining).trim() + "...");
                         }
                         break;
@@ -75,7 +76,7 @@ window.aiController = {
         }
 
         if (matchedChunks.length === 0) {
-            return fullText.substring(0, 4000);
+            return fullText.substring(0, MAX_LIMIT);
         }
 
         return matchedChunks.join("\n\n");

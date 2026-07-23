@@ -83,6 +83,20 @@ def fix_double_encoded_utf8(text):
     text = pattern.sub(_sub_fix, text)
     return text
 
+def format_ptbr_currency(val):
+    if isinstance(val, (int, float)):
+        return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    if isinstance(val, str) and val.strip():
+        if val.startswith("R$"):
+            return val
+        try:
+            clean_str = val.replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
+            float_val = float(clean_str)
+            return f"R$ {float_val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        except ValueError:
+            return val
+    return str(val) if val is not None else "R$ 0,00"
+
 def clean_html_tags(temp_text):
     if not temp_text:
         return ""
@@ -151,10 +165,14 @@ def append_html_content_to_story(html_content, story, body_style, h2_style):
                     row_cells = []
                     for cell in row:
                         cell_text = make_reportlab_safe(cell["text"])
-                        if cell["is_header"]:
-                            cell_p = Paragraph(f"<b>{cell_text}</b>", ParagraphStyle('ThCustom', parent=body_style, fontName='Helvetica-Bold', textColor=colors.HexColor('#0f172a')))
-                        else:
-                            cell_p = Paragraph(cell_text, body_style)
+                        try:
+                            if cell["is_header"]:
+                                cell_p = Paragraph(f"<b>{cell_text}</b>", ParagraphStyle('ThCustom', parent=body_style, fontName='Helvetica-Bold', textColor=colors.HexColor('#0f172a')))
+                            else:
+                                cell_p = Paragraph(cell_text, body_style)
+                        except Exception:
+                            esc_txt = html.escape(re.sub(r'<[^>]+>', '', cell_text))
+                            cell_p = Paragraph(esc_txt, body_style)
                         row_cells.append(cell_p)
                     while len(row_cells) < N:
                         row_cells.append(Paragraph("", body_style))
@@ -1005,21 +1023,19 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 budget = str(data.get('budget', '0'))
                 table_html = data.get('table_html', '')
                 
-                # Parse HTML Table rows
-                parser = HTMLTableParser()
-                parser.feed(table_html)
-                rows = parser.rows
-                
-                # Imports cleaned up (now top-level)
-                
+                from reportlab.lib.pagesizes import landscape, A4
+
+                page_format = landscape(A4)
+                printable_width = page_format[0] - 72 # 36pt margins on landscape
+
                 pdf_buffer = io.BytesIO()
                 doc = SimpleDocTemplate(
                     pdf_buffer,
-                    pagesize=A4,
-                    leftMargin=54,
-                    rightMargin=54,
-                    topMargin=54,
-                    bottomMargin=54
+                    pagesize=page_format,
+                    leftMargin=36,
+                    rightMargin=36,
+                    topMargin=36,
+                    bottomMargin=36
                 )
                 
                 styles = getSampleStyleSheet()
@@ -1028,8 +1044,8 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     'DocTitle',
                     parent=styles['Heading1'],
                     fontName='Helvetica-Bold',
-                    fontSize=18,
-                    leading=22,
+                    fontSize=16,
+                    leading=20,
                     textColor=colors.HexColor('#1e1b4b'),
                     spaceAfter=4
                 )
@@ -1037,80 +1053,189 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     'DocSubtitle',
                     parent=styles['Normal'],
                     fontName='Helvetica',
-                    fontSize=10,
-                    leading=13,
+                    fontSize=9,
+                    leading=12,
                     textColor=colors.HexColor('#4f46e5'),
-                    spaceAfter=15
+                    spaceAfter=12
                 )
                 body_style = ParagraphStyle(
                     'TableBodyText',
                     parent=styles['Normal'],
                     fontName='Helvetica',
-                    fontSize=8.5,
-                    leading=11,
+                    fontSize=7.0,
+                    leading=9.0,
                     textColor=colors.HexColor('#334155')
                 )
                 
                 story = []
                 
-                safe_title = make_reportlab_safe("PLANILHA ORÇAMENTÁRIA DE CUSTOS")
+                safe_title = make_reportlab_safe("PLANILHA FINANCEIRA & RIDER TÉCNICO CONSOLIDADOS (3 ETAPAS)")
                 safe_proj_title = make_reportlab_safe(project_title)
                 safe_proponent = make_reportlab_safe(proponent)
                 safe_institution = make_reportlab_safe(institution)
                 
                 story.append(Paragraph(safe_title, title_style))
                 story.append(Paragraph(f"Projeto: <b>{safe_proj_title}</b> &nbsp;&nbsp;|&nbsp;&nbsp; Proponente: {safe_proponent}", subtitle_style))
-                story.append(Spacer(1, 10))
+                story.append(Spacer(1, 8))
                 
                 # Create executive summary table for finance header
                 summary_data = [
                     [
-                        Paragraph("<b>Fomento:</b>", body_style), Paragraph(safe_institution, body_style),
+                        Paragraph("<b>Fomento / Edital:</b>", body_style), Paragraph(safe_institution, body_style),
                         Paragraph("<b>Orçamento Previsto:</b>", body_style), Paragraph(f"R$ {budget}", body_style)
                     ]
                 ]
-                summary_table = Table(summary_data, colWidths=[60, 180, 110, 137])
+                summary_table = Table(summary_data, colWidths=[90, printable_width*0.4, 110, printable_width*0.35])
                 summary_table.setStyle(TableStyle([
                     ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
                     ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
-                    ('PADDING', (0,0), (-1,-1), 8),
+                    ('PADDING', (0,0), (-1,-1), 6),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
                 ]))
                 story.append(summary_table)
-                story.append(Spacer(1, 15))
-                
-                if rows:
-                    N = max(len(row) for row in rows)
-                    col_widths = [487.0 / N] * N
+                story.append(Spacer(1, 10))
+
+                items = data.get('items', [])
+                grand_subtotal = data.get('grandTotalSubtotal', 0)
+                grand_impostos = data.get('grandTotalImpostos', 0)
+                grand_geral = data.get('grandTotalGeral', 0)
+
+                # Se items não foi passado, usar parser legados de HTML como fallback
+                if not items and table_html:
+                    parser = HTMLTableParser()
+                    parser.feed(table_html)
+                    rows = parser.rows
+                    items = []
+                    for r in rows:
+                        if len(r) >= 11 and not r[0]["is_header"]:
+                            items.append({
+                                "etapa": r[0]["text"],
+                                "rubrica": r[1]["text"],
+                                "item": r[2]["text"],
+                                "especificacao": r[3]["text"],
+                                "destino": r[4]["text"],
+                                "unidade": r[5]["text"],
+                                "qtd": r[6]["text"],
+                                "valorUnit": r[7]["text"],
+                                "subtotal": r[8]["text"],
+                                "impostos": r[9]["text"],
+                                "total": r[10]["text"]
+                            })
+
+                if items:
+                    headers = ["Etapa", "Rubrica", "Item de Despesa", "Especificação & Rider Técnico", "Destinação / Fornecedor", "Unid.", "Qtd", "Valor Unit.", "Subtotal", "Impostos", "Total Geral"]
+                    weights = [0.10, 0.10, 0.14, 0.22, 0.13, 0.04, 0.03, 0.07, 0.07, 0.05, 0.05]
+                    col_widths = [printable_width * w for w in weights]
                     
                     table_content = []
-                    for row in rows:
-                        row_cells = []
-                        for cell in row:
-                            cell_text = make_reportlab_safe(cell["text"])
-                            if cell["is_header"]:
-                                cell_p = Paragraph(f"<b>{cell_text}</b>", ParagraphStyle('ThFinance', parent=body_style, fontName='Helvetica-Bold', textColor=colors.white))
-                            else:
-                                cell_p = Paragraph(cell_text, body_style)
-                            row_cells.append(cell_p)
-                        while len(row_cells) < N:
-                            row_cells.append(Paragraph("", body_style))
+                    # Add Header Row
+                    header_cells = [Paragraph(f"<b>{make_reportlab_safe(h)}</b>", ParagraphStyle('ThFinance', parent=body_style, fontName='Helvetica-Bold', textColor=colors.white)) for h in headers]
+                    table_content.append(header_cells)
+                    
+                    # Add Item Rows
+                    for it in items:
+                        val_unit = format_ptbr_currency(it.get('valorUnit', 0))
+                        sub_tot = format_ptbr_currency(it.get('subtotal', 0))
+                        imp_tot = format_ptbr_currency(it.get('impostos', 0))
+                        tot_ger = format_ptbr_currency(it.get('total', 0))
+
+                        row_cells = [
+                            Paragraph(make_reportlab_safe(str(it.get('etapa', ''))), body_style),
+                            Paragraph(make_reportlab_safe(str(it.get('rubrica', ''))), body_style),
+                            Paragraph(f"<b>{make_reportlab_safe(str(it.get('item', '')))}</b>", body_style),
+                            Paragraph(make_reportlab_safe(str(it.get('especificacao', ''))), body_style),
+                            Paragraph(make_reportlab_safe(str(it.get('destino', ''))), body_style),
+                            Paragraph(make_reportlab_safe(str(it.get('unidade', ''))), body_style),
+                            Paragraph(make_reportlab_safe(str(it.get('qtd', ''))), body_style),
+                            Paragraph(make_reportlab_safe(val_unit), body_style),
+                            Paragraph(f"<b>{make_reportlab_safe(sub_tot)}</b>", body_style),
+                            Paragraph(make_reportlab_safe(imp_tot), body_style),
+                            Paragraph(f"<b>{make_reportlab_safe(tot_ger)}</b>", body_style)
+                        ]
                         table_content.append(row_cells)
+
+                    # Add Total Row
+                    tot_sub_str = f"R$ {grand_subtotal:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') if isinstance(grand_subtotal, (int, float)) else str(grand_subtotal)
+                    tot_imp_str = f"R$ {grand_impostos:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') if isinstance(grand_impostos, (int, float)) else str(grand_impostos)
+                    tot_ger_str = f"R$ {grand_geral:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') if isinstance(grand_geral, (int, float)) else str(grand_geral)
+
+                    total_row_cells = [
+                        Paragraph("<b>TOTAL GERAL CONSOLIDADO DO PROJETO:</b>", ParagraphStyle('TotLbl', parent=body_style, fontName='Helvetica-Bold', alignment=2)),
+                        Paragraph("", body_style), Paragraph("", body_style), Paragraph("", body_style),
+                        Paragraph("", body_style), Paragraph("", body_style), Paragraph("", body_style), Paragraph("", body_style),
+                        Paragraph(f"<b>{tot_sub_str}</b>", body_style),
+                        Paragraph(f"<b>{tot_imp_str}</b>", body_style),
+                        Paragraph(f"<b>{tot_ger_str}</b>", ParagraphStyle('TotVal', parent=body_style, fontName='Helvetica-Bold', textColor=colors.HexColor('#15803d')))
+                    ]
+                    table_content.append(total_row_cells)
                         
                     finance_table = Table(table_content, colWidths=col_widths, repeatRows=1)
                     t_style = TableStyle([
                         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#4f46e5')),
                         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
-                        ('PADDING', (0,0), (-1,-1), 6),
+                        ('PADDING', (0,0), (-1,-1), 3),
                         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                        ('SPAN', (0, -1), (7, -1)),
+                        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e2e8f0')),
                     ])
                     # Alternating row colors
-                    for r_idx in range(1, len(table_content)):
+                    for r_idx in range(1, len(table_content) - 1):
                         if r_idx % 2 == 0:
                             t_style.add('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor('#f8fafc'))
                     finance_table.setStyle(t_style)
                     story.append(finance_table)
-                    story.append(Spacer(1, 15))
+                    story.append(Spacer(1, 12))
+
+                # Rider Técnico Section (if rider_items passed)
+                rider_items = data.get('rider_items', [])
+                if rider_items and isinstance(rider_items, list):
+                    h2_style = ParagraphStyle(
+                        'SectionHeader',
+                        parent=styles['Heading2'],
+                        fontName='Helvetica-Bold',
+                        fontSize=12,
+                        leading=15,
+                        textColor=colors.HexColor('#4f46e5'),
+                        spaceBefore=10,
+                        spaceAfter=6
+                    )
+                    story.append(Paragraph("DETALHAMENTO DO RIDER TÉCNICO & MAPA DE EQUIPAMENTOS", h2_style))
+                    
+                    rider_table_data = [
+                        [
+                            Paragraph("<b>Categoria</b>", ParagraphStyle('ThRider', parent=body_style, fontName='Helvetica-Bold', textColor=colors.white)),
+                            Paragraph("<b>Equipamento</b>", ParagraphStyle('ThRider', parent=body_style, fontName='Helvetica-Bold', textColor=colors.white)),
+                            Paragraph("<b>Modelo Específico / Especificação</b>", ParagraphStyle('ThRider', parent=body_style, fontName='Helvetica-Bold', textColor=colors.white)),
+                            Paragraph("<b>Diárias / Qtd</b>", ParagraphStyle('ThRider', parent=body_style, fontName='Helvetica-Bold', textColor=colors.white)),
+                            Paragraph("<b>Fornecedor Previsto</b>", ParagraphStyle('ThRider', parent=body_style, fontName='Helvetica-Bold', textColor=colors.white)),
+                            Paragraph("<b>Requisito de Palco</b>", ParagraphStyle('ThRider', parent=body_style, fontName='Helvetica-Bold', textColor=colors.white))
+                        ]
+                    ]
+                    
+                    for rd in rider_items:
+                        rider_table_data.append([
+                            Paragraph(make_reportlab_safe(rd.get('categoria', '')), body_style),
+                            Paragraph(make_reportlab_safe(rd.get('equipamento', '')), body_style),
+                            Paragraph(make_reportlab_safe(rd.get('modeloEspecifico', '')), body_style),
+                            Paragraph(make_reportlab_safe(rd.get('qtdDiarias', '')), body_style),
+                            Paragraph(make_reportlab_safe(rd.get('fornecedorPrevisto', '')), body_style),
+                            Paragraph(make_reportlab_safe(rd.get('requisitoPalco', '')), body_style)
+                        ])
+                        
+                    r_widths = [printable_width * w for w in [0.15, 0.20, 0.28, 0.10, 0.15, 0.12]]
+                    rider_table = Table(rider_table_data, colWidths=r_widths, repeatRows=1)
+                    rt_style = TableStyle([
+                        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#6366f1')),
+                        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+                        ('PADDING', (0,0), (-1,-1), 3),
+                        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                    ])
+                    for r_idx in range(1, len(rider_table_data)):
+                        if r_idx % 2 == 0:
+                            rt_style.add('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor('#f8fafc'))
+                    rider_table.setStyle(rt_style)
+                    story.append(rider_table)
+                    story.append(Spacer(1, 10))
                 
                 # Disclaimer
                 disclaimer_style = ParagraphStyle(
@@ -1120,9 +1245,9 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     fontSize=8,
                     leading=10,
                     textColor=colors.HexColor('#64748b'),
-                    spaceBefore=15
+                    spaceBefore=10
                 )
-                story.append(Paragraph("Este orçamento é uma projeção gerada por IA baseada na planilha orçamentária da proposta.", disclaimer_style))
+                story.append(Paragraph("Este documento foi consolidado pelas 3 Etapas de Auditoria com base na legislação de fomento cultural (Lei Rouanet, Lei Aldir Blanc, IN MinC).", disclaimer_style))
                 
                 def add_finance_footer(canvas, doc):
                     canvas.saveState()

@@ -688,11 +688,12 @@
 
                     <!-- SEÇÃO PLANILHA FINANCEIRA DO REVISOR -->
                     <div class="card" id="revisor-finance-card" style="margin-bottom: 1.5rem;">
-                        <h3>💰 Planilha Financeira Otimizada</h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Baixe a planilha orçamentária detalhada em formato Excel (.xls) ou PDF para controle e cruzamento de dados.</p>
-                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                            <button class="btn btn-secondary" id="btn-download-finance-xls-main" style="width: auto; background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border);">📊 Baixar Planilha Orçamentária (.xls)</button>
-                            <button class="btn btn-secondary" id="btn-download-finance-pdf-main" style="width: auto; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.2);">📄 Baixar Planilha em PDF</button>
+                        <h3>💰 Planilha Financeira Otimizada (3 Etapas de Auditoria)</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Clique em "Gerar Planilha Detalhada por IA" para executar as <strong>3 Etapas</strong> (1. Cruzamento Offline Local, 2. Pesquisa de Mercado Online, 3. Consolidação IA Gemini). Os botões de download serão liberados após a geração.</p>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                            <button type="button" class="btn btn-primary" id="btn-generate-finance-ia" style="width: auto; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #ffffff; border: none; font-weight: 600;">🤖 Gerar Planilha Detalhada por IA</button>
+                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-download-finance-xls-main" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border);">📊 Baixar Planilha Orçamentária (.xls)</button>
+                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-download-finance-pdf-main" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.2);">📄 Baixar Planilha em PDF</button>
                         </div>
                     </div>
 
@@ -701,8 +702,8 @@
                         <h3>🏆 Finalização do Projeto</h3>
                         <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">Gere a versão definitiva do projeto cultural contendo todo o conteúdo revisado, formatado e auditado conforme a norma ABNT.</p>
                         <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                            <button class="btn btn-primary" id="btn-consolidate-download-pdf" style="width: auto; background: var(--color-success); border: none;">🖨️ Consolidar e Baixar PDF</button>
-                            <button class="btn btn-secondary" id="btn-consolidate-download-docx" style="width: auto;">📝 Consolidar e Baixar Word (.doc)</button>
+                            <button type="button" class="btn btn-primary" id="btn-consolidate-download-pdf" style="width: auto; background: var(--color-success); border: none;">🖨️ Consolidar e Baixar PDF</button>
+                            <button type="button" class="btn btn-secondary" id="btn-consolidate-download-docx" style="width: auto;">📝 Consolidar e Baixar Word (.doc)</button>
                         </div>
                     </div>
                 </div>
@@ -721,20 +722,21 @@
                         </h3>
                         <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">Gere a versão definitiva do projeto cultural contendo todo o conteúdo revisado, formatado e auditado conforme a norma ABNT.</p>
                         <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                            <button class="btn btn-primary" id="btn-final-download-pdf" style="width: auto; background: var(--color-success); border: none;">🖨️ Consolidar e Baixar PDF</button>
-                            <button class="btn btn-secondary" id="btn-final-download-docx" style="width: auto;">📝 Consolidar e Baixar Word (.doc)</button>
+                            <button type="button" class="btn btn-primary" id="btn-final-download-pdf" style="width: auto; background: var(--color-success); border: none;">🖨️ Consolidar e Baixar PDF</button>
+                            <button type="button" class="btn btn-secondary" id="btn-final-download-docx" style="width: auto;">📝 Consolidar e Baixar Word (.doc)</button>
                         </div>
                     </div>
 
                     <!-- CARD 2: PLANILHA FINANCEIRA OTIMIZADA -->
                     <div class="card" style="margin-bottom: 1.5rem;">
                         <h3 style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span>💰</span> Planilha Financeira Otimizada
+                            <span>💰</span> Planilha Financeira Otimizada (3 Etapas de Auditoria)
                         </h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">Baixe a planilha orçamentária detalhada em formato Excel (.xls) ou PDF para controle e cruzamento de dados.</p>
-                        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                            <button class="btn btn-secondary" id="btn-final-finance-xls" style="width: auto; background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border);">📊 Baixar Planilha Orçamentária (.xls)</button>
-                            <button class="btn btn-secondary" id="btn-final-finance-pdf" style="width: auto; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.2);">📄 Baixar Planilha em PDF</button>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">Clique em "Gerar Planilha Detalhada por IA" para executar o fluxo das <strong>3 Etapas</strong>. Os botões de download em Excel e PDF serão liberados após a consolidação.</p>
+                        <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+                            <button type="button" class="btn btn-primary" id="btn-final-finance-ia" style="width: auto; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #ffffff; border: none; font-weight: 600;">🤖 Gerar Planilha Detalhada por IA</button>
+                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-final-finance-xls" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border);">📊 Baixar Planilha Orçamentária (.xls)</button>
+                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-final-finance-pdf" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.2);">📄 Baixar Planilha em PDF</button>
                         </div>
                     </div>
 
