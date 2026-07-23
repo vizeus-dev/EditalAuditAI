@@ -1417,7 +1417,7 @@ async function callGeminiToComplementSection(sectionId, currentContent, relevant
         : "Nenhuma memória anterior.";
 
     const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
-        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 2000) : ''}`).join('\n---\n')
+        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : ''}`).join('\n---\n')
         : "Nenhum anexo extra.";
 
     // Cross-Referencing: Get other sections already generated (limited to prevent token bloat)
@@ -1497,7 +1497,7 @@ async function callGeminiForSectionChained(sectionId, extraInstrucoes = "", webS
         : "Nenhuma memória anterior.";
 
     const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
-        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 2000) : ''}`).join('\n---\n')
+        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : ''}`).join('\n---\n')
         : "Nenhum anexo extra.";
 
     // Cross-Referencing: Get other sections already generated (limited to prevent token bloat)
@@ -1561,7 +1561,7 @@ async function callGeminiForSectionChained(sectionId, extraInstrucoes = "", webS
     ${webSearchContext || "Nenhuma informação extra."}
     
     [RASCUNHO INICIAL DO USUÁRIO]:
-    ${workspaceState.proposalDraftText ? workspaceState.proposalDraftText.substring(0, 4000) : "Sem rascunho."}
+    ${workspaceState.proposalDraftText ? workspaceState.proposalDraftText.substring(0, 25000) : "Sem rascunho."}
     
     ${crossRefContext}
     
@@ -1583,87 +1583,116 @@ async function generateBasicProposal() {
     }
     _isProcessingAPI = true;
     btn.disabled = true;
-    btn.textContent = "⚡ Gerando proposta cruzada...";
-
-    let successViaAPI = false;
+    btn.textContent = "⚖️ Mapeando seções exigidas pelo edital...";
 
     try {
-        const keyToUse = window.geminiKey || localStorage.getItem('gemini_api_key');
-        if (keyToUse) {
-            btn.textContent = "⚖️ Mapeando diretrizes do edital e anexos...";
-            await ensureEditalProfile(true);
+        pushProposalHistoryState("Antes da Geração pelo Ingestor");
 
-            btn.textContent = "⚡ Redigindo proposta completa via IA...";
-            const response = await fetch('/api/generate-proposal-unified', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    cover: workspaceState.cover,
-                    editalRefText: workspaceState.editalRefText || '',
-                    editalProfile: workspaceState.editalProfile,
-                    proposalDraftText: workspaceState.proposalDraftText || '',
-                    annexes: workspaceState.annexes || [],
-                    historicalMemories: workspaceState.historicalMemories || [],
-                    api_key: keyToUse
-                })
-            });
+        // 1. Garantir perfil do edital e extrair seções exigidas
+        const profile = await ensureEditalProfile(true);
+        let rawSecs = (profile && profile.secoes_exigidas) ? profile.secoes_exigidas : [];
+        let requiredSections = sanitizeSectionKeys(rawSecs);
 
-            if (response.ok) {
-                const result = await response.json();
-                if (result && result.documentContent) {
-                    workspaceState.documentContent = result.documentContent;
-                    successViaAPI = true;
-                }
-            } else {
-                let errorMsg = "Erro na API do Gemini.";
+        if (requiredSections.length === 0) {
+            const combinedText = (workspaceState.editalRefText || "") + "\n" + (workspaceState.annexes || []).map(a => a.content || "").join("\n");
+            requiredSections = detectRequiredSectionsFromText(combinedText);
+        }
+
+        showToast(`⚡ [Ingestor] Identificadas ${requiredSections.length} seções exigidas no edital: ${requiredSections.map(s => s.toUpperCase()).join(', ')}. Iniciando redação completa...`, "info");
+
+        // 2. Limpar seções do editor que NÃO são exigidas no edital
+        const allSections = [
+            'justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento',
+            'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica',
+            'monitoramento', 'compliance', 'sustentabilidade', 'rider'
+        ];
+
+        allSections.forEach(secKey => {
+            if (!requiredSections.includes(secKey)) {
+                workspaceState.documentContent[secKey] = "";
+                const el = document.getElementById(`sec-${secKey}`);
+                if (el) el.innerHTML = "";
+            }
+        });
+
+        // 3. Redigir cada seção exigida com profundidade e rigor total (sem resumos ou respostas genéricas)
+        for (let i = 0; i < requiredSections.length; i++) {
+            const secKey = requiredSections[i];
+            const displayTitle = secKey.toUpperCase();
+            btn.textContent = `✍️ Redigindo [${i + 1}/${requiredSections.length}] ${displayTitle}...`;
+            showToast(`✍️ [Ingestor ${i + 1}/${requiredSections.length}] Redigindo seção ${displayTitle} com profundidade e rigor...`, "info");
+
+            let text = "";
+            if (isApiActive()) {
                 try {
-                    const errData = await response.json();
-                    if (errData && errData.error) {
-                        errorMsg = errData.error;
+                    const refinedRaw = await callGeminiForRedator(secKey, "Redigir seção completa, profunda, rigorosa e densa com base nas regras do edital, perfil estrutural e anexos ingeridos.");
+                    if (refinedRaw) {
+                        if (refinedRaw.includes("=== CONTEÚDO DA SEÇÃO ===") && refinedRaw.includes("=== JUSTIFICATIVA E ADEQUAÇÕES ===")) {
+                            const parts = refinedRaw.split("=== JUSTIFICATIVA E ADEQUAÇÕES ===");
+                            text = parts[0].replace("=== CONTEÚDO DA SEÇÃO ===", "").trim();
+                        } else {
+                            try {
+                                const parsed = JSON.parse(refinedRaw);
+                                text = parsed.text || refinedRaw;
+                            } catch (e) {
+                                text = refinedRaw;
+                            }
+                        }
                     }
-                } catch (e) {}
-                showToast(`${errorMsg} Ativando motor offline local de contingência.`, "warning");
+                } catch (secApiErr) {
+                    console.warn(`[INGESTOR] Erro API na seção ${secKey}, ativando motor local:`, secApiErr);
+                }
+            }
+
+            // Fallback offline por seção se API falhar ou não estiver ativa
+            if (!text || text.trim().length < 20) {
+                const resultRaw = await getSimulatedRedatorText(secKey, "Redigir com base nas diretrizes do edital");
+                try {
+                    const parsed = JSON.parse(resultRaw);
+                    text = parsed.text || resultRaw;
+                } catch (e) {
+                    text = resultRaw;
+                }
+            }
+
+            if (text && text.trim().length > 0) {
+                const rendered = renderTextOrMarkdown(text);
+                workspaceState.documentContent[secKey] = rendered;
+                const targetEl = document.getElementById(`sec-${secKey}`);
+                if (targetEl) {
+                    targetEl.innerHTML = rendered;
+                }
+                syncDOMContentToState();
+                updatePlaceholderStates();
             }
         }
-    } catch (err) {
-        console.warn("[APP] Erro na chamada da API para gerar proposta. Ativando motor de inferência offline:", err);
-    }
 
-    // --- FALLBACK OFFLINE LOCAL (IndexedDB / OfflineAuditor) ---
-    if (!successViaAPI) {
-        btn.textContent = "⚡ Gerando proposta via motor offline (IndexedDB)...";
-        await ensureEditalProfile();
-        const simulatedProposal = await getSimulatedBasicProposal();
-        if (typeof simulatedProposal === 'string') {
-            try { workspaceState.documentContent = JSON.parse(simulatedProposal); }
-            catch (e) { workspaceState.documentContent = {}; }
-        } else {
-            workspaceState.documentContent = simulatedProposal;
+        // Executar auditoria local
+        if (window.offlineAuditor && typeof window.offlineAuditor.runLocalAudit === 'function') {
+            window.offlineAuditor.runLocalAudit(workspaceState).catch(err => console.warn("Erro ao rodar auditoria local:", err));
         }
-        showToast("⚡ Proposta completa cruzada gerada autonomamente offline!", "success");
-    } else {
-        showToast("✓ Proposta completa cruzada gerada com sucesso via IA!", "success");
+
+        workspaceState.lastAuditData = null;
+        workspaceState.revisorAgentsResults = {};
+
+        saveWorkspaceState();
+        syncEditorContentToDOM();
+        updatePlaceholderStates();
+
+        const auditDashboard = document.getElementById('audit-dashboard');
+        if (auditDashboard) auditDashboard.style.display = 'none';
+
+        addHistoricalMemory(`Ingestor: Elaboração de proposta completa com profundidade para ${requiredSections.length} seções exigidas.`);
+        showToast(`✓ [Ingestor] Proposta completa gerada para as ${requiredSections.length} seções exigidas pelo edital com profundidade total!`, "success");
+
+    } catch (err) {
+        console.error("Erro na geração pelo ingestor:", err);
+        showToast("Erro ao gerar proposta pelo ingestor: " + err.message, "error");
+    } finally {
+        _isProcessingAPI = false;
+        btn.disabled = false;
+        btn.textContent = "⚡ Gerar Proposta Completa Cruzada";
     }
-
-    // Executar auditoria offline no histórico
-    if (window.offlineAuditor && typeof window.offlineAuditor.runLocalAudit === 'function') {
-        window.offlineAuditor.runLocalAudit(workspaceState).catch(err => console.warn("Erro ao rodar auditoria local:", err));
-    }
-
-    workspaceState.lastAuditData = null;
-    workspaceState.revisorAgentsResults = {};
-
-    saveWorkspaceState();
-    syncEditorContentToDOM();
-    updatePlaceholderStates();
-
-    const auditDashboard = document.getElementById('audit-dashboard');
-    if (auditDashboard) auditDashboard.style.display = 'none';
-
-    addHistoricalMemory(`Elaboração de proposta completa unificada.`);
-    _isProcessingAPI = false;
-    btn.disabled = false;
-    btn.textContent = "⚡ Gerar Proposta Completa Cruzada";
 }
 
 function getSimulatedBasicProposal() {
@@ -2616,7 +2645,7 @@ async function callGeminiForRedator(section, promptText, webSearchContext = "") 
         : "Nenhuma memória anterior.";
 
     const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
-        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 2000) : ''}`).join('\n---\n')
+        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : ''}`).join('\n---\n')
         : "Nenhum anexo extra.";
 
     // Cross-Referencing: Get other sections already generated (limited to prevent token bloat)
@@ -2682,10 +2711,10 @@ async function callGeminiForRedator(section, promptText, webSearchContext = "") 
     [DIRETRIZES DO USUÁRIO]: ${promptText || "Redigir seção detalhada respeitando as regras do edital."}
     
     [RASCUNHO INICIAL / RASCUNHO DO USUÁRIO]:
-    ${draftText ? draftText.substring(0, 4000) : "Sem rascunho inicial do usuário."}
+    ${draftText ? draftText.substring(0, 25000) : "Sem rascunho inicial do usuário."}
     
     [EDITAL DE REFERÊNCIA (REGRAS DO PROJETO)]:
-    ${editalText ? editalText.substring(0, 10000) : "Nenhum edital ativo."}
+    ${editalText ? editalText.substring(0, 40000) : "Nenhum edital ativo."}
     
     [PESQUISA WEB ATUALIZADA DO EDITAL]:
     ${webSearchContext || "Nenhuma pesquisa adicional encontrada."}
@@ -3395,9 +3424,12 @@ async function runFinalConsolidatedRevision() {
         sustentabilidade: "Sustentabilidade", rider: "Rider Técnico"
     };
 
-    const editalContext = workspaceState.editalRefText ? filterRelevantEditalText(workspaceState.editalRefText) : "Sem edital.";
+    const editalContext = workspaceState.editalRefText ? filterRelevantEditalText(workspaceState.editalRefText, key, 35000) : "Sem edital.";
     const coverContext = JSON.stringify(workspaceState.cover);
     const editalProfileContext = getEditalProfilePromptContext();
+    const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
+        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : ''}`).join('\n---\n')
+        : "Nenhum anexo extra.";
 
     let processedCount = 0;
 
@@ -3435,7 +3467,10 @@ ${rawContent}
 ${agentParecer}
 
 [EDITAL DE REFERÊNCIA VIGENTE]:
-${editalContext.substring(0, 3000)}
+${editalContext.substring(0, 35000)}
+
+[ANEXOS ADICIONAIS DO EDITAL]:
+${annexesContext}
 
 Retorne um JSON estrito sem wraps markdown no seguinte formato:
 {
@@ -3485,7 +3520,7 @@ async function callGeminiForSubAgent(agentKey, localEvaluation = null, webSearch
 
     // Compilar anexos para dar contexto ao sub-agente de forma otimizada
     const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
-        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? filterRelevantEditalText(a.content, agentKey).substring(0, 8000) : 'Sem conteúdo.'}`).join('\n---\n')
+        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : 'Sem conteúdo.'}`).join('\n---\n')
         : "Nenhum anexo extra fornecido.";
 
     let skillFeedback = "";
@@ -3728,6 +3763,33 @@ function sanitizeText(text) {
     return clean.trim();
 }
 
+function sanitizeSectionKeys(keys) {
+    const valid = [
+        'justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento',
+        'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica',
+        'monitoramento', 'compliance', 'sustentabilidade', 'rider'
+    ];
+    if (!Array.isArray(keys)) return [];
+    return keys.map(k => k ? String(k).toLowerCase().trim() : '').filter(k => valid.includes(k));
+}
+
+function detectRequiredSectionsFromText(text) {
+    const textLower = (text || "").toLowerCase();
+    // Seções principais obrigatórias por padrão em editais de fomento
+    const required = ['justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento', 'acessibilidade'];
+
+    if (/públ|beneficiár|demogr/i.test(textLower)) required.push('publico');
+    if (/contrapartida|legado|social/i.test(textLower)) required.push('contrapartida');
+    if (/comunica|divulga|mídia|marketing/i.test(textLower)) required.push('comunicacao');
+    if (/ficha técnica|equipe|currículo|profissional/i.test(textLower)) required.push('ficha_tecnica');
+    if (/monitoramento|avaliação|indicador|matriz lógica/i.test(textLower)) required.push('monitoramento');
+    if (/compliance|certidão|ecad|sisgen|direitos autorais/i.test(textLower)) required.push('compliance');
+    if (/sustentabilidade|esg|resíduo|ambiental/i.test(textLower)) required.push('sustentabilidade');
+    if (/rider|mapa de palco|som|luz|iluminação|equipamento/i.test(textLower)) required.push('rider');
+
+    return [...new Set(required)];
+}
+
 function getEditalProfilePromptContext() {
     const profile = workspaceState.editalProfile;
     if (!profile) return "";
@@ -3739,12 +3801,15 @@ function getEditalProfilePromptContext() {
 - Acessibilidade e Cotas: ${profile.acessibilidade_e_cotas || 'Não especificadas'}
 - Prioridades e Critérios de Pontuação: ${profile.prioridades_critérios || 'Não especificados'}
 - Mapeamento de Anexos: ${profile.anexos_analisados || 'Nenhum'}
+- Seções Exigidas no Edital: ${Array.isArray(profile.secoes_exigidas) ? profile.secoes_exigidas.join(', ') : 'Não especificadas'}
 Você DEVE obrigatoriamente respeitar estas diretrizes do edital em todas as informações e textos produzidos.
 `;
 }
 
 function getOfflineEditalProfile(editalRefText, annexes = []) {
     const textLower = (editalRefText || "").toLowerCase();
+    const annexesTextLower = annexes.map(a => a.content || "").join("\n").toLowerCase();
+    const combinedText = textLower + "\n" + annexesTextLower;
     const annexesNames = annexes.map(a => a.name).join(", ") || "Nenhum anexo adicional carregado";
 
     let budgetCap = "Teto orçamentário padrão de fomento público (Administração máx 15%, Comunicação máx 10%).";
@@ -3753,13 +3818,16 @@ function getOfflineEditalProfile(editalRefText, annexes = []) {
         budgetCap = `Teto Orçamentário identificado: R$ ${budgetMatch[1]}. Limite de Administração: 15%. Limite de Marketing: 10%.`;
     }
 
+    const detectedSections = detectRequiredSectionsFromText(combinedText);
+
     return {
         fomento: "Chamada Pública de Fomento Cultural e Social (Análise Offline)",
         objetivos: "Democratização do acesso à cultura, formação de público e apoio à cadeia produtiva artística local.",
         tetos_e_limites: budgetCap,
         acessibilidade_e_cotas: "Obrigatória acessibilidade comunicacional (LIBRAS/Audiodescrição) e física. Ações afirmativas com reserva de vagas para grupos prioritários.",
         prioridades_critérios: "Pontuação máxima de priorização (30 pts) para governança participativa, liderança vulnerabilizada, experiência no território e parcerias em rede.",
-        anexos_analisados: annexesNames
+        anexos_analisados: annexesNames,
+        secoes_exigidas: detectedSections
     };
 }
 
@@ -3804,10 +3872,13 @@ async function ensureEditalProfile(forceRefresh = false) {
 
             if (res.ok) {
                 const data = await res.json();
+                if (data && data.secoes_exigidas) {
+                    data.secoes_exigidas = sanitizeSectionKeys(data.secoes_exigidas);
+                }
                 workspaceState.editalProfile = data;
                 saveWorkspaceState();
                 renderEditalProfileCard();
-                showToast("Perfil do edital analisado com sucesso!", "success");
+                showToast("Perfil do edital e seções exigidas analisados com sucesso!", "success");
                 return data;
             } else {
                 let errorMsg = "Erro ao analisar edital.";
@@ -3845,6 +3916,10 @@ function renderEditalProfileCard() {
         return;
     }
 
+    const secoesList = (profile.secoes_exigidas && profile.secoes_exigidas.length > 0)
+        ? profile.secoes_exigidas.map(s => `<span style="display:inline-block; background:var(--color-primary-ghost, #e0e7ff); color:var(--color-primary, #4338ca); padding:2px 8px; border-radius:12px; margin:2px; font-weight:700; font-size:0.75rem;">${s.toUpperCase()}</span>`).join(' ')
+        : '<span style="color:var(--text-muted);">Todas as 14 seções recomendadas</span>';
+
     card.style.display = 'block';
     content.innerHTML = `
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.8rem;">
@@ -3869,8 +3944,8 @@ function renderEditalProfileCard() {
                 <p style="margin: 0.3rem 0 0 0; color: var(--color-text);">${sanitizeText(profile.prioridades_critérios || 'Não especificado')}</p>
             </div>
             <div style="background: var(--color-bg-subtle, #f8f9fa); padding: 0.8rem; border-radius: 6px; border: 1px solid var(--color-border);">
-                <strong style="color: var(--color-primary);">📎 Anexos e Mapeamento:</strong>
-                <p style="margin: 0.3rem 0 0 0; color: var(--color-text);">${sanitizeText(profile.anexos_analisados || 'Nenhum anexo')}</p>
+                <strong style="color: var(--color-primary);">📋 Seções Exigidas no Edital:</strong>
+                <div style="margin-top: 0.3rem;">${secoesList}</div>
             </div>
         </div>
     `;
@@ -4063,7 +4138,7 @@ async function callGeminiForAuditoria() {
     `;
 
     const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
-        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 3000) : ''}`).join('\n---\n')
+        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : ''}`).join('\n---\n')
         : "Nenhum anexo extra fornecido.";
 
     let subAgentsContext = "";
@@ -4095,7 +4170,7 @@ async function callGeminiForAuditoria() {
     ${propContext}
     
     [EDITAL DE REFERÊNCIA VIGENTE]:
-    ${workspaceState.editalRefText ? filterRelevantEditalText(workspaceState.editalRefText) : "Nenhuma referência inserida."}
+    ${workspaceState.editalRefText ? filterRelevantEditalText(workspaceState.editalRefText, null, 40000) : "Nenhuma referência inserida."}
     
     Você deve obrigatoriamente realizar o diagnóstico crítico da proposta e calcular a pontuação simulada:
     - Pontuação Técnica: Máximo de 100 pontos, divididos em 5 critérios (20 pontos cada):
@@ -4823,7 +4898,7 @@ function runPreFlightLinter() {
     return alerts;
 }
 
-function filterRelevantEditalText(text, agentKey = null, maxChars = 4000) {
+function filterRelevantEditalText(text, agentKey = null, maxChars = 35000) {
     if (!text) return "";
     if (text.length <= maxChars) return text;
 
@@ -4869,7 +4944,7 @@ function filterRelevantEditalText(text, agentKey = null, maxChars = 4000) {
         }
     }
 
-    if (matchedParagraphs.length === 0) {
+    if (matchedParagraphs.length === 0 || totalLength < 5000) {
         return text.substring(0, maxChars);
     }
 
@@ -5347,7 +5422,7 @@ INSTRUÇÕES DE FORMATAÇÃO:
 ${rawContent}
 
 [EDITAL DE REFERÊNCIA VIGENTE]:
-${editalContext.substring(0, 3000)}
+${editalContext.substring(0, 35000)}
 
 Retorne um JSON estrito sem marcação markdown no seguinte formato:
 {

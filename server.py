@@ -1220,6 +1220,7 @@ Mapeie e estruture as informações em um objeto JSON contendo exatamente as seg
 4. acessibilidade_e_cotas: Regras obrigatórias de acessibilidade (libras, audiodescrição) e políticas de ação afirmativa/cotas (raça, gênero, PCD, territórios).
 5. prioridades_critérios: Critérios de prioridade, desempate e avaliação (ex: proponentes estreantes, interiorização, descentralização, diversidade).
 6. anexos_analisados: Lista compacta dos anexos enviados e a importância de cada um para o projeto.
+7. secoes_exigidas: Lista contendo apenas as chaves das seções especificamente exigidas ou necessárias conforme o edital e anexos (escolhidas estritamente entre: "justificativa", "objetivos", "metodologia", "cronograma", "orcamento", "acessibilidade", "publico", "contrapartida", "comunicacao", "ficha_tecnica", "monitoramento", "compliance", "sustentabilidade", "rider").
 
 Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem blocos markdown ou explicações fora do JSON."""
 
@@ -1231,9 +1232,13 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem blocos 
                         "tetos_e_limites": {"type": "STRING"},
                         "acessibilidade_e_cotas": {"type": "STRING"},
                         "prioridades_critérios": {"type": "STRING"},
-                        "anexos_analisados": {"type": "STRING"}
+                        "anexos_analisados": {"type": "STRING"},
+                        "secoes_exigidas": {
+                            "type": "ARRAY",
+                            "items": {"type": "STRING"}
+                        }
                     },
-                    "required": ["fomento", "objetivos", "tetos_e_limites", "acessibilidade_e_cotas", "prioridades_critérios", "anexos_analisados"]
+                    "required": ["fomento", "objetivos", "tetos_e_limites", "acessibilidade_e_cotas", "prioridades_critérios", "anexos_analisados", "secoes_exigidas"]
                 }
 
                 print("[SERVER] Iniciando análise prévia do edital...")
