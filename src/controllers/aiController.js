@@ -102,7 +102,7 @@ Você deve gerar exatamente 14 itens no array "agentes", correspondendo aos segu
 2. "objetivos": Avalia a coerência do objetivo geral e a mensurabilidade dos objetivos específicos.
 3. "metodologia": Detalha o plano de trabalho operacional dividindo explicitamente em Pré-produção, Execução e Pós-produção.
 4. "cronograma": Avalia a viabilidade física e prazos mensais das atividades.
-5. "orcamento": Analisa o orçamento, respeitando estritamente o limite administrativo de 15% e divulgação de 10%. Calcule e aponte valores reais e desvios.
+5. "orcamento": Realiza auditoria profunda e minuciosa da planilha orçamentária. Deve obrigatoriamente cruzar os quantitativos descritos na Metodologia, Ficha Técnica, Cronograma, Acessibilidade e Rider com os itens de custo. Verifica a conformidade com o teto orçamentário total, teto administrativo (máx 15%), teto de comunicação (máx 10%), tributos e encargos patronais (ISS 5%, INSS 20%, IRRF) e itens obrigatórios de acessibilidade PCD (Lei 13.146/15). Aponta desvios numéricos exatos e propõe readequações estruturadas.
 6. "acessibilidade": Examina medidas de acessibilidade física, comunicacional (LIBRAS/audiodescrição) e atitudinal, além de políticas afirmativas e cotas.
 7. "publico": Analisa a definição exata, demográfica, etária e social do público-alvo e beneficiários.
 8. "contrapartida": Avalia o retorno gratuito do projeto à sociedade (oficinas, palestras, ingressos gratuitos, doações).

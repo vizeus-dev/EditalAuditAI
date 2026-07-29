@@ -3,7 +3,7 @@ import json
 
 def generate():
     edital_path = "edital_rules.txt"
-    out_dir = r"C:\Users\victo\.gemini\antigravity-ide\scratch\edital-audit"
+    out_dir = os.path.dirname(os.path.abspath(__file__))
     os.makedirs(out_dir, exist_ok=True)
     
     # Read the edital rules

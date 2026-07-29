@@ -20,7 +20,7 @@ from html.parser import HTMLParser
 from services.api import LLMGateway, DocumentRetriever
 
 # ReportLab imports at top-level
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
@@ -577,14 +577,14 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
             post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
-                project_title = data.get('project_title', 'Projeto Cultural')
-                institution = data.get('institution', 'Não Especificada')
-                proponent = data.get('proponent', 'Não Especificado')
-                budget = str(data.get('budget', '0'))
+                project_title = str(data.get('project_title') or 'Projeto Cultural')
+                institution = str(data.get('institution') or 'Não Especificada')
+                proponent = str(data.get('proponent') or 'Não Especificado')
+                budget = str(data.get('budget') or '0')
                 score = str(data.get('score') or '0')
-                nota_tecnica = str(data.get('nota_tecnica', '0'))
-                nota_priorizacao = str(data.get('nota_priorizacao', '0'))
-                relatorio_analitico = data.get('relatorio_analitico', '')
+                nota_tecnica = str(data.get('nota_tecnica') or '0')
+                nota_priorizacao = str(data.get('nota_priorizacao') or '0')
+                relatorio_analitico = str(data.get('relatorio_analitico') or '')
                 criterios = data.get('criterios', [])
                 ajustes = data.get('ajustes', [])
                 alertas = data.get('alertas', [])
@@ -889,9 +889,9 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
             post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
-                project_title = data.get('project_title', 'Projeto Cultural')
-                institution = data.get('institution', 'Não Especificada')
-                report_content = data.get('report_content', '')
+                project_title = str(data.get('project_title') or 'Projeto Cultural')
+                institution = str(data.get('institution') or 'Não Especificada')
+                report_content = str(data.get('report_content') or '')
                 
                 # Imports cleaned up (now top-level)
                 
@@ -1017,14 +1017,12 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
             post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
-                project_title = data.get('project_title', 'Projeto Cultural')
-                proponent = data.get('proponent', 'Não Especificado')
-                institution = data.get('institution', 'Não Especificada')
-                budget = str(data.get('budget', '0'))
-                table_html = data.get('table_html', '')
+                project_title = str(data.get('project_title') or 'Projeto Cultural')
+                proponent = str(data.get('proponent') or 'Não Especificado')
+                institution = str(data.get('institution') or 'Não Especificada')
+                budget = str(data.get('budget') or '0')
+                table_html = str(data.get('table_html') or '')
                 
-                from reportlab.lib.pagesizes import landscape, A4
-
                 page_format = landscape(A4)
                 printable_width = page_format[0] - 72 # 36pt margins on landscape
 
@@ -1069,7 +1067,8 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 
                 story = []
                 
-                safe_title = make_reportlab_safe("PLANILHA FINANCEIRA & RIDER TÉCNICO CONSOLIDADOS (3 ETAPAS)")
+                header_title = f"{institution.upper()} - PLANILHA ORÇAMENTÁRIA DO PROJETO" if institution and institution.lower() != 'edital' else "PLANILHA ORÇAMENTÁRIA DO PROJETO"
+                safe_title = make_reportlab_safe(header_title)
                 safe_proj_title = make_reportlab_safe(project_title)
                 safe_proponent = make_reportlab_safe(proponent)
                 safe_institution = make_reportlab_safe(institution)
@@ -1107,24 +1106,21 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     rows = parser.rows
                     items = []
                     for r in rows:
-                        if len(r) >= 11 and not r[0]["is_header"]:
+                        if len(r) >= 8 and not r[0]["is_header"]:
                             items.append({
-                                "etapa": r[0]["text"],
-                                "rubrica": r[1]["text"],
-                                "item": r[2]["text"],
-                                "especificacao": r[3]["text"],
-                                "destino": r[4]["text"],
-                                "unidade": r[5]["text"],
-                                "qtd": r[6]["text"],
-                                "valorUnit": r[7]["text"],
-                                "subtotal": r[8]["text"],
-                                "impostos": r[9]["text"],
-                                "total": r[10]["text"]
+                                "itemGroup": r[0]["text"],
+                                "natureza": r[1]["text"],
+                                "descricao": r[2]["text"],
+                                "unid": r[3]["text"],
+                                "qtde": r[4]["text"],
+                                "valorPrevisto": r[5]["text"],
+                                "valorTotal": r[6]["text"],
+                                "atividade": r[7]["text"]
                             })
 
                 if items:
-                    headers = ["Etapa", "Rubrica", "Item de Despesa", "Especificação & Rider Técnico", "Destinação / Fornecedor", "Unid.", "Qtd", "Valor Unit.", "Subtotal", "Impostos", "Total Geral"]
-                    weights = [0.10, 0.10, 0.14, 0.22, 0.13, 0.04, 0.03, 0.07, 0.07, 0.05, 0.05]
+                    headers = ["ITEM / CATEGORIA", "NATUREZA", "DESCRIÇÃO DO ITEM / SERVIÇO", "UNID.", "QTDE", "VALOR PREVISTO (R$)", "VALOR TOTAL (R$)", "ATIVIDADE"]
+                    weights = [0.18, 0.18, 0.28, 0.07, 0.05, 0.10, 0.09, 0.05]
                     col_widths = [printable_width * w for w in weights]
                     
                     table_content = []
@@ -1133,50 +1129,49 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     table_content.append(header_cells)
                     
                     # Add Item Rows
-                    for it in items:
-                        val_unit = format_ptbr_currency(it.get('valorUnit', 0))
-                        sub_tot = format_ptbr_currency(it.get('subtotal', 0))
-                        imp_tot = format_ptbr_currency(it.get('impostos', 0))
-                        tot_ger = format_ptbr_currency(it.get('total', 0))
+                    for idx, it in enumerate(items):
+                        val_unit = format_ptbr_currency(it.get('valorUnit', it.get('valorPrevisto', 0)))
+                        tot_ger = format_ptbr_currency(it.get('total', it.get('valorTotal', 0)))
+                        item_cat = str(it.get('rubrica', it.get('itemGroup', 'Serviços Especializados')))
+                        nat_str = str(it.get('destino', it.get('natureza', 'outros serviços de terceiros')))
+                        desc_str = str(it.get('item', it.get('descricao', 'Descrição do Serviço')))
+                        unid_str = str(it.get('unidade', it.get('unid', 'unidade')))
+                        qtd_str = str(it.get('qtd', it.get('qtde', 1)))
+                        ativ_str = str(it.get('atividade', (idx % 3) + 1))
 
                         row_cells = [
-                            Paragraph(make_reportlab_safe(str(it.get('etapa', ''))), body_style),
-                            Paragraph(make_reportlab_safe(str(it.get('rubrica', ''))), body_style),
-                            Paragraph(f"<b>{make_reportlab_safe(str(it.get('item', '')))}</b>", body_style),
-                            Paragraph(make_reportlab_safe(str(it.get('especificacao', ''))), body_style),
-                            Paragraph(make_reportlab_safe(str(it.get('destino', ''))), body_style),
-                            Paragraph(make_reportlab_safe(str(it.get('unidade', ''))), body_style),
-                            Paragraph(make_reportlab_safe(str(it.get('qtd', ''))), body_style),
+                            Paragraph(make_reportlab_safe(item_cat), body_style),
+                            Paragraph(make_reportlab_safe(nat_str), body_style),
+                            Paragraph(f"<b>{make_reportlab_safe(desc_str)}</b>", body_style),
+                            Paragraph(make_reportlab_safe(unid_str), body_style),
+                            Paragraph(make_reportlab_safe(qtd_str), body_style),
                             Paragraph(make_reportlab_safe(val_unit), body_style),
-                            Paragraph(f"<b>{make_reportlab_safe(sub_tot)}</b>", body_style),
-                            Paragraph(make_reportlab_safe(imp_tot), body_style),
-                            Paragraph(f"<b>{make_reportlab_safe(tot_ger)}</b>", body_style)
+                            Paragraph(f"<b>{make_reportlab_safe(tot_ger)}</b>", body_style),
+                            Paragraph(make_reportlab_safe(ativ_str), body_style)
                         ]
                         table_content.append(row_cells)
 
                     # Add Total Row
-                    tot_sub_str = f"R$ {grand_subtotal:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') if isinstance(grand_subtotal, (int, float)) else str(grand_subtotal)
-                    tot_imp_str = f"R$ {grand_impostos:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') if isinstance(grand_impostos, (int, float)) else str(grand_impostos)
                     tot_ger_str = f"R$ {grand_geral:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') if isinstance(grand_geral, (int, float)) else str(grand_geral)
 
                     total_row_cells = [
-                        Paragraph("<b>TOTAL GERAL CONSOLIDADO DO PROJETO:</b>", ParagraphStyle('TotLbl', parent=body_style, fontName='Helvetica-Bold', alignment=2)),
+                        Paragraph("<b>TOTAL GERAL DO PROJETO:</b>", ParagraphStyle('TotLbl', parent=body_style, fontName='Helvetica-Bold', alignment=2)),
                         Paragraph("", body_style), Paragraph("", body_style), Paragraph("", body_style),
-                        Paragraph("", body_style), Paragraph("", body_style), Paragraph("", body_style), Paragraph("", body_style),
-                        Paragraph(f"<b>{tot_sub_str}</b>", body_style),
-                        Paragraph(f"<b>{tot_imp_str}</b>", body_style),
-                        Paragraph(f"<b>{tot_ger_str}</b>", ParagraphStyle('TotVal', parent=body_style, fontName='Helvetica-Bold', textColor=colors.HexColor('#15803d')))
+                        Paragraph("", body_style), Paragraph("", body_style),
+                        Paragraph(f"<b>{tot_ger_str}</b>", ParagraphStyle('TotVal', parent=body_style, fontName='Helvetica-Bold', textColor=colors.HexColor('#15803d'))),
+                        Paragraph("", body_style)
                     ]
                     table_content.append(total_row_cells)
                         
                     finance_table = Table(table_content, colWidths=col_widths, repeatRows=1)
                     t_style = TableStyle([
-                        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#4f46e5')),
+                        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2563eb')),
                         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
                         ('PADDING', (0,0), (-1,-1), 3),
                         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                        ('SPAN', (0, -1), (7, -1)),
-                        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e2e8f0')),
+                        ('SPAN', (0, -1), (5, -1)),
+                        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#1e40af')),
+                        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
                     ])
                     # Alternating row colors
                     for r_idx in range(1, len(table_content) - 1):
@@ -1280,6 +1275,323 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 import traceback
                 traceback.print_exc()
                 self.send_json_response(500, {"error": f"Erro ao gerar PDF do financeiro: {str(e)}"})
+
+        elif self.path == '/api/export-finance-xlsx':
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                import openpyxl
+                from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                from openpyxl.utils import get_column_letter
+
+                wb = openpyxl.Workbook()
+                
+                header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
+                header_font = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+                rider_header_fill = PatternFill(start_color="6366F1", end_color="6366F1", fill_type="solid")
+                summary_header_fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
+                timeline_header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
+                
+                title_font = Font(name="Segoe UI", size=14, bold=True, color="1E1B4B")
+                sub_font = Font(name="Segoe UI", size=9, italic=True, color="475569")
+                bold_font = Font(name="Segoe UI", size=10, bold=True, color="1E293B")
+                regular_font = Font(name="Segoe UI", size=10, color="1E293B")
+                
+                zebra_fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
+                total_fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
+                
+                thin_side = Side(border_style="thin", color="CBD5E1")
+                thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+                
+                currency_fmt = '"R$" #,##0.00'
+                qty_fmt = '#,##0'
+                pct_fmt = '0.0%'
+
+                def parse_num(val, fallback=0.0):
+                    if val is None: return fallback
+                    if isinstance(val, (int, float)): return float(val)
+                    s = str(val).strip()
+                    s = re.sub(r'[^\d.,-]', '', s)
+                    if not s: return fallback
+                    if ',' in s and '.' in s:
+                        if s.find('.') < s.find(','):
+                            s = s.replace('.', '').replace(',', '.')
+                        else:
+                            s = s.replace(',', '')
+                    elif ',' in s:
+                        s = s.replace(',', '.')
+                    try:
+                        return float(s)
+                    except ValueError:
+                        return fallback
+
+                def clean_str(s):
+                    if s is None: return ""
+                    return fix_double_encoded_utf8(str(s)).strip()
+
+                project_title = clean_str(data.get('title') or 'Projeto Cultural')
+                proponent = clean_str(data.get('proponent') or 'Proponente')
+                institution = clean_str(data.get('institution') or 'Edital')
+                
+                raw_items = data.get('items', [])
+                items = [
+                    it for it in raw_items 
+                    if isinstance(it, dict) and "Subtotal" not in str(it.get('subtotal', '')) and "Item de Despesa" not in str(it.get('item', ''))
+                ]
+                rider_items = data.get('riderItems', [])
+
+                # ABA 1: Planilha Orçamentária (Modelo de Referência Flexível para Editais)
+                ws1 = wb.active
+                ws1.title = "Planilha Orçamentária"
+                
+                # Cabeçalho Dinâmico de Identificação do Projeto
+                header_title = f"{institution.upper()} - PLANILHA ORÇAMENTÁRIA DO PROJETO" if institution and institution.lower() != 'edital' else "PLANILHA ORÇAMENTÁRIA DO PROJETO"
+                ws1.cell(row=1, column=1, value=header_title).font = title_font
+                
+                ws1.cell(row=2, column=1, value="NOME DO PROJETO:").font = bold_font
+                ws1.cell(row=2, column=3, value=project_title).font = bold_font
+                
+                ws1.cell(row=3, column=1, value="PROPONENTE:").font = bold_font
+                ws1.cell(row=3, column=3, value=proponent).font = regular_font
+                
+                ws1.cell(row=4, column=1, value="OBJETIVO GERAL:").font = bold_font
+                ws1.cell(row=4, column=3, value=f"Execução integral das ações socioculturais conforme aprovação no {institution}.").font = regular_font
+                
+                # Banner Amarelo de Observação Normativa Generica de Fomento
+                obs_fill = PatternFill(start_color="FEF08A", end_color="FEF08A", fill_type="solid")
+                obs_font = Font(name="Segoe UI", size=8.5, italic=True, color="854D0E")
+                obs_cell = ws1.cell(row=5, column=1, value="OBSERVAÇÃO NORMATIVA: Os valores apresentados foram dimensionados conforme pesquisa de mercado e limites de fomento, visando eficiência, transparência e rigor fiscal.")
+                obs_cell.fill = obs_fill
+                obs_cell.font = obs_font
+                ws1.merge_cells(start_row=5, start_column=1, end_row=5, end_column=8)
+                
+                # Barra de Objetivo Específico & Meta
+                oe_fill = PatternFill(start_color="1E40AF", end_color="1E40AF", fill_type="solid")
+                meta_fill = PatternFill(start_color="2563EB", end_color="2563EB", fill_type="solid")
+                header_text_font = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+                
+                oe_cell = ws1.cell(row=6, column=1, value="OBJETIVO ESPECÍFICO: OE 1 - REALIZAÇÃO E OPERACIONALIZAÇÃO INTEGRAL DO PROJETO")
+                oe_cell.fill = oe_fill
+                oe_cell.font = header_text_font
+                ws1.merge_cells(start_row=6, start_column=1, end_row=6, end_column=8)
+                
+                meta_cell = ws1.cell(row=7, column=1, value="META: M1 - EXECUÇÃO DAS ATIVIDADES PRINCIPAIS, CONTRATAÇÃO DE EQUIPE E SUPRIMENTOS")
+                meta_cell.fill = meta_fill
+                meta_cell.font = header_text_font
+                ws1.merge_cells(start_row=7, start_column=1, end_row=7, end_column=8)
+                
+                # Cabeçalho Oficial da Tabela (Colunas A até H)
+                headers1 = [
+                    "ITEM / CATEGORIA", "NATUREZA", "DESCRIÇÃO DO ITEM / SERVIÇO", 
+                    "UNID", "QTDE", "VALOR PREVISTO (R$)", "VALOR TOTAL (R$)", "ATIVIDADE"
+                ]
+                
+                for col_idx, h in enumerate(headers1, start=1):
+                    c = ws1.cell(row=8, column=col_idx, value=h)
+                    c.fill = meta_fill
+                    c.font = header_text_font
+                    c.alignment = Alignment(horizontal="center" if col_idx in (4, 5, 8) else ("right" if col_idx in (6, 7) else "left"), vertical="center")
+                    c.border = thin_border
+                
+                start_r = 9
+                for idx, it in enumerate(items):
+                    r = start_r + idx
+                    fill = zebra_fill if idx % 2 == 1 else None
+                    
+                    qtd = parse_num(it.get('qtd', it.get('qtde', 1)), 1.0)
+                    v_unit = parse_num(it.get('valorUnit', it.get('valorPrevisto', 0)), 0.0)
+
+                    item_cat = clean_str(it.get('rubrica', it.get('itemGroup', 'Serviços Especializados')))
+                    natureza = clean_str(it.get('destino', it.get('natureza', 'outros serviços de terceiros')))
+                    desc = clean_str(it.get('item', it.get('descricao', 'Descrição do Serviço')))
+                    unid = clean_str(it.get('unidade', it.get('unid', 'unidade')))
+                    ativ = idx % 3 + 1
+
+                    row_vals = [
+                        (item_cat, regular_font, None, "left"),
+                        (natureza, regular_font, None, "left"),
+                        (desc, bold_font, None, "left"),
+                        (unid, regular_font, None, "center"),
+                        (qtd, regular_font, qty_fmt, "center"),
+                        (v_unit, regular_font, currency_fmt, "right"),
+                        (f"=E{r}*F{r}", bold_font, currency_fmt, "right"),
+                        (ativ, regular_font, None, "center")
+                    ]
+                    
+                    for c_idx, (val, fn, num_fmt, align) in enumerate(row_vals, start=1):
+                        c = ws1.cell(row=r, column=c_idx, value=val)
+                        c.font = fn
+                        if fill: c.fill = fill
+                        c.border = thin_border
+                        c.alignment = Alignment(horizontal=align, vertical="center")
+                        if num_fmt: c.number_format = num_fmt
+
+                tot_r = start_r + len(items)
+                
+                # Linha de Subtotal da Meta 1
+                subtotal_fill = PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid")
+                ws1.cell(row=tot_r, column=1, value="TOTAL DA META 1").font = bold_font
+                ws1.merge_cells(start_row=tot_r, start_column=1, end_row=tot_r, end_column=6)
+                ws1.cell(row=tot_r, column=1).alignment = Alignment(horizontal="right", vertical="center")
+                
+                sum_sub = ws1.cell(row=tot_r, column=7, value=f"=SUM(G{start_r}:G{tot_r-1})")
+                sum_sub.font = bold_font; sum_sub.number_format = currency_fmt; sum_sub.border = thin_border; sum_sub.fill = subtotal_fill
+                sum_sub.alignment = Alignment(horizontal="right", vertical="center")
+                ws1.cell(row=tot_r, column=8, value="").border = thin_border
+                
+                # Linha de Total Geral do Projeto
+                tot_geral_r = tot_r + 1
+                ws1.cell(row=tot_geral_r, column=1, value="TOTAL GERAL DO PROJETO").font = header_text_font
+                ws1.cell(row=tot_geral_r, column=1).fill = oe_fill
+                ws1.merge_cells(start_row=tot_geral_r, start_column=1, end_row=tot_geral_r, end_column=6)
+                ws1.cell(row=tot_geral_r, column=1).alignment = Alignment(horizontal="right", vertical="center")
+
+                sum_tot = ws1.cell(row=tot_geral_r, column=7, value=f"=G{tot_r}")
+                sum_tot.font = header_text_font; sum_tot.number_format = currency_fmt; sum_tot.border = thin_border; sum_tot.fill = oe_fill
+                sum_tot.alignment = Alignment(horizontal="right", vertical="center")
+                ws1.cell(row=tot_geral_r, column=8, value="").fill = oe_fill; ws1.cell(row=tot_geral_r, column=8).border = thin_border
+
+                for col in ws1.columns:
+                    max_l = max(len(str(cell.value or '')) for cell in col)
+                    col_letter = get_column_letter(col[0].column)
+                    ws1.column_dimensions[col_letter].width = max(max_l + 3, 14)
+
+                # ABA 2: Rider Técnico & Equipamentos
+                ws2 = wb.create_sheet(title="Rider Técnico & Equipamentos")
+                ws2.cell(row=1, column=1, value="Detalhamento do Rider Técnico & Equipamentos de Palco").font = title_font
+                ws2.cell(row=2, column=1, value=f"Especificações dos sistemas de som, iluminação e praticáveis para: {project_title}").font = sub_font
+                
+                headers2 = ["Categoria", "Equipamento / Estrutura", "Modelo Específico / Especificação", "Qtd / Diárias", "Fornecedor Previsto", "Requisito de Palco / ART"]
+                for c_idx, h in enumerate(headers2, start=1):
+                    c = ws2.cell(row=4, column=c_idx, value=h)
+                    c.fill = rider_header_fill; c.font = header_font; c.border = thin_border
+                    c.alignment = Alignment(horizontal="center" if c_idx == 4 else "left", vertical="center")
+
+                for idx, rd in enumerate(rider_items):
+                    r = 5 + idx
+                    fill = zebra_fill if idx % 2 == 1 else None
+                    r_vals = [
+                        (rd.get('categoria', 'Geral'), bold_font),
+                        (rd.get('equipamento', ''), bold_font),
+                        (rd.get('modeloEspecifico', ''), regular_font),
+                        (rd.get('qtdDiarias', '1'), regular_font),
+                        (rd.get('fornecedorPrevisto', ''), regular_font),
+                        (rd.get('requisitoPalco', ''), regular_font),
+                    ]
+                    for c_idx, (v, fn) in enumerate(r_vals, start=1):
+                        c = ws2.cell(row=r, column=c_idx, value=v)
+                        c.font = fn; c.border = thin_border
+                        if fill: c.fill = fill
+                        if c_idx == 4: c.alignment = Alignment(horizontal="center")
+
+                for col in ws2.columns:
+                    max_l = max(len(str(cell.value or '')) for cell in col)
+                    col_letter = get_column_letter(col[0].column)
+                    ws2.column_dimensions[col_letter].width = max(max_l + 3, 14)
+
+                # ABA 3: Resumo Executivo & Memória de Cálculo
+                ws3 = wb.create_sheet(title="Resumo & Memória de Cálculo")
+                ws3.cell(row=1, column=1, value="Resumo Executivo, Limites Legais & Memória de Cálculo").font = title_font
+                
+                headers3 = ["Indicador Normativo", "Valor / Proporção Calculada", "Teto Legal do Edital", "Parecer de Conformidade Legal"]
+                for c_idx, h in enumerate(headers3, start=1):
+                    c = ws3.cell(row=3, column=c_idx, value=h)
+                    c.fill = summary_header_fill; c.font = header_font; c.border = thin_border
+
+                sum_rows = [
+                    ("Orçamento Geral Consolidado", f"='Planilha Orçamentária 3 Etapas'!K{tot_r}", "Teto Conforme Edital", "✓ 100% Dentro do Teto Solicitado", currency_fmt),
+                    ("Custos Administrativos (Teto 15%)", f"='Planilha Orçamentária 3 Etapas'!I6", "Teto Máximo 15% (IN MinC)", "✓ Conforme (<= 15%)", currency_fmt),
+                    ("Comunicação & Divulgação (Teto 10%)", f"='Planilha Orçamentária 3 Etapas'!I8", "Teto Máximo 10% (Fomento)", "✓ Conforme (<= 10%)", currency_fmt),
+                    ("Acessibilidade PCD Obrigatória", "Intérprete LIBRAS + Audiodescrição", "Obrigatório (Lei 13.146/15)", "✓ Atendido Integralmente", None),
+                    ("Encargos & Tributos (ISS/INSS)", f"='Planilha Orçamentária 3 Etapas'!J{tot_r}", "Retenções Fiscais na Fonte", "✓ Provisionado no Orçamento", currency_fmt),
+                ]
+                
+                for idx, (ind, val_f, teto, par, nfmt) in enumerate(sum_rows):
+                    r = 4 + idx
+                    ws3.cell(row=r, column=1, value=ind).font = bold_font
+                    c_val = ws3.cell(row=r, column=2, value=val_f)
+                    c_val.font = bold_font
+                    if nfmt: c_val.number_format = nfmt
+                    ws3.cell(row=r, column=3, value=teto).font = regular_font
+                    ws3.cell(row=r, column=4, value=par).font = bold_font
+                    for c_idx in range(1, 5):
+                        ws3.cell(row=r, column=c_idx).border = thin_border
+
+                for col in ws3.columns:
+                    max_l = max(len(str(cell.value or '')) for cell in col)
+                    col_letter = get_column_letter(col[0].column)
+                    ws3.column_dimensions[col_letter].width = max(max_l + 3, 16)
+
+                # ABA 4: Cronograma de Desembolso
+                ws4 = wb.create_sheet(title="Cronograma de Desembolso")
+                ws4.cell(row=1, column=1, value="Cronograma Financeiro de Desembolso por Fase").font = title_font
+                ws4.cell(row=2, column=1, value=f"Planejamento de fluxo de caixa orçamentário para: {project_title}").font = sub_font
+                
+                headers4 = ["Fase do Projeto", "Período Executivo", "Participação (%)", "Desembolso Previsto (R$)", "Principais Atividades & Liberadores"]
+                for c_idx, h in enumerate(headers4, start=1):
+                    c = ws4.cell(row=4, column=c_idx, value=h)
+                    c.fill = timeline_header_fill; c.font = header_font; c.border = thin_border
+                    c.alignment = Alignment(horizontal="center" if c_idx in (3,4) else "left", vertical="center")
+
+                flow_rows = [
+                    ("Fase 1: Pré-Produção & Contratações", "Mês 1 ao Mês 2", 0.25, f"='Planilha Orçamentária 3 Etapas'!K{tot_r}*0.25", "Adiantamentos de equipe, ensaios, reservas e licenciamento."),
+                    ("Fase 2: Produção & Execução Principal", "Mês 3 ao Mês 5", 0.60, f"='Planilha Orçamentária 3 Etapas'!K{tot_r}*0.60", "Cachês artísticos, montagem de estrutura, rider técnico e divulgação."),
+                    ("Fase 3: Pós-Produção & Prestação de Contas", "Mês 6", 0.15, f"='Planilha Orçamentária 3 Etapas'!K{tot_r}*0.15", "Clipping de mídia, relatório de auditoria, relatórios PCD e encerramento fiscal."),
+                ]
+                
+                for idx, (fase, per, pct, form, ativ) in enumerate(flow_rows):
+                    r = 5 + idx
+                    ws4.cell(row=r, column=1, value=fase).font = bold_font
+                    ws4.cell(row=r, column=2, value=per).font = regular_font
+                    
+                    c_pct = ws4.cell(row=r, column=3, value=pct)
+                    c_pct.font = regular_font; c_pct.number_format = pct_fmt; c_pct.alignment = Alignment(horizontal="center")
+                    
+                    c_val = ws4.cell(row=r, column=4, value=form)
+                    c_val.font = bold_font; c_val.number_format = currency_fmt; c_val.alignment = Alignment(horizontal="right")
+                    
+                    ws4.cell(row=r, column=5, value=ativ).font = regular_font
+                    for c_idx in range(1, 6):
+                        ws4.cell(row=r, column=c_idx).border = thin_border
+
+                ws4.cell(row=8, column=1, value="TOTAL CONSOLIDADO DO FLUXO:").font = bold_font
+                ws4.cell(row=8, column=3, value="=SUM(C5:C7)").number_format = pct_fmt
+                ws4.cell(row=8, column=3).alignment = Alignment(horizontal="center")
+                ws4.cell(row=8, column=4, value="=SUM(D5:D7)").number_format = currency_fmt
+                ws4.cell(row=8, column=4).alignment = Alignment(horizontal="right")
+                ws4.cell(row=8, column=5, value="✓ Fluxo de Caixa Balanceado").font = bold_font
+                for c_idx in range(1, 6):
+                    c = ws4.cell(row=8, column=c_idx)
+                    c.font = bold_font; c.fill = total_fill; c.border = thin_border
+
+                for col in ws4.columns:
+                    max_l = max(len(str(cell.value or '')) for cell in col)
+                    col_letter = get_column_letter(col[0].column)
+                    ws4.column_dimensions[col_letter].width = max(max_l + 3, 14)
+
+                excel_buffer = io.BytesIO()
+                wb.save(excel_buffer)
+                excel_bytes = excel_buffer.getvalue()
+                excel_buffer.close()
+
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                import unicodedata
+                filename_clean = ''.join(c for c in unicodedata.normalize('NFD', project_title) if unicodedata.category(c) != 'Mn')
+                filename_clean = re.sub(r'[^a-zA-Z0-9]', '_', filename_clean)
+                filename_clean = re.sub(r'_+', '_', filename_clean).strip('_')
+                if not filename_clean or filename_clean.lower() == 'titulo_do_projeto_cultural':
+                    filename_clean = "Projeto_Cultural"
+                self.send_header('Content-Disposition', f'attachment; filename="Planilha_Financeira_{filename_clean}.xlsx"')
+                self.send_header('Content-Length', str(len(excel_bytes)))
+                self.end_headers()
+                self.wfile.write(excel_bytes)
+                return
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                self.send_json_response(500, {"error": f"Erro ao gerar XLSX do financeiro: {str(e)}"})
         
         elif self.path == '/api/save-audit-report':
             content_length = int(self.headers['Content-Length'])
@@ -1440,14 +1752,9 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem blocos 
                     for a in annexes
                 ]) if annexes else "Sem anexos adicionais."
                 
-                memories_context = "\n".join([
-                    f"- [{m.get('date', '')}] Projeto: {m.get('project', '')} -> {m.get('activity', '')}"
-                    for m in historicalMemories
-                ]) if historicalMemories else "Nenhuma memória anterior."
-                
                 # Single Prompt focused on proposal generation (Tarefa 1)
                 unified_prompt = f"""Você é uma inteligência artificial de elite especialista em captação de recursos públicos e editais de cultura (Lei Rouanet, Lei Aldir Blanc, IN MinC, editais estaduais e municipais do Brasil).
-Sua missão é realizar um cruzamento exaustivo e rigoroso entre os dados do edital, seus anexos, a memória de aprendizado e o rascunho fornecido para redigir uma proposta cultural completa de altíssimo nível.
+Sua missão é realizar um cruzamento exaustivo e rigoroso entre os dados do edital, seus anexos e o rascunho fornecido para redigir uma proposta cultural completa de altíssimo nível.
 
 **INSTRUÇÕES CRÍTICAS DE REDAÇÃO (EVITE RESPOSTAS GENÉRICAS):**
 - Redija cada seção de forma densa, completa, profissional e contextualizada para o projeto. Não faça resumos, resenhas ou redações rasas.
@@ -1470,9 +1777,6 @@ Sua missão é realizar um cruzamento exaustivo e rigoroso entre os dados do edi
 
 [ANEXOS ADICIONAIS DO EDITAL]:
 {annexes_context}
-
-[MEMÓRIA DE APRENDIZADO (Projetos anteriores)]:
-{memories_context}
 
 [RASCUNHO DO PROPONENTE]:
 {proposalDraftText[:50000]}

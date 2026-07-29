@@ -209,7 +209,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     loadSavedKey();
     restoreWorkspaceState();
-    setupTabSwitching();
     setupEditorToolbar();
     setupCoverSync();
     setupFileHandlers();
@@ -219,6 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupRevisor();
     setupAuditor();
     setupBiblioteca();
+    setupTabSwitching();
 
     // Configuração do botão Limpar Contexto no Head
     const btnClearContext = document.getElementById('btn-clear-all-context');
@@ -617,6 +617,12 @@ function restoreWorkspaceState() {
             workspaceState.documentContent = Object.assign(defaultDocContent, parsed.documentContent || {});
             workspaceState.cover = Object.assign(defaultCover, parsed.cover || {});
 
+            if (parsed.requiredSections) {
+                workspaceState.requiredSections = parsed.requiredSections;
+            } else {
+                workspaceState.requiredSections = null;
+            }
+
             if (!workspaceState.historicalMemories) {
                 workspaceState.historicalMemories = [];
             }
@@ -626,7 +632,7 @@ function restoreWorkspaceState() {
             if (!workspaceState.proposalRedoStack) {
                 workspaceState.proposalRedoStack = [];
             }
-            
+
             // Sincronizar globais para compatibilidade
             window._proposalHistoryStack = workspaceState.proposalHistoryStack.map(item => item.content || item);
             window._proposalRedoStack = workspaceState.proposalRedoStack.map(item => item.content || item);
@@ -657,30 +663,42 @@ function addHistoricalMemory(activity) {
 // ==========================================
 function setupTabSwitching() {
     const tabButtons = document.querySelectorAll('.w-tab-btn');
+    const tabPanes = document.querySelectorAll('.w-tab-pane');
+
+    function activateTab(targetTab) {
+        if (!targetTab) return;
+        workspaceState.currentTab = targetTab;
+        saveWorkspaceState();
+
+        tabButtons.forEach(b => {
+            const isMatch = b.getAttribute('data-tab') === targetTab;
+            b.classList.toggle('active', isMatch);
+        });
+
+        tabPanes.forEach(pane => {
+            const isTarget = (pane.id === `pane-${targetTab}`);
+            pane.classList.toggle('active', isTarget);
+            pane.style.display = isTarget ? 'block' : 'none';
+        });
+
+        if (targetTab === 'biblioteca') {
+            if (typeof renderLibrary === 'function') renderLibrary();
+        } else if (targetTab === 'revisor') {
+            if (typeof updateRevisorPanelUI === 'function') updateRevisorPanelUI();
+        }
+    }
+
     tabButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+            if (e && e.preventDefault) e.preventDefault();
             const targetTab = btn.getAttribute('data-tab');
-            workspaceState.currentTab = targetTab;
-            saveWorkspaceState();
-
-            tabButtons.forEach(b => b.classList.toggle('active', b === btn));
-            document.querySelectorAll('.w-tab-pane').forEach(pane => {
-                pane.classList.toggle('active', pane.id === `pane-${targetTab}`);
-            });
-
-            if (targetTab === 'biblioteca') {
-                renderLibrary();
-            }
+            activateTab(targetTab);
         });
     });
 
     // Set initially active tab
     const initialTab = workspaceState.currentTab || 'setup';
-    tabButtons.forEach(btn => {
-        if (btn.getAttribute('data-tab') === initialTab) {
-            btn.click();
-        }
-    });
+    activateTab(initialTab);
 }
 
 // ==========================================
@@ -789,13 +807,11 @@ function setupEditorToolbar() {
         btnClearDraft.addEventListener('click', () => {
             if (confirm("Tem certeza que deseja limpar as seções do documento? Os dados de capa serão mantidos.")) {
                 workspaceState.documentContent = {
-                    justificativa: '',
-                    objetivos: '',
-                    metodologia: '',
-                    cronograma: '',
-                    orcamento: '',
-                    acessibilidade: ''
+                    justificativa: '', objetivos: '', metodologia: '', cronograma: '', orcamento: '',
+                    acessibilidade: '', publico: '', contrapartida: '', comunicacao: '', ficha_tecnica: '',
+                    monitoramento: '', compliance: '', sustentabilidade: '', rider: ''
                 };
+                workspaceState.requiredSections = null;
                 saveWorkspaceState();
                 syncEditorContentToDOM();
                 updatePlaceholderStates();
@@ -861,20 +877,30 @@ function syncDOMContentToState() {
 }
 
 function syncEditorContentToDOM() {
-    document.getElementById('sec-justificativa').innerHTML = workspaceState.documentContent.justificativa || placeholders[0];
-    document.getElementById('sec-objetivos').innerHTML = workspaceState.documentContent.objetivos || placeholders[1];
-    document.getElementById('sec-metodologia').innerHTML = workspaceState.documentContent.metodologia || placeholders[2];
-    document.getElementById('sec-cronograma').innerHTML = workspaceState.documentContent.cronograma || placeholders[3];
-    document.getElementById('sec-orcamento').innerHTML = workspaceState.documentContent.orcamento || placeholders[4];
-    document.getElementById('sec-acessibilidade').innerHTML = workspaceState.documentContent.acessibilidade || placeholders[5];
-    document.getElementById('sec-publico').innerHTML = workspaceState.documentContent.publico || placeholders[6];
-    document.getElementById('sec-contrapartida').innerHTML = workspaceState.documentContent.contrapartida || placeholders[7];
-    document.getElementById('sec-comunicacao').innerHTML = workspaceState.documentContent.comunicacao || placeholders[8];
-    document.getElementById('sec-ficha_tecnica').innerHTML = workspaceState.documentContent.ficha_tecnica || placeholders[9];
-    document.getElementById('sec-monitoramento').innerHTML = workspaceState.documentContent.monitoramento || placeholders[10];
-    document.getElementById('sec-compliance').innerHTML = workspaceState.documentContent.compliance || placeholders[11];
-    document.getElementById('sec-sustentabilidade').innerHTML = workspaceState.documentContent.sustentabilidade || placeholders[12];
-    document.getElementById('sec-rider').innerHTML = workspaceState.documentContent.rider || placeholders[13];
+    const sectionsList = [
+        'justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento',
+        'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica',
+        'monitoramento', 'compliance', 'sustentabilidade', 'rider'
+    ];
+
+    sectionsList.forEach((secKey, idx) => {
+        const el = document.getElementById(`sec-${secKey}`);
+        if (!el) return;
+
+        const content = workspaceState.documentContent[secKey];
+        el.innerHTML = content || placeholders[idx];
+
+        const sectionContainer = el.closest('.abnt-section');
+        if (sectionContainer) {
+            let shouldShow = true;
+            if (workspaceState.requiredSections && Array.isArray(workspaceState.requiredSections) && workspaceState.requiredSections.length > 0) {
+                const isRequired = workspaceState.requiredSections.includes(secKey);
+                const hasCustomContent = content && content.trim() !== '' && !placeholders.some(p => p.trim() === content.trim());
+                shouldShow = isRequired || hasCustomContent;
+            }
+            sectionContainer.style.display = shouldShow ? 'block' : 'none';
+        }
+    });
 }
 
 function updatePlaceholderStates() {
@@ -1416,10 +1442,6 @@ function getRelevantAlertsAndAdjustments(sectionId) {
 }
 
 async function callGeminiToComplementSection(sectionId, currentContent, relevantIssues, extraInstrucoes, stream = true) {
-    const memoriesContext = (workspaceState.historicalMemories && workspaceState.historicalMemories.length > 0)
-        ? workspaceState.historicalMemories.map(m => `- [${m.date}] Projeto: ${m.project} -> ${m.activity}`).join('\n')
-        : "Nenhuma memória anterior.";
-
     const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
         ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : ''}`).join('\n---\n')
         : "Nenhum anexo extra.";
@@ -1477,9 +1499,6 @@ async function callGeminiToComplementSection(sectionId, currentContent, relevant
     [ANEXOS ADICIONAIS DO EDITAL]:
     ${annexesContext}
     
-    [MEMÓRIA DE APRENDIZADO (PROJETOS ANTERIORES)]:
-    ${memoriesContext}
-    
     ${crossRefContext}
     
     [DIRETRIZES ADICIONAIS DO PROPONENTE]:
@@ -1496,10 +1515,6 @@ async function runChainedSequentialGeneration(extraInstrucoes = "", webSearchCon
 }
 
 async function callGeminiForSectionChained(sectionId, extraInstrucoes = "", webSearchContext = "", stream = true) {
-    const memoriesContext = (workspaceState.historicalMemories && workspaceState.historicalMemories.length > 0)
-        ? workspaceState.historicalMemories.map(m => `- [${m.date}] Projeto: ${m.project} -> ${m.activity}`).join('\n')
-        : "Nenhuma memória anterior.";
-
     const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
         ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : ''}`).join('\n---\n')
         : "Nenhum anexo extra.";
@@ -1558,9 +1573,6 @@ async function callGeminiForSectionChained(sectionId, extraInstrucoes = "", webS
     [ANEXOS ADICIONAIS DO EDITAL]:
     ${annexesContext}
     
-    [MEMÓRIA DE APRENDIZADO (PROJETOS ANTERIORES)]:
-    ${memoriesContext}
-    
     [PESQUISA WEB DO EDITAL]:
     ${webSearchContext || "Nenhuma informação extra."}
     
@@ -1604,7 +1616,10 @@ async function generateBasicProposal() {
 
         showToast(`⚡ [Ingestor] Identificadas ${requiredSections.length} seções exigidas no edital: ${requiredSections.map(s => s.toUpperCase()).join(', ')}. Iniciando redação completa...`, "info");
 
-        // 2. Limpar seções do editor que NÃO são exigidas no edital
+        // 2. Definir seções exigidas e ocultar/limpar seções que NÃO são exigidas no edital
+        workspaceState.requiredSections = requiredSections;
+        saveWorkspaceState();
+
         const allSections = [
             'justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento',
             'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica',
@@ -1618,6 +1633,7 @@ async function generateBasicProposal() {
                 if (el) el.innerHTML = "";
             }
         });
+        syncEditorContentToDOM();
 
         // 3. Redigir cada seção exigida com profundidade e rigor total (sem resumos ou respostas genéricas)
         for (let i = 0; i < requiredSections.length; i++) {
@@ -2228,7 +2244,7 @@ async function sendRedatorChatMessage(userText) {
     if (!workspaceState.redatorChatHistory) workspaceState.redatorChatHistory = [];
 
     const messagesContainer = document.getElementById('redator-chat-messages');
-    
+
     // Append User Message
     if (messagesContainer) {
         const userDiv = document.createElement('div');
@@ -2260,7 +2276,7 @@ async function sendRedatorChatMessage(userText) {
         let chatMemoryContext = "";
         if (workspaceState.redatorChatHistory && workspaceState.redatorChatHistory.length > 1) {
             const pastTurns = workspaceState.redatorChatHistory.slice(0, -1).slice(-8);
-            chatMemoryContext = pastTurns.map(m => 
+            chatMemoryContext = pastTurns.map(m =>
                 `- ${m.sender === 'user' ? 'Usuário' : 'Assistente'}: ${m.text}`
             ).join('\n');
         }
@@ -2397,7 +2413,7 @@ function setupFinalizacaoTab() {
 function pushProposalHistoryState(actionLabel = "Versão Anterior") {
     if (!workspaceState.proposalHistoryStack) workspaceState.proposalHistoryStack = [];
     if (!workspaceState.proposalRedoStack) workspaceState.proposalRedoStack = [];
-    
+
     if (workspaceState && workspaceState.documentContent) {
         const snapshot = JSON.parse(JSON.stringify(workspaceState.documentContent));
         workspaceState.proposalHistoryStack.push({
@@ -2408,11 +2424,11 @@ function pushProposalHistoryState(actionLabel = "Versão Anterior") {
         if (workspaceState.proposalHistoryStack.length > 50) workspaceState.proposalHistoryStack.shift();
         // Limpar pilha de refazer em nova ação do editor
         workspaceState.proposalRedoStack = [];
-        
+
         // Sincronizar globais para retrocompatibilidade
         window._proposalHistoryStack = workspaceState.proposalHistoryStack.map(item => item.content || item);
         window._proposalRedoStack = [];
-        
+
         saveWorkspaceState();
         updateHistoryButtonsUI();
     }
@@ -2421,7 +2437,7 @@ function pushProposalHistoryState(actionLabel = "Versão Anterior") {
 function updateHistoryButtonsUI() {
     const historyStack = workspaceState.proposalHistoryStack || [];
     const redoStack = workspaceState.proposalRedoStack || [];
-    
+
     const btnUndo = document.getElementById('btn-undo-proposal');
     if (btnUndo) {
         btnUndo.textContent = historyStack.length > 0 ? `⏮️ Versão Anterior (${historyStack.length})` : `⏮️ Versão Anterior`;
@@ -2453,11 +2469,11 @@ function undoProposalVersion() {
     const previousEntry = historyStack.pop();
     const previousState = previousEntry.content || previousEntry;
     workspaceState.documentContent = previousState;
-    
+
     // Atualizar globais
     window._proposalHistoryStack = historyStack.map(item => item.content || item);
     window._proposalRedoStack = workspaceState.proposalRedoStack.map(item => item.content || item);
-    
+
     saveWorkspaceState();
     syncEditorContentToDOM();
     updatePlaceholderStates();
@@ -2483,11 +2499,11 @@ function redoProposalVersion() {
     const nextEntry = redoStack.pop();
     const nextState = nextEntry.content || nextEntry;
     workspaceState.documentContent = nextState;
-    
+
     // Atualizar globais
     window._proposalHistoryStack = workspaceState.proposalHistoryStack.map(item => item.content || item);
     window._proposalRedoStack = redoStack.map(item => item.content || item);
-    
+
     saveWorkspaceState();
     syncEditorContentToDOM();
     updatePlaceholderStates();
@@ -2628,10 +2644,9 @@ function getSimulatedFullRedaction(extraInstrucoes) {
                 objetivos: `<p><strong>Objetivo Geral:</strong> Realizar o projeto cultural "${title}" visando democratizar o acesso à cultura e fortalecer o circuito artístico regional de ${city}.</p><p><strong>Objetivos Específicos:</strong></p><ul><li>Promover 5 apresentações artísticas gratuitas em espaços públicos;</li><li>Realizar 3 oficinas de capacitação técnica com 20 vagas cada;</li><li>Beneficiar diretamente mais de 600 espectadores e participantes;</li><li>Contratar no mínimo 70% de mão de obra artística e técnica local;</li><li>Gerar material de registro audiovisual para acervo público.</li></ul>`,
                 metodologia: `<p>A execução do projeto obedecerá a três fases estruturadas:</p><p><strong>1. Pré-produção (Mês 1-2):</strong> Reuniões de alinhamento, curadoria artística, contratação de fornecedores, solicitação de alvarás, inscrições para oficinas e campanha de divulgação.</p><p><strong>2. Execução (Mês 3-5):</strong> Desenvolvimento das oficinas formativas, montagem de estrutura física e sonora, realização do circuito de apresentações artísticas em praças e espaços públicos municipais.</p><p><strong>3. Pós-produção (Mês 6):</strong> Desmobilização das equipes, compilação de relatórios, registro documental, clipping de imprensa e envio da prestação de contas ao órgão de fomento.</p>`,
                 cronograma: `<table style="width:100%; border-collapse: collapse; font-size: 10pt;"><tr style="background:#f1f5f9;"><th style="border:1px solid #ccc; padding:6px;">Atividade</th><th style="border:1px solid #ccc; padding:6px;">Mês 1</th><th style="border:1px solid #ccc; padding:6px;">Mês 2</th><th style="border:1px solid #ccc; padding:6px;">Mês 3</th><th style="border:1px solid #ccc; padding:6px;">Mês 4</th><th style="border:1px solid #ccc; padding:6px;">Mês 5</th><th style="border:1px solid #ccc; padding:6px;">Mês 6</th></tr><tr><td style="border:1px solid #ccc; padding:6px;">Planejamento e equipe</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Contratações</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Divulgação e inscrições</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Oficinas Formativas</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Circuito de Eventos</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px;"></td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Prestação de Contas</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td></tr></table>`,
-                orcamento: `<table style="width:100%; border-collapse: collapse; font-size: 10pt;"><tr style="background:#f1f5f9;"><th style="border:1px solid #ccc; padding:6px;">Rubrica</th><th style="border:1px solid #ccc; padding:6px;">Qtd</th><th style="border:1px solid #ccc; padding:6px;">Unid.</th><th style="border:1px solid #ccc; padding:6px;">Valor Unit.</th><th style="border:1px solid #ccc; padding:6px;">Total</th></tr><tr><td style="border:1px solid #ccc; padding:6px;">Coordenação de Produção</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">6</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">meses</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.35 / 6).toFixed(2)}</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.35).toFixed(2)}</td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Cachê de Artistas</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">5</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">eventos</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.4 / 5).toFixed(2)}</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.4).toFixed(2)}</td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Taxa Administrativa (15%)</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">1</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">verba</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.15).toFixed(2)}</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.15).toFixed(2)}</td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Divulgação e Mídias (10%)</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">1</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">verba</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.1).toFixed(2)}</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.1).toFixed(2)}</td></tr><tr style="font-weight:bold; background:#f1f5f9;"><td style="border:1px solid #ccc; padding:6px;">TOTAL GERAL</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; text-align:right;">R$ ${Number(budget).toFixed(2)}</td></tr></table>`,
-                acessibilidade: `<p><strong>Medidas de Acessibilidade PCD:</strong></p><ul><li><strong>Sensorial:</strong> Intérprete de Libras em 100% dos eventos presenciais e audiodescrição nos materiais de divulgação em vídeo.</li><li><strong>Física:</strong> Eventos realizados em locais com rampas de acesso, banheiros adaptados e circulação desimpedida.</li><li><strong>Comunicacional:</strong> Materiais de divulgação em formato acessível (fontes legíveis, contraste adequado).</li></ul><p><strong>Contrapartida Social:</strong></p><ul><li>100% dos ingressos e atividades gratuitos;</li><li>Reserva de 20% das vagas formativas para beneficiários do CadÚnico;</li><li>Aplicação de cotas raciais/indígenas conforme normativa vigente.</li></ul>`
+                orcamento: `<table style="width:100%; border-collapse: collapse; font-size: 10pt;"><tr style="background:#f1f5f9;"><th style="border:1px solid #ccc; padding:6px;">Rubrica</th><th style="border:1px solid #ccc; padding:6px;">Qtd</th><th style="border:1px solid #ccc; padding:6px;">Unid.</th><th style="border:1px solid #ccc; padding:6px;">Valor Unit.</th><th style="border:1px solid #ccc; padding:6px;">Total</th></tr><tr><td style="border:1px solid #ccc; padding:6px;">Coordenação de Produção</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">6</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">meses</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.35 / 6).toFixed(2)}</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.35).toFixed(2)}</td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Cachê de Artistas</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">5</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">eventos</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.4 / 5).toFixed(2)}</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.4).toFixed(2)}</td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Taxa Administrativa (15%)</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">1</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">verba</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.15).toFixed(2)}</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.15).toFixed(2)}</td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Divulgação e Mídias (10%)</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">1</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">verba</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.10).toFixed(2)}</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.10).toFixed(2)}</td></tr></table>`
             });
-        }, 1500);
+        });
     });
 }
 
@@ -2639,10 +2654,6 @@ async function callGeminiForRedator(section, promptText, webSearchContext = "") 
     if (!workspaceState.editalProfile && workspaceState.editalRefText && typeof ensureEditalProfile === 'function') {
         await ensureEditalProfile();
     }
-
-    const memoriesContext = (workspaceState.historicalMemories && workspaceState.historicalMemories.length > 0)
-        ? workspaceState.historicalMemories.map(m => `- [${m.date}] Projeto: ${m.project} -> ${m.activity}`).join('\n')
-        : "Nenhuma memória anterior.";
 
     const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
         ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : ''}`).join('\n---\n')
@@ -2680,6 +2691,9 @@ async function callGeminiForRedator(section, promptText, webSearchContext = "") 
     const editalText = filterRelevantEditalText(workspaceState.editalRefText || "", section);
     const draftText = workspaceState.proposalDraftText || "";
     const editalProfileContext = getEditalProfilePromptContext();
+    const memoriesContext = workspaceState.historicalMemories && workspaceState.historicalMemories.length > 0
+        ? workspaceState.historicalMemories.map(m => `- [${m.date}] ${m.activity}`).join('\n')
+        : "Nenhuma memória anterior.";
 
     const prompt = `Você é o Agente Redator Cultural e Escritor de Projetos Sênior.
     Sua missão é realizar uma ANÁLISE PROFUNDA e escrever ou otimizar a seção "${section.toUpperCase()}" do projeto cultural para que fique perfeita e totalmente aderente ao edital.
@@ -2967,7 +2981,7 @@ function getSimulatedRedatorText(section, extraPrompt) {
 <p><strong>Logística e Camarim:</strong> Espaço reservado com iluminação adequada, pontos de tomada 110V/220V e acessibilidade garantida para a equipe e artistas.</p>`;
                     justificativa = "Detalhamento de infraestrutura de áudio, iluminação e logística de camarim.";
                     break;
-                
+
                 default:
                     response = `<h3>Seção Otimizada</h3><p>Conteúdo estruturado e adequado para o projeto <strong>${title}</strong> em ${city}.</p>`;
                     justificativa = "Seção redigida com foco na conformidade com o edital.";
@@ -3385,7 +3399,7 @@ async function runFinalConsolidatedRevision() {
         'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica',
         'monitoramento', 'compliance', 'sustentabilidade', 'rider'
     ];
-    
+
     const sectionNames = {
         justificativa: "Justificativa", objetivos: "Objetivos", metodologia: "Metodologia",
         cronograma: "Cronograma", orcamento: "Orçamento", acessibilidade: "Acessibilidade e Cotas",
@@ -3650,7 +3664,7 @@ function encodeCP1252(str) {
 function fixDoubleEncodedUtf8(str) {
     if (!str) return str;
     let fixed = str;
-    
+
     // Tenta primeiro decodificar a string inteira se ela tiver indicativos de double-encoding
     if (/[\u00C2\u00C3\u00E2\u00CA\u00D4]/.test(fixed)) {
         try {
@@ -3663,7 +3677,7 @@ function fixDoubleEncodedUtf8(str) {
             // Fallback para substituição de pedaços via regex
         }
     }
-    
+
     // Substituição pedaço por pedaço usando regex
     const pattern = /[\u00C2-\u00DF].|[\u00E0-\u00EF].{2}/g;
     fixed = fixed.replace(pattern, (match) => {
@@ -3857,7 +3871,7 @@ async function ensureEditalProfile(forceRefresh = false) {
                     if (errData && errData.error) {
                         errorMsg = errData.error;
                     }
-                } catch (e) {}
+                } catch (e) { }
                 showToast(`${errorMsg} Usando análise offline local de contingência.`, "warning");
             }
         } catch (err) {
@@ -4041,63 +4055,24 @@ function setupAuditor() {
                 // Automatic creation of annex from audit report
                 if (auditData) {
                     let reportText = `RELATÓRIO DE AUDITORIA DE COMPLIANCE\n`;
-                    reportText += `Projeto: ${workspaceState.cover.title || 'Sem nome'}\n`;
-                    reportText += `Data: ${new Date().toLocaleString()}\n`;
-                    reportText += `Nota Final: ${auditData.nota_final}/${auditData.nota_final >= 100 ? 130 : 100}\n\n`;
-                    reportText += `=== PONTUAÇÃO POR ÁREA ===\n`;
-                    if (auditData.criterios) {
-                        auditData.criterios.forEach(c => {
-                            reportText += `• ${c.criterio}: ${c.nota_atribuida}/${c.nota_maxima}\n`;
-                            reportText += `  Justificativa: ${c.justificativa}\n\n`;
-                        });
-                    }
-                    reportText += `\n=== AJUSTES SUGERIDOS ===\n`;
-                    if (auditData.ajustes) {
-                        auditData.ajustes.forEach(a => {
-                            reportText += `• [${a.fator}] ${a.alteracao}\n`;
-                        });
-                    }
-                    reportText += `\n=== ALERTAS E INCONSISTÊNCIAS ===\n`;
-                    if (auditData.alertas) {
-                        auditData.alertas.forEach(a => {
-                            reportText += `• [${a.nivel}] ${a.tipo}: ${a.descricao}\n  Recomendação: ${a.sugestao}\n\n`;
-                        });
-                    }
-
-                    workspaceState.annexes.push({
-                        name: `Relatório Automático de Auditoria - ${new Date().toLocaleDateString()}`,
-                        content: reportText,
-                        size: reportText.length
-                    });
-                    saveWorkspaceState();
-                    renderAnnexesList();
-                    showToast("✓ Relatório de auditoria salvo nos Anexos! Vá para a aba Revisor.", "success");
+                    reportText += `Projeto: ${workspaceState.cover.title || 'Sem Nome'}\n`;
+                    reportText += `Nota Final: ${auditData.score || auditData.notaGeral || 0}/100\n`;
+                    reportText += `Data: ${new Date().toLocaleDateString()}\n\n`;
+                    reportText += `RESUMO:\n${auditData.summary || auditData.parecerGeral || ''}\n`;
                 }
-
             } catch (err) {
-                showToast("Erro na auditoria: " + err.message, "error");
+                console.error("Erro na auditoria:", err);
+                showToast("Falha na auditoria: " + err.message, "error");
             } finally {
                 _isProcessingAPI = false;
                 btnAudit.disabled = false;
-                btnAudit.textContent = "🔍 Iniciar Auditoria do Edital";
+                btnAudit.textContent = "⚖️ Executar Auditoria Geral de Compliance";
             }
         });
-    }
-
-    if (btnPdf) {
-        btnPdf.addEventListener('click', downloadAuditPDF);
-    }
-
-    if (btnSaveAnnex) {
-        btnSaveAnnex.style.display = 'none'; // Replaced by automatic annex addition
     }
 }
 
 async function callGeminiForAuditoria() {
-    const memoriesContext = (workspaceState.historicalMemories && workspaceState.historicalMemories.length > 0)
-        ? workspaceState.historicalMemories.map(m => `- [${m.date}] Projeto: ${m.project} -> ${m.activity}`).join('\n')
-        : "Nenhuma memória anterior.";
-
     const propContext = `
     1. Justificativa: ${workspaceState.documentContent.justificativa}
     2. Objetivos: ${workspaceState.documentContent.objetivos}
@@ -4124,6 +4099,10 @@ async function callGeminiForAuditoria() {
             subAgentsContext = "PARECERES DE COMPLIANCE E ORÇAMENTO DOS SUB-AGENTES ESPECIALISTAS:\n" + activeResults.join("\n\n");
         }
     }
+
+    const memoriesContext = workspaceState.historicalMemories && workspaceState.historicalMemories.length > 0
+        ? workspaceState.historicalMemories.map(m => `- [${m.date}] ${m.activity}`).join('\n')
+        : "Nenhuma memória anterior.";
 
     const prompt = `Você é o Auditor Geral de Editais Culturais, atuando como um Arquiteto de Sistemas Multi-Agentes e Parecerista Master do Ministério da Cultura. Sua missão é consolidar as análises efetuadas por todos os sub-agentes especialistas sobre a proposta cultural e cruzá-las de forma exaustiva com o Edital de Referência Vigente e os anexos adicionais fornecidos, produzindo um Relatório de Auditoria Diagnóstica estruturado, visualmente claro e dividido em painéis de pontuação, simulando a avaliação real de uma banca de fomento cultural.
 
@@ -5140,10 +5119,10 @@ function showToast(message, type = "info") {
 
 // Helper para geração de nomes de arquivos de download claros, descritivos e sanitizados
 function getFormattedDownloadFilename(docCategory, extension) {
-    let rawTitle = (workspaceState && workspaceState.cover && workspaceState.cover.title) 
-        ? workspaceState.cover.title.trim() 
+    let rawTitle = (workspaceState && workspaceState.cover && workspaceState.cover.title)
+        ? workspaceState.cover.title.trim()
         : '';
-    
+
     // Ignorar placeholders padrão sem sentido
     if (!rawTitle || rawTitle.toUpperCase() === 'TÍTULO DO PROJETO CULTURAL' || rawTitle.toLowerCase() === 'sem nome') {
         rawTitle = 'Projeto_Cultural';
@@ -5176,6 +5155,44 @@ function buildCleanProposalHTML() {
     const doc = workspaceState.documentContent;
     const fontFamily = document.getElementById('abnt-font-select') ? document.getElementById('abnt-font-select').value : 'Arial';
     const pageTitle = getFormattedDownloadFilename('Proposta_Cultural_ABNT', '').replace(/\.$/, '');
+
+    const sectionsMetadata = [
+        { key: 'justificativa', title: 'JUSTIFICATIVA E RELEVÂNCIA DO PROJETO' },
+        { key: 'objetivos', title: 'OBJETIVOS (GERAL E ESPECÍFICOS)' },
+        { key: 'metodologia', title: 'METODOLOGIA E PLANO DE TRABALHO' },
+        { key: 'cronograma', title: 'CRONOGRAMA FÍSICO DE ATIVIDADES' },
+        { key: 'orcamento', title: 'ORÇAMENTO E PLANILHA DE CUSTOS' },
+        { key: 'acessibilidade', title: 'ACESSIBILIDADE E COTAS' },
+        { key: 'publico', title: 'PÚBLICO-ALVO E PERFIL DOS BENEFICIÁRIOS' },
+        { key: 'contrapartida', title: 'CONTRAPARTIDA SOCIAL E LEGADO' },
+        { key: 'comunicacao', title: 'PLANO DE COMUNICAÇÃO E DIVULGAÇÃO' },
+        { key: 'ficha_tecnica', title: 'FICHA TÉCNICA E CAPACIDADE OPERACIONAL' },
+        { key: 'monitoramento', title: 'PLANO DE MONITORAMENTO, AVALIAÇÃO E INDICADORES (MATRIZ LÓGICA)' },
+        { key: 'compliance', title: 'COMPLIANCE, MARCOS LEGAIS E DIREITOS' },
+        { key: 'sustentabilidade', title: 'PLANO DE SUSTENTABILIDADE E MITIGAÇÃO AMBIENTAL' },
+        { key: 'rider', title: 'RIDER TÉCNICO E NECESSIDADES LOGÍSTICAS' }
+    ];
+
+    let sectionsHtml = '';
+    let sectionNum = 1;
+
+    sectionsMetadata.forEach(sec => {
+        const rawContent = doc[sec.key] || '';
+        const isPlace = !rawContent || placeholders.some(p => p.trim() === rawContent.trim());
+        const isReq = !workspaceState.requiredSections || workspaceState.requiredSections.includes(sec.key);
+
+        if (isReq && !isPlace && rawContent.trim().length > 0) {
+            sectionsHtml += `
+            <h3>${sectionNum}. ${sec.title}</h3>
+            <div class="section-content">${rawContent}</div>
+            `;
+            sectionNum++;
+        }
+    });
+
+    if (!sectionsHtml) {
+        sectionsHtml = `<div class="section-content"><p>Nenhuma seção preenchida no documento.</p></div>`;
+    }
 
     return `
     <html>
@@ -5245,58 +5262,32 @@ function buildCleanProposalHTML() {
             </div>
         </div>
         
-        <h3>1. JUSTIFICATIVA E RELEVÂNCIA DO PROJETO</h3>
-        <div class="section-content">${doc.justificativa || '<p>Seção não preenchida.</p>'}</div>
-        
-        <h3>2. OBJETIVOS (GERAL E ESPECÍFICOS)</h3>
-        <div class="section-content">${doc.objetivos || '<p>Seção não preenchida.</p>'}</div>
-        
-        <h3>3. METODOLOGIA E PLANO DE TRABALHO</h3>
-        <div class="section-content">${doc.metodologia || '<p>Seção não preenchida.</p>'}</div>
-        
-        <h3>4. CRONOGRAMA FÍSICO DE ATIVIDADES</h3>
-        <div class="section-content">${doc.cronograma || '<p>Seção não preenchida.</p>'}</div>
-        
-        <h3>5. ORÇAMENTO E PLANILHA DE CUSTOS</h3>
-        <div class="section-content">${doc.orcamento || '<p>Seção não preenchida.</p>'}</div>
-        
-        <h3>6. ACESSIBILIDADE E COTAS</h3>
-        <div class="section-content">${doc.acessibilidade || '<p>Seção não preenchida.</p>'}</div>
-
-        <h3>7. PÚBLICO-ALVO E PERFIL DOS BENEFICIÁRIOS</h3>
-        <div class="section-content">${doc.publico || '<p>Seção não preenchida.</p>'}</div>
-
-        <h3>8. CONTRAPARTIDA SOCIAL E LEGADO</h3>
-        <div class="section-content">${doc.contrapartida || '<p>Seção não preenchida.</p>'}</div>
-
-        <h3>9. PLANO DE COMUNICAÇÃO E DIVULGAÇÃO</h3>
-        <div class="section-content">${doc.comunicacao || '<p>Seção não preenchida.</p>'}</div>
-
-        <h3>10. FICHA TÉCNICA E CAPACIDADE OPERACIONAL</h3>
-        <div class="section-content">${doc.ficha_tecnica || '<p>Seção não preenchida.</p>'}</div>
-
-        <h3>11. PLANO DE MONITORAMENTO, AVALIAÇÃO E INDICADORES (MATRIZ LÓGICA)</h3>
-        <div class="section-content">${doc.monitoramento || '<p>Seção não preenchida.</p>'}</div>
-
-        <h3>12. COMPLIANCE, MARCOS LEGAIS E DIREITOS</h3>
-        <div class="section-content">${doc.compliance || '<p>Seção não preenchida.</p>'}</div>
-
-        <h3>13. PLANO DE SUSTENTABILIDADE E MITIGAÇÃO AMBIENTAL</h3>
-        <div class="section-content">${doc.sustentabilidade || '<p>Seção não preenchida.</p>'}</div>
-
-        <h3>14. RIDER TÉCNICO E NECESSIDADES LOGÍSTICAS</h3>
-        <div class="section-content">${doc.rider || '<p>Seção não preenchida.</p>'}</div>
+        ${sectionsHtml}
     </body>
     </html>
     `;
 }
 
-function printCleanProposal() {
-    // Sync latest editor content to state
+async function printCleanProposal() {
     syncDOMContentToState();
+
+    const chkAutoFormat = document.getElementById('chk-auto-format-ai-export');
+    const shouldAutoFormat = chkAutoFormat ? chkAutoFormat.checked : true;
+
+    if (shouldAutoFormat && isApiActive()) {
+        try {
+            await consolidateAndFormatABNT(true);
+        } catch (err) {
+            console.warn("Erro na automação de formatação ABNT via IA ao exportar PDF:", err);
+        }
+    }
 
     const html = buildCleanProposalHTML();
     const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        showToast("Por favor, permita popups no navegador para abrir a impressão do documento.", "warning");
+        return;
+    }
     printWindow.document.write(html);
     printWindow.document.close();
     printWindow.onload = function () {
@@ -5305,9 +5296,19 @@ function printCleanProposal() {
     };
 }
 
-function exportCleanDoc() {
-    // Sync latest editor content to state
+async function exportCleanDoc() {
     syncDOMContentToState();
+
+    const chkAutoFormat = document.getElementById('chk-auto-format-ai-export');
+    const shouldAutoFormat = chkAutoFormat ? chkAutoFormat.checked : true;
+
+    if (shouldAutoFormat && isApiActive()) {
+        try {
+            await consolidateAndFormatABNT(true);
+        } catch (err) {
+            console.warn("Erro na automação de formatação ABNT via IA ao exportar Word:", err);
+        }
+    }
 
     const html = buildCleanProposalHTML().replace('<html>', "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>");
 
@@ -5324,15 +5325,17 @@ function exportCleanDoc() {
     showToast("✓ Proposta completa exportada como Word (.doc)!", "success");
 }
 
-async function consolidateAndFormatABNT() {
+async function consolidateAndFormatABNT(isAutoExport = false) {
     // Sincronizar DOM primeiro
     syncDOMContentToState();
-    
+
     // Salvar versão no histórico ANTES de modificar qualquer texto
     pushProposalHistoryState("Antes da Formatação ABNT IA");
 
     if (!isApiActive()) {
-        showToast("Chave da API ausente. A formatação ABNT foi realizada com regras locais.", "warning");
+        if (!isAutoExport) {
+            showToast("Chave da API ausente. A formatação ABNT foi realizada com regras locais.", "warning");
+        }
         for (const key of Object.keys(workspaceState.documentContent)) {
             if (workspaceState.documentContent[key]) {
                 workspaceState.documentContent[key] = workspaceState.documentContent[key]
@@ -5344,18 +5347,15 @@ async function consolidateAndFormatABNT() {
         saveWorkspaceState();
         syncEditorContentToDOM();
         updatePlaceholderStates();
-        showToast("✓ Proposta formatada conforme as normas ABNT!", "success");
         return;
     }
-
-    showToast("⚙️ Iniciando formatação ABNT preservando a totalidade das 14 seções...", "info");
 
     const sectionKeys = [
         'justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento',
         'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica',
         'monitoramento', 'compliance', 'sustentabilidade', 'rider'
     ];
-    
+
     const sectionNames = {
         justificativa: "Justificativa", objetivos: "Objetivos", metodologia: "Metodologia",
         cronograma: "Cronograma", orcamento: "Orçamento", acessibilidade: "Acessibilidade e Cotas",
@@ -5364,18 +5364,28 @@ async function consolidateAndFormatABNT() {
         sustentabilidade: "Sustentabilidade", rider: "Rider Técnico"
     };
 
+    // Filtrar apenas seções ativas/exigidas com conteúdo preenchido
+    const activeKeys = sectionKeys.filter(key => {
+        const raw = workspaceState.documentContent[key] || '';
+        const isPlace = placeholders.some(p => p.trim() === raw.trim());
+        const isReq = !workspaceState.requiredSections || workspaceState.requiredSections.includes(key);
+        return isReq && !isPlace && raw.trim().length > 0;
+    });
+
+    if (activeKeys.length === 0) {
+        if (!isAutoExport) showToast("Nenhuma seção preenchida para formatar.", "info");
+        return;
+    }
+
+    showToast(`⚙️ Executando formatação ABNT seção por seção via IA (${activeKeys.length} seções ativas)...`, "info");
+
     let processedCount = 0;
     const editalContext = workspaceState.editalRefText ? filterRelevantEditalText(workspaceState.editalRefText) : "";
 
-    for (const key of sectionKeys) {
+    for (const key of activeKeys) {
         const rawContent = workspaceState.documentContent[key] || '';
-        // Se a seção é apenas placeholder ou vazia, pula
-        if (!rawContent || placeholders.includes(rawContent.trim())) {
-            continue;
-        }
-
         processedCount++;
-        showToast(`🪄 Formatando ABNT (${processedCount}/14): ${sectionNames[key]}...`, "info");
+        showToast(`🪄 [${processedCount}/${activeKeys.length}] Formatando ABNT: ${sectionNames[key]}...`, "info");
 
         const prompt = `Você é o Agente Revisor ABNT Especialista em Editais Culturais.
 Sua missão é formatar e otimizar exclusivamente a seção "${sectionNames[key].toUpperCase()}" mantendo 100% do conteúdo, detalhes, tabelas, valores e parágrafos do texto original.
@@ -5427,7 +5437,116 @@ Retorne um JSON estrito sem marcação markdown no seguinte formato:
     syncEditorContentToDOM();
     updatePlaceholderStates();
     updateHistoryButtonsUI();
-    showToast("✓ Todas as seções foram formatadas conforme as normas ABNT sem perda de conteúdo!", "success");
+    showToast(`✓ Formatação ABNT por IA concluída com sucesso! (${processedCount} seções otimizadas)`, "success");
+}
+
+function parseBudgetItemsFromEditor(htmlStr) {
+    if (!htmlStr || typeof htmlStr !== 'string') return [];
+
+    const cleanHtml = htmlStr.replace(/<!--[\s\S]*?-->/g, '').trim();
+    if (!cleanHtml) return [];
+
+    const items = [];
+
+    // 1. Tentar extrair de tabelas HTML <table>...</table>
+    const trMatches = cleanHtml.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi);
+    if (trMatches && trMatches.length > 1) {
+        trMatches.forEach((tr, index) => {
+            const cellMatches = tr.match(/<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/gi);
+            if (!cellMatches) return;
+
+            const cellTexts = cellMatches.map(c => c.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').trim());
+
+            if (index === 0 || tr.toLowerCase().includes('<th')) {
+                return; // Ignorar cabeçalho da tabela
+            }
+
+            if (cellTexts.length >= 3) {
+                const rubrica = cellTexts[0] || 'Gestão & Coordenação Executiva';
+                const item = cellTexts[1] || 'Item de Despesa';
+                const especificacao = cellTexts.length >= 7 ? cellTexts[2] : item;
+
+                let qtd = 1, unit = 'Verba', valUnit = 0, total = 0;
+
+                for (let i = 2; i < cellTexts.length; i++) {
+                    const txt = cellTexts[i];
+                    if (txt.includes('R$') || /\d+[,.]\d+/.test(txt)) {
+                        const cleanNumStr = txt.replace(/[^\d.,-]/g, '');
+                        let num = 0;
+                        if (cleanNumStr.includes(',') && cleanNumStr.includes('.')) {
+                            num = parseFloat(cleanNumStr.replace(/\./g, '').replace(',', '.'));
+                        } else if (cleanNumStr.includes(',')) {
+                            num = parseFloat(cleanNumStr.replace(',', '.'));
+                        } else {
+                            num = parseFloat(cleanNumStr);
+                        }
+
+                        if (!isNaN(num) && num > 0) {
+                            if (valUnit === 0) valUnit = num;
+                            else total = num;
+                        }
+                    } else if (/^\d+$/.test(txt)) {
+                        qtd = parseInt(txt, 10);
+                    } else if (txt.length < 15 && !txt.includes('R$') && isNaN(Number(txt))) {
+                        unit = txt;
+                    }
+                }
+
+                if (total === 0) total = valUnit > 0 ? (qtd * valUnit) : 0;
+                if (valUnit === 0) valUnit = total > 0 ? Math.round(total / qtd) : 0;
+
+                if (total > 0 || valUnit > 0) {
+                    items.push({
+                        rubrica,
+                        item,
+                        especificacao: especificacao || item,
+                        destino: 'Fornecedor Previsto',
+                        unidade: unit || 'Verba',
+                        qtd: qtd || 1,
+                        valorUnit: valUnit,
+                        subtotal: Math.round(qtd * valUnit),
+                        impostos: 0,
+                        total: total || Math.round(qtd * valUnit),
+                        notas3etapas: 'Item extraído diretamente do Editor ABNT'
+                    });
+                }
+            }
+        });
+    }
+
+    // 2. Se nenhuma tabela for encontrada, tentar extrair linhas de texto ou listas com R$
+    if (items.length === 0) {
+        const lines = cleanHtml.replace(/<[^>]+>/g, '\n').split('\n');
+        lines.forEach(line => {
+            const trimmed = line.trim();
+            if (trimmed.includes('R$') || /R\$\s*[\d.,]+/.test(trimmed)) {
+                const parts = trimmed.split(/[:\-–—]/);
+                const item = parts[0] ? parts[0].replace(/^[\d.•*\s\-\+]+/, '').trim() : 'Item de Despesa';
+                const matchVal = trimmed.match(/R\$\s*([\d.,]+)/);
+                if (matchVal) {
+                    const cleanValStr = matchVal[1].replace(/\./g, '').replace(',', '.');
+                    const val = parseFloat(cleanValStr);
+                    if (!isNaN(val) && val > 0) {
+                        items.push({
+                            rubrica: 'Despesas Gerais do Projeto',
+                            item: item || 'Item de Orçamento',
+                            especificacao: trimmed,
+                            destino: 'Fornecedor Previsto',
+                            unidade: 'Verba',
+                            qtd: 1,
+                            valorUnit: val,
+                            subtotal: val,
+                            impostos: 0,
+                            total: val,
+                            notas3etapas: 'Item de texto extraído do Editor ABNT'
+                        });
+                    }
+                }
+            }
+        });
+    }
+
+    return items;
 }
 
 function generate3StageFinancePlanDataLocal() {
@@ -5436,12 +5555,17 @@ function generate3StageFinancePlanDataLocal() {
     const institution = workspaceState.cover.institution || 'Não Especificada';
     const totalBudget = Number(workspaceState.cover.budget) || 220000;
 
-    const items = [
+    const editorParsedItems = parseBudgetItemsFromEditor(workspaceState.documentContent.orcamento || '');
+    let items = [];
+
+    if (editorParsedItems && editorParsedItems.length > 0) {
+        items = editorParsedItems;
+    } else {
+        items = [
         {
-            etapa: "1. Pré-Produção",
-            rubrica: "Gestão & Coordenação",
+            rubrica: "Gestão & Coordenação Executiva",
             item: "Direção de Produção & Coordenação Geral",
-            especificacao: "Planejamento operacional, contratação da equipe e gestão de cronograma físico-financeiro.",
+            especificacao: "Planejamento operacional, coordenação executiva da equipe e gestão de cronograma físico-financeiro.",
             destino: "Coordenador Geral / Proponente do Projeto",
             unidade: "Serviço",
             qtd: 1,
@@ -5452,10 +5576,9 @@ function generate3StageFinancePlanDataLocal() {
             notas3etapas: "Etapa 1: Pré-auditado local (OK) | Etapa 2: Normas de fomento atendidas | Etapa 3: Validação Local"
         },
         {
-            etapa: "1. Pré-Produção",
-            rubrica: "Jurídico & Compliance",
-            item: "Consultoria Jurídica & Emissão de Certidões Negativas",
-            especificacao: "Análise contratual, verificação de CNDT, FGTS, Receita Federal e autorizações de direitos autorais/Ecad/SisGen.",
+            rubrica: "Assessoria Jurídica & Compliance",
+            item: "Consultoria Jurídica, Licenciamento & Certidões",
+            especificacao: "Análise contratual, verificação de CNDs (CNDT, FGTS, Receita) e autorizações de direitos autorais (ECAD / SisGen).",
             destino: "Assessoria Jurídica & Cartórios",
             unidade: "Serviço",
             qtd: 1,
@@ -5466,10 +5589,9 @@ function generate3StageFinancePlanDataLocal() {
             notas3etapas: "Etapa 1: CNDs verificadas | Etapa 2: Exigências de edital cobertas | Etapa 3: Validação Local"
         },
         {
-            etapa: "2. Produção & Execução",
-            rubrica: "Cachês Artísticos",
+            rubrica: "Artístico & Ficha Técnica",
             item: "Elenco Principal, Músicos & Performatistas",
-            especificacao: "Apresentações culturais ao vivo, ensaios técnicos e encontros comunitários de mediação.",
+            especificacao: "Apresentações culturais ao vivo, ensaios técnicos e encontros comunitários de mediação cultural.",
             destino: "Artistas, Elenco e Músicos Contratados",
             unidade: "Apresentação",
             qtd: 4,
@@ -5480,64 +5602,59 @@ function generate3StageFinancePlanDataLocal() {
             notas3etapas: "Etapa 1: Cachê coerente com mercado | Etapa 2: Teto regional respeitado | Etapa 3: Validação Local"
         },
         {
-            etapa: "2. Produção (Rider Técnico)",
-            rubrica: "Rider Técnico de Som",
-            item: "Locação de Sistema PA Line Array, Mesas Digitais & Microfonia HD",
-            especificacao: "Rider Técnico: Sistema Line Array com 12 Subs, Console Digital (Behringer X32/Yamaha CL5), 8 vias de monitoria e kit microfonia profissional Shure/Sennheiser.",
-            destino: "Fornecedor Especializado de Sonorização (Rider Técnico)",
-            unidade: "Diária",
-            qtd: 3,
-            valorUnit: Math.round((totalBudget * 0.12) / 3),
+            rubrica: "Infraestrutura & Espaço Cultural",
+            item: "Locação de Espaço Cultural, Palco & Estruturas de Cobertura",
+            especificacao: "Locação do espaço de apresentação, montagem de praticáveis, camarins modulares e infraestrutura de suporte.",
+            destino: "Empresa Especializada em Estruturas & Eventos",
+            unidade: "Serviço",
+            qtd: 1,
+            valorUnit: Math.round(totalBudget * 0.12),
             subtotal: Math.round(totalBudget * 0.12),
             impostos: Math.round(totalBudget * 0.12 * 0.05),
             total: Math.round(totalBudget * 0.12 * 1.05),
-            notas3etapas: "Etapa 1: Rider de som verificado | Etapa 2: Adequado ao local do evento | Etapa 3: Validação Local"
+            notas3etapas: "Etapa 1: Estruturas cobertas por laudo técnico | Etapa 2: Teto regional | Etapa 3: Validação Local"
         },
         {
-            etapa: "2. Produção (Rider Técnico)",
-            rubrica: "Rider Técnico de Luz",
-            item: "Locação de Refletores LED, Moving Lights, Dimmer & Grid Truss Q30",
-            especificacao: "Rider Técnico: 12 Moving Head Beam/Spot, 16 Canhões PAR LED RGBW, Console Avolites/GrandMA2 e Estrutura de Alumínio Truss Q30.",
-            destino: "Empresa de Iluminação Profissional (Rider Técnico)",
-            unidade: "Diária",
-            qtd: 3,
-            valorUnit: Math.round((totalBudget * 0.08) / 3),
-            subtotal: Math.round(totalBudget * 0.08),
-            impostos: Math.round(totalBudget * 0.08 * 0.05),
-            total: Math.round(totalBudget * 0.08 * 1.05),
-            notas3etapas: "Etapa 1: Rider de luz verificado | Etapa 2: Normas elétricas NBR 5410 | Etapa 3: Validação Local"
+            rubrica: "Infraestrutura & Rider Técnico",
+            item: "Locação de Sistemas de Áudio, Iluminação Cênica & Gerador",
+            especificacao: "Locação do sistema de sonorização PA, refletores LED, moving heads e gerador silenciado para os dias de apresentação.",
+            destino: "Empresas Especializadas de Sonorização e Luz",
+            unidade: "Serviço",
+            qtd: 1,
+            valorUnit: Math.round(totalBudget * 0.15),
+            subtotal: Math.round(totalBudget * 0.15),
+            impostos: Math.round(totalBudget * 0.15 * 0.05),
+            total: Math.round(totalBudget * 0.15 * 1.05),
+            notas3etapas: "Etapa 1: Equipamentos conforme Rider Técnico detalhado abaixo | Etapa 2: Orçamento auditado | Etapa 3: Validação Local"
         },
         {
-            etapa: "2. Produção (Rider Técnico)",
-            rubrica: "Equipe Técnica Operacional",
-            item: "Técnico de Som Sênior, Iluminador, Projecionista & Roadies",
-            especificacao: "Operação de áudio, afinação do mapa de luz, montagem, alinhamento de sistema de projeção e apoio técnico de palco.",
+            rubrica: "Equipe Técnica & Operacional",
+            item: "Técnico de Áudio Sênior, Iluminador Cênico & Roadies",
+            especificacao: "Operação de áudio, afinação do mapa de iluminação, montagem, alinhamento de sistema e apoio técnico de palco.",
             destino: "Técnicos Especializados de Palco & Áudio",
             unidade: "Serviço",
             qtd: 1,
-            valorUnit: Math.round(totalBudget * 0.07),
-            subtotal: Math.round(totalBudget * 0.07),
-            impostos: Math.round(totalBudget * 0.07 * 0.10),
-            total: Math.round(totalBudget * 0.07 * 1.10),
+            valorUnit: Math.round(totalBudget * 0.06),
+            subtotal: Math.round(totalBudget * 0.06),
+            impostos: Math.round(totalBudget * 0.06 * 0.10),
+            total: Math.round(totalBudget * 0.06 * 1.10),
             notas3etapas: "Etapa 1: Equipe técnica completa | Etapa 2: Conformidade trabalhista | Etapa 3: Validação Local"
         },
         {
-            etapa: "2. Produção & Execução",
-            rubrica: "Logística & Transporte",
-            item: "Frete de Equipamentos do Rider, Vans & Diárias de Alimentação",
-            especificacao: "Caminhão baú para transporte das estruturas de som e luz, transporte de elenco/equipe, hospedagem e alimentação.",
+            rubrica: "Logística, Transporte & Hospedagem",
+            item: "Frete de Equipamentos, Vans & Diárias de Alimentação/Hospedagem",
+            especificacao: "Caminhão baú para transporte de estruturas, deslocamento da equipe artítico-técnica, hospedagem e alimentação.",
             destino: "Transportadora & Serviços de Alimentação/Hospedagem",
             unidade: "Verba",
             qtd: 1,
-            valorUnit: Math.round(totalBudget * 0.06),
-            subtotal: Math.round(totalBudget * 0.06),
-            impostos: Math.round(totalBudget * 0.06 * 0.05),
-            total: Math.round(totalBudget * 0.06 * 1.05),
-            notas3etapas: "Etapa 1: Logística auditada | Etapa 2: Valores dentro das médias locais | Etapa 3: Validação Local"
+            valorUnit: Math.round(totalBudget * 0.05),
+            subtotal: Math.round(totalBudget * 0.05),
+            impostos: Math.round(totalBudget * 0.05 * 0.05),
+            total: Math.round(totalBudget * 0.05 * 1.05),
+            notas3etapas: "Etapa 1: Logística auditada | Etapa 2: Média regional | Etapa 3: Validação Local"
         },
         {
-            etapa: "2. Produção (Acessibilidade)",
-            rubrica: "Acessibilidade PCD Obligatória",
+            rubrica: "Acessibilidade PCD & Ações Afirmativas",
             item: "Intérprete de LIBRAS Simultâneo & Audiodescrição com Material Tátil",
             especificacao: "Tradução em LIBRAS durante todo o evento, produção de roteiro e gravação de audiodescrição para público cego/baixa visão.",
             destino: "Profissionais Certificados de Acessibilidade PCD",
@@ -5550,8 +5667,7 @@ function generate3StageFinancePlanDataLocal() {
             notas3etapas: "Etapa 1: Conforme Lei 13.146/15 | Etapa 2: Atende exigências do edital | Etapa 3: Validação Local"
         },
         {
-            etapa: "3. Pós-Produção",
-            rubrica: "Comunicação & Divulgação",
+            rubrica: "Comunicação, Mídia & Divulgação",
             item: "Assessoria de Imprensa, Mídias Sociais & Tráfego Pago (Teto 10%)",
             especificacao: "Divulgação multicanal, criação de artes digitais, campanhas patrocinadas e relatório de clipping de mídia.",
             destino: "Agência de Comunicação / Designer / Assessor",
@@ -5564,8 +5680,7 @@ function generate3StageFinancePlanDataLocal() {
             notas3etapas: "Etapa 1: Respeita teto legal de 10% | Etapa 2: Estratégia regional coerente | Etapa 3: Validação Local"
         },
         {
-            etapa: "3. Pós-Produção",
-            rubrica: "Prestação de Contas & Registro",
+            rubrica: "Pós-Produção & Prestação de Contas",
             item: "Auditoria Financeira Externa, Registro Fotográfico & Relatório Final",
             especificacao: "Organização de comprovantes fiscais, auditoria contábil, registro fotográfico em alta resolução e parecer final de execução.",
             destino: "Auditor Contábil Independente / Fotógrafo",
@@ -5578,8 +5693,7 @@ function generate3StageFinancePlanDataLocal() {
             notas3etapas: "Etapa 1: Prestação de contas estruturada | Etapa 2: Atende padrão MinC | Etapa 3: Validação Local"
         },
         {
-            etapa: "Administração & Impostos",
-            rubrica: "Custos Administrativos & Impostos",
+            rubrica: "Custos Administrativos & Encargos Fiscais",
             item: "Taxa de Gestão Administrativa + Impostos e Encargos Fiscais (ISS, INSS, IRRF)",
             especificacao: "Custos operacionais de escritório, material administrativo e pagamento de tributos fiscais (Respeitando estritamente o teto de 15%).",
             destino: "Órgãos Fiscais (Prefeitura / Receita Federal) & Gestão",
@@ -5592,6 +5706,7 @@ function generate3StageFinancePlanDataLocal() {
             notas3etapas: "Etapa 1: 10% < Teto 15% | Etapa 2: Em conformidade tributária | Etapa 3: Validação Local"
         }
     ];
+}
 
     const riderItems = [
         {
@@ -5737,6 +5852,14 @@ async function consolidateFinancePlan3Stages(forceApi = true) {
     const existingRider = doc.rider || "";
     const existingAcessibilidade = doc.acessibilidade || "";
     const existingCronograma = doc.cronograma || "";
+    const existingMetodologia = doc.metodologia || "";
+    const existingObjetivos = doc.objetivos || "";
+    const existingFichaTecnica = doc.ficha_tecnica || "";
+    const existingContrapartida = doc.contrapartida || "";
+    const existingComunicacao = doc.comunicacao || "";
+
+    const annexesSnippets = (workspaceState.annexes || []).map(a => `- Anexo ${a.name}: ${(a.text || '').substring(0, 800)}`).join('\n');
+    const editalRulesSnippet = (workspaceState.editalRefText || '').substring(0, 4000);
 
     // --- ETAPA 2 (SEGUNDO): Pesquisa Online de Mercado Cultural & Parâmetros Fiscais ---
     let webSearchContext = "";
@@ -5764,14 +5887,23 @@ async function consolidateFinancePlan3Stages(forceApi = true) {
         console.warn("[FINANCE-3-STAGES] Pesquisa online leve falhou ou indisponível:", errSearch);
     }
 
+    const editorParsedItems = parseBudgetItemsFromEditor(existingOrcamento);
+    let editorItemsSnippet = "";
+    if (editorParsedItems && editorParsedItems.length > 0) {
+        editorItemsSnippet = `\n[ITENS DE DESPESA EXTRAÍDOS DO EDITOR ABNT (MANDATÓRIO PRESERVAR ESTES ITENS DO PROJETO E APENAS OTIMIZAR ESPECIFICAÇÕES, VALORES E IMPOSTOS CONFORME AS REGRAS DO EDITAL E DE MERCADO)]:\n` +
+            JSON.stringify(editorParsedItems.map(it => ({ rubrica: it.rubrica, item: it.item, especificacao: it.especificacao, qtd: it.qtd, unidade: it.unidade, valorUnit: it.valorUnit, total: it.total })), null, 2) + "\n";
+    }
+
     // --- ETAPA 3 (TERCEIRO): Consolidação por API LLM Gemini ---
     if (forceApi || isApiActive()) {
         showToast("🤖 Etapa 3: Gemini consolidando planilha orçamentária detalhada e rider técnico...", "info");
 
         const prompt = `Você é o Diretor Financeiro e Especialista em Orçamento de Editais Culturais (Lei Rouanet, Lei Aldir Blanc, IN MinC).
-Sua missão é realizar a consolidação financeira definitiva da Planilha Financeira e do Rider Técnico em uma estrutura orçamentária de 3 Etapas completa, minuciosa e sem erros de cálculo.
+Sua missão é realizar a consolidação financeira definitiva da Planilha Financeira e do Rider Técnico através de um CRUZAMENTO PROFUNDO DE DADOS de todo o projeto.
 
-[ETAPA 1 - DADOS DE CAPA E AUDITORIA LOCAL]:
+${editorItemsSnippet}
+
+[ETAPA 1 - DADOS DE CAPA E DADOS FÍSICOS DO PROJETO]:
 - Título do Projeto: ${cover.title || 'Projeto Cultural'}
 - Proponente: ${cover.proponent || 'Não Especificado'}
 - Instituição / Edital: ${cover.institution || 'Não Especificada'}
@@ -5780,40 +5912,50 @@ Sua missão é realizar a consolidação financeira definitiva da Planilha Finan
 - Limite Comunicação e Divulgação: Máximo 10% do orçamento total
 - Acessibilidade PCD Obrigatória: Contratação de LIBRAS e Audiodescrição (Lei 13.146/15)
 
-[ETAPA 1 - TEXTO REDIGIDO NO EDITOR]:
-- Orçamento: ${existingOrcamento.substring(0, 15000) || 'Não preenchido. Desdobrar orçamento minucioso com base no teto.'}
-- Rider Técnico: ${existingRider.substring(0, 10000) || 'PA Line Array, mesa digital, iluminação LED, moving lights, praticáveis, gerador.'}
-- Acessibilidade: ${existingAcessibilidade.substring(0, 8000) || 'Intérprete de LIBRAS e Audiodescrição.'}
-- Cronograma: ${existingCronograma.substring(0, 8000) || '6 meses de execução.'}
+[ETAPA 1 - CRUZAMENTO DE TODAS AS SEÇÕES REDIGIDAS NO EDITOR]:
+- 1. Objetivos & Metas: ${existingObjetivos.substring(0, 3000) || 'Não informado. Usar plano base.'}
+- 2. Metodologia / Plano de Trabalho: ${existingMetodologia.substring(0, 5000) || 'Não informado.'}
+- 3. Cronograma Físico-Financeiro: ${existingCronograma.substring(0, 3000) || 'Não informado.'}
+- 4. Ficha Técnica (Artistas e Equipe): ${existingFichaTecnica.substring(0, 3000) || 'Não informado.'}
+- 5. Orçamento Bruto do Editor: ${existingOrcamento.substring(0, 5000) || 'Não informado.'}
+- 6. Acessibilidade PCD: ${existingAcessibilidade.substring(0, 2000) || 'Intérprete de LIBRAS e Audiodescrição.'}
+- 7. Contrapartida Social: ${existingContrapartida.substring(0, 2000) || 'Não informado.'}
+- 8. Plano de Comunicação: ${existingComunicacao.substring(0, 2000) || 'Não informado.'}
+- 9. Rider Técnico & Estruturas: ${existingRider.substring(0, 3000) || 'PA Line Array, luz LED, gerador.'}
+
+[ETAPA 1 - REGRAS DO EDITAL & ANEXOS DE REFERÊNCIA]:
+- Regras Extraídas do Edital: ${editalRulesSnippet || 'Seguir limites gerais de fomento cultural.'}
+- Anexos e Tabelas Referenciais: ${annexesSnippets || 'Nenhum anexo extra.'}
 
 [ETAPA 2 - PARAMETROS DE PREÇOS DE MERCADO CULTURAL RECUPERADOS ONLINE]:
 ${webSearchContext || 'Tabelas referenciais MinC/SATED: Cachês coordenação R$ 4k-8k/mês, diárias som/luz R$ 2k-5k, LIBRAS R$ 1.5k-3k, ISS 5%, INSS Patronal 20% / RPA / MEI.'}
 
-INSTRUÇÕES ESTRITAS DE CONSOLIDAÇÃO (EVITE ITENS RESUMIDOS OU GENÉRICOS):
-1. Gere entre 12 e 20 itens de despesa extremamente minuciosos e realistas.
-2. Divida obrigatoriamente pelas etapas:
-   - "1. Pré-Produção" (Elaboração, coordenação, ensaios, reservas)
-   - "2. Produção & Execução" (Cachês artísticos, técnicos, logística)
-   - "2. Produção (Rider Técnico)" (Equipamentos de som PA, iluminação, praticáveis, gerador silenciado)
-   - "2. Produção (Acessibilidade PCD)" (Equipe LIBRAS, audiodescrição, material adaptado)
-   - "3. Pós-Produção" (Clipping, relatórios, auditoria, prestação de contas)
-   - "Administração & Divulgação" (Coordenação adm máx 15%, comunicação máx 10%)
-   - "Encargos & Tributos" (ISS 5%, INSS Patronal / retenções)
-3. Para CADA item no array "items", forneça obrigatoriamente:
-   - etapa: Nome da etapa exata
-   - rubrica: Categoria da despesa
+INSTRUÇÕES ESTRITAS DE CONSOLIDAÇÃO FINANCEIRA E CRUZAMENTO DE DADOS:
+1. Analise minuciosamente as quantidades descritas na Metodologia, Ficha Técnica e Rider. Se o projeto prevê N apresentações ou M workshops, a planilha DEVE conter a exata quantidade correspondente de cachês, diárias e transportes.
+2. Gere entre 12 e 20 itens de despesa extremamente minuciosos e realistas sem estourar o orçamento teto de R$ ${cover.budget || 220000}.
+3. NÃO crie numerações ou colunas genéricas de "Etapa" ("1. Pré-Produção", "2. Produção"). Categorize e divida os itens obrigatoriamente pelas SEÇÕES DE PLANEJAMENTO DO PROJETO no campo "rubrica":
+   - "Gestão & Coordenação Executiva"
+   - "Assessoria Jurídica & Compliance"
+   - "Artístico & Ficha Técnica"
+   - "Infraestrutura & Rider Técnico"
+   - "Acessibilidade PCD & Ações Afirmativas"
+   - "Comunicação, Mídia & Divulgação" (Teto máx 10%)
+   - "Pós-Produção & Prestação de Contas"
+   - "Custos Administrativos & Tributos" (Teto máx 15%)
+4. Para CADA item no array "items", forneça obrigatoriamente:
+   - rubrica: Nome exato da Seção de Planejamento / Categoria
    - item: Nome do profissional, equipamento ou serviço
    - especificacao: Especificação técnica longa e detalhada (marcas, modelos de som/luz ou atribuições operacionais)
-   - destino: Fornecedor previsto ou destinação exata do recurso
+   - destino: Natureza da despesa, fornecedor previsto ou destinação exata do recurso
    - unidade: Mês, Serviço, Diária, Verba, Apresentação, Unidade
    - qtd: Quantidade numérica pura
    - valorUnit: Valor unitário em R$ (número puro)
    - subtotal: Subtotal em R$ (número puro: qtd * valorUnit)
    - impostos: Valor estimado de encargos tributários ISS/INSS (número puro)
    - total: Valor total do item (subtotal + impostos)
-   - notas3etapas: Nota explicativa da auditoria (cruzando Etapa 1 Offline, Etapa 2 Mercado Online e Etapa 3 IA)
+   - notas3etapas: Nota explicativa detalhada da auditoria (cruzando Etapa 1 Local, Etapa 2 Mercado e Etapa 3 IA)
 
-4. Preencha também o array "riderItems" com no mínimo 4 a 6 estruturas e equipamentos de palco detalhados.
+5. Preencha também o array "riderItems" com no mínimo 4 a 6 estruturas e equipamentos de palco detalhados.
 
 Retorne estritamente o JSON estruturado conforme o Schema fornecido.`;
 
@@ -5845,7 +5987,7 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido.`;
                             total: { type: "NUMBER" },
                             notas3etapas: { type: "STRING" }
                         },
-                        required: ["etapa", "rubrica", "item", "especificacao", "destino", "unidade", "qtd", "valorUnit", "subtotal", "impostos", "total", "notas3etapas"]
+                        required: ["rubrica", "item", "especificacao", "destino", "unidade", "qtd", "valorUnit", "subtotal", "impostos", "total", "notas3etapas"]
                     }
                 },
                 riderItems: {
@@ -5873,15 +6015,35 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido.`;
             const parsedData = JSON.parse(cleanResponse);
 
             if (parsedData && Array.isArray(parsedData.items) && parsedData.items.length > 0) {
+                let sumSub = 0;
+                let sumImp = 0;
+                let sumTot = 0;
+
+                parsedData.items.forEach(it => {
+                    it.qtd = Number(it.qtd) || 1;
+                    it.valorUnit = Number(it.valorUnit) || 0;
+                    it.subtotal = Number(it.subtotal) || (it.qtd * it.valorUnit);
+                    it.impostos = Number(it.impostos) || 0;
+                    it.total = Number(it.total) || (it.subtotal + it.impostos);
+
+                    sumSub += it.subtotal;
+                    sumImp += it.impostos;
+                    sumTot += it.total;
+                });
+
+                parsedData.grandTotalSubtotal = sumSub;
+                parsedData.grandTotalImpostos = sumImp;
+                parsedData.grandTotalGeral = sumTot;
+
                 parsedData._ts = Date.now();
                 workspaceState.lastConsolidatedFinancePlan = parsedData;
                 saveWorkspaceState();
-                showToast("🎉 Etapa 3: Planilha financeira de alta precisão consolidada por IA com sucesso!", "success");
+                showToast("🎉 Planilha financeira oficial de alta precisão consolidada por IA com sucesso!", "success");
                 return parsedData;
             }
         } catch (apiErr) {
-            console.warn("[FINANCE-3-STAGES] Falha ao consolidar via API LLM. Usando motor local de regras:", apiErr);
-            showToast("⚠️ API indisponível: Mantido o orçamento das Etapas 1 e 2.", "warning");
+            console.warn("[FINANCE-PLAN] Falha ao consolidar via API LLM. Usando motor local de regras:", apiErr);
+            showToast("⚠️ API indisponível: Mantida a planilha orçamentária local.", "warning");
         }
     }
 
@@ -5905,283 +6067,197 @@ async function downloadFinancePlan() {
         planData = generate3StageFinancePlanDataLocal();
     }
 
-    showToast("📊 Gerando arquivo Excel Multi-Abas (.xls) de alta precisão...", "info");
+    showToast("📊 Gerando arquivo Excel (.xlsx) de alta precisão...", "info");
 
-    const title = planData.title || workspaceState.cover.title || 'Projeto Cultural';
-    const proponent = planData.proponent || workspaceState.cover.proponent || 'Proponente';
-    const institution = planData.institution || workspaceState.cover.institution || 'Edital';
-    const totalBudget = Number(planData.grandTotalGeral || planData.totalBudget || 220000);
+    const parseNum = (val, fallback = 0) => {
+        if (val === null || val === undefined) return fallback;
+        if (typeof val === 'number') return isNaN(val) ? fallback : val;
+        let s = String(val).replace(/[^\d.,-]/g, '').trim();
+        if (!s) return fallback;
+        if (s.includes(',') && s.includes('.')) {
+            if (s.indexOf('.') < s.indexOf(',')) {
+                s = s.replace(/\./g, '').replace(',', '.');
+            } else {
+                s = s.replace(/,/g, '');
+            }
+        } else if (s.includes(',')) {
+            s = s.replace(',', '.');
+        }
+        const n = parseFloat(s);
+        return isNaN(n) ? fallback : n;
+    };
 
-    // 1. ABA 1: PLANILHA ORÇAMENTÁRIA CONSOLIDADA (3 ETAPAS)
-    let rowsHtml = "";
-    let startRow = 8; // Linha inicial dos dados no Excel
-    planData.items.forEach((it, idx) => {
-        const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
-        const vUnit = Number(it.valorUnit || 0);
-        const vSub = Number(it.subtotal || 0);
-        const vImp = Number(it.impostos || 0);
-        const vTot = Number(it.total || (vSub + vImp));
-        const currentRow = startRow + idx;
+    const cleanStr = (str) => {
+        if (str === null || str === undefined) return "";
+        let s = String(str);
+        if (s.includes('Ã') || s.includes('Â') || s.includes('â')) {
+            try { s = decodeURIComponent(escape(s)); } catch (e) { }
+        }
+        return s.trim();
+    };
 
-        rowsHtml += `
-        <tr style="background-color: ${bg}; font-size: 11px;">
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-weight: bold; color: #1e1b4b;">${it.etapa || '2. Produção'}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px;">${it.rubrica || 'Geral'}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-weight: bold;">${it.item || 'Item'}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-size: 10px;">${it.especificacao || ''}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-size: 10px; color: #4338ca;">${it.destino || 'Prestadores de Serviço'}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${it.unidade || 'Serviço'}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; mso-number-format:'\\#\\,\\#\\#0';">${it.qtd || 1}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: right; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';">${vUnit.toFixed(2)}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: right; font-weight: bold; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';" x:fld="formula" x:num="${vSub}">=G${currentRow}*H${currentRow}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: right; color: #b91c1c; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';">${vImp.toFixed(2)}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: right; font-weight: bold; color: #15803d; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';" x:fld="formula" x:num="${vTot}">=I${currentRow}+J${currentRow}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-size: 10px; color: #64748b;">${it.notas3etapas || 'Auditado com sucesso'}</td>
-        </tr>`;
+    const rawItems = planData.items || [];
+    const items = rawItems.filter(it => {
+        if (!it || typeof it !== 'object') return false;
+        const checkStr = (it.item || '') + (it.rubrica || '') + (it.subtotal || '');
+        if (checkStr.includes("Subtotal (R$)") || checkStr.includes("Item de Despesa") || checkStr.includes("Valor Unit")) {
+            return false;
+        }
+        return true;
     });
 
-    const totalRowIndex = startRow + planData.items.length;
+    const title = cleanStr(planData.title || workspaceState.cover.title || 'Projeto Cultural');
+    const proponent = cleanStr(planData.proponent || workspaceState.cover.proponent || 'Proponente');
+    const institution = cleanStr(planData.institution || workspaceState.cover.institution || 'Edital');
+    const riderItems = planData.riderItems || [];
 
-    // 2. ABA 2: RIDER TÉCNICO & EQUIPAMENTOS
-    const riderList = planData.riderItems || [];
-    let riderRowsHtml = "";
-    riderList.forEach((rd, idx) => {
-        const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
-        riderRowsHtml += `
-        <tr style="background-color: ${bg}; font-size: 11px;">
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-weight: bold; color: #4f46e5;">${rd.categoria || 'Geral'}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-weight: bold;">${rd.equipamento || 'Equipamento'}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-size: 10px;">${rd.modeloEspecifico || ''}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${rd.qtdDiarias || '1'}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-size: 10px; color: #4338ca;">${rd.fornecedorPrevisto || 'Empresa Especializada'}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-size: 10px; color: #334155;">${rd.requisitoPalco || 'ART e Segurança'}</td>
-        </tr>`;
-    });
+    // 1. Tentar primeiro via Endpoint Backend Python (openpyxl)
+    try {
+        const response = await fetch('/api/export-finance-xlsx', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...planData, items, title, proponent, institution })
+        });
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = getFormattedDownloadFilename(`Planilha_Financeira_${title}`, 'xlsx');
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            showToast("✓ Planilha Excel Multi-Abas (.xlsx) gerada e baixada via servidor!", "success");
+            return;
+        }
+    } catch (netErr) {
+        console.warn("[FINANCE-XLSX] Backend indisponível, utilizando motor SheetJS local:", netErr);
+    }
 
-    const adminItem = planData.items.find(i => i.rubrica && (i.rubrica.includes("Administrativo") || i.rubrica.includes("Adm")));
-    const mktItem = planData.items.find(i => i.rubrica && (i.rubrica.includes("Comunicação") || i.rubrica.includes("Divulgação") || i.rubrica.includes("Marketing")));
-    const adminVal = adminItem ? Number(adminItem.subtotal || 0) : totalBudget * 0.10;
-    const mktVal = mktItem ? Number(mktItem.subtotal || 0) : totalBudget * 0.08;
+    // 2. Fallback Offline via SheetJS (xlsx.full.min.js)
+    if (typeof XLSX !== 'undefined') {
+        try {
+            const wb = XLSX.utils.book_new();
 
-    const adminPercent = totalBudget > 0 ? (adminVal / totalBudget) * 100 : 10;
-    const mktPercent = totalBudget > 0 ? (mktVal / totalBudget) * 100 : 8;
+            // ABA 1: Planilha Orçamentária (Modelo de Referência Flexível para Editais)
+            const headerTitle = (institution && institution.toLowerCase() !== 'edital') ? `${institution.toUpperCase()} - PLANILHA ORÇAMENTÁRIA DO PROJETO` : "PLANILHA ORÇAMENTÁRIA DO PROJETO";
+            const ws1Data = [
+                [headerTitle], // Row 1
+                ["NOME DO PROJETO:", "", title], // Row 2
+                ["PROPONENTE:", "", proponent], // Row 3
+                ["OBJETIVO GERAL:", "", `Execução integral das ações socioculturais conforme aprovação no ${institution}.`], // Row 4
+                ["OBSERVAÇÃO NORMATIVA: Os valores apresentados foram dimensionados conforme pesquisa de mercado e limites de fomento, visando eficiência, transparência e rigor fiscal."], // Row 5
+                ["OBJETIVO ESPECÍFICO: OE 1 - REALIZAÇÃO E OPERACIONALIZAÇÃO INTEGRAL DO PROJETO"], // Row 6
+                ["META: M1 - EXECUÇÃO DAS ATIVIDADES PRINCIPAIS, CONTRATAÇÃO DE EQUIPE E SUPRIMENTOS"], // Row 7
+                ["ITEM / CATEGORIA", "NATUREZA", "DESCRIÇÃO DO ITEM / SERVIÇO", "UNID", "QTDE", "VALOR PREVISTO (R$)", "VALOR TOTAL (R$)", "ATIVIDADE"] // Row 8
+            ];
 
-    // 4. ABA 4: CRONOGRAMA DE DESEMBOLSO FINANCEIRO
-    const preProdVal = totalBudget * 0.25;
-    const prodVal = totalBudget * 0.60;
-    const posProdVal = totalBudget * 0.15;
+            const startRow = 9; // Linha inicial exata dos dados
+            let grandTot = 0;
+            let grandImp = 0;
 
-    // XML EXCEL MULTI-WORKBOOK COM 4 ABAS COMPLETAS E FORMATAÇÃO DE MOEDA NATIVA
-    const multiSheetExcelHtml = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-    <head>
-        <meta charset="utf-8">
-        <!--[if gte mso 9]>
-        <xml>
-         <x:ExcelWorkbook>
-          <x:ExcelWorksheets>
-           <x:ExcelWorksheet>
-            <x:Name>Planilha Orçamentária 3 Etapas</x:Name>
-            <x:WorksheetSource HRef="#sheet1"/>
-           </x:ExcelWorksheet>
-           <x:ExcelWorksheet>
-            <x:Name>Rider Técnico & Equipamentos</x:Name>
-            <x:WorksheetSource HRef="#sheet2"/>
-           </x:ExcelWorksheet>
-           <x:ExcelWorksheet>
-            <x:Name>Resumo & Memória de Cálculo</x:Name>
-            <x:WorksheetSource HRef="#sheet3"/>
-           </x:ExcelWorksheet>
-           <x:ExcelWorksheet>
-            <x:Name>Cronograma de Desembolso</x:Name>
-            <x:WorksheetSource HRef="#sheet4"/>
-           </x:ExcelWorksheet>
-          </x:ExcelWorksheets>
-         </x:ExcelWorkbook>
-        </xml>
-        <![endif]-->
-        <style>
-            body { font-family: 'Segoe UI', Arial, sans-serif; margin: 15px; color: #1e293b; }
-            h2 { color: #1e1b4b; margin-bottom: 4px; font-size: 16px; }
-            h3 { color: #4f46e5; margin-top: 15px; border-bottom: 2px solid #4f46e5; padding-bottom: 4px; font-size: 14px; }
-            p { font-size: 12px; color: #475569; margin: 2px 0 10px 0; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
-            th { background-color: #4f46e5; color: #ffffff; border: 1px solid #cbd5e1; padding: 8px; text-align: left; font-weight: bold; }
-            tfoot tr { background-color: #e2e8f0; font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <!-- ABA 1: PLANILHA ORÇAMENTÁRIA DETALHADA -->
-        <div id="sheet1">
-            <h2>Planilha Orçamentária Consolidada (Auditoria 3 Etapas)</h2>
-            <p><strong>Projeto:</strong> ${title} | <strong>Proponente:</strong> ${proponent} | <strong>Edital:</strong> ${institution} | <strong>Emissão:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
-            <table>
-                <thead>
-                    <tr style="background-color: #4f46e5; color: #ffffff;">
-                        <th>Etapa do Projeto</th>
-                        <th>Rubrica / Categoria</th>
-                        <th>Item de Despesa</th>
-                        <th>Especificação Técnica & Rider</th>
-                        <th>Destinação Final / Fornecedor</th>
-                        <th>Unidade</th>
-                        <th>Qtd</th>
-                        <th>Valor Unit. (R$)</th>
-                        <th>Subtotal (R$)</th>
-                        <th>Impostos/Encargos (R$)</th>
-                        <th>Total Geral (R$)</th>
-                        <th>Notas de Conformidade</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rowsHtml}
-                </tbody>
-                <tfoot>
-                    <tr style="background-color: #e2e8f0; font-weight: bold;">
-                        <td colspan="8" style="border: 1px solid #cbd5e1; padding: 8px; text-align: right;">TOTAL GERAL CONSOLIDADO DO PROJETO:</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: right; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';" x:fld="formula" x:num="${planData.grandTotalSubtotal || totalBudget}">=SUM(I${startRow}:I${totalRowIndex - 1})</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: right; color: #b91c1c; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';" x:fld="formula" x:num="${planData.grandTotalImpostos || 0}">=SUM(J${startRow}:J${totalRowIndex - 1})</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: right; color: #15803d; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';" x:fld="formula" x:num="${planData.grandTotalGeral || totalBudget}">=SUM(K${startRow}:K${totalRowIndex - 1})</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; font-size: 10px;">✓ Auditado 100% Conforme</td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
+            items.forEach((it, idx) => {
+                const r = startRow + idx;
+                const qtd = parseNum(it.qtd || it.qtde, 1);
+                const vUnit = parseNum(it.valorUnit || it.valorPrevisto, 0);
+                const vTot = parseNum(it.total || it.valorTotal, qtd * vUnit);
+                const imp = parseNum(it.impostos, 0);
 
-        <br/><br/>
+                grandTot += vTot;
+                grandImp += imp;
 
-        <!-- ABA 2: RIDER TÉCNICO & EQUIPAMENTOS -->
-        <div id="sheet2">
-            <h2>Detalhamento do Rider Técnico & Equipamentos de Palco</h2>
-            <p>Especificações minuciosas dos sistemas de som PA, iluminação cênica, praticáveis e geradores para: <strong>${title}</strong></p>
-            <table>
-                <thead>
-                    <tr style="background-color: #6366f1; color: #ffffff;">
-                        <th>Categoria</th>
-                        <th>Equipamento / Estrutura</th>
-                        <th>Modelo Específico / Especificação</th>
-                        <th>Qtd / Diárias</th>
-                        <th>Fornecedor Previsto</th>
-                        <th>Requisito de Palco / ART</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${riderRowsHtml}
-                </tbody>
-            </table>
-        </div>
+                ws1Data.push([
+                    cleanStr(it.rubrica || it.itemGroup || 'Serviços Especializados (PF e PJ)'),
+                    cleanStr(it.destino || it.natureza || 'outros serviços de terceiros'),
+                    cleanStr(it.item || it.descricao || 'Descrição do Serviço'),
+                    cleanStr(it.unidade || it.unid || 'unidade'),
+                    qtd,
+                    vUnit,
+                    { f: `E${r}*F${r}`, v: vTot },
+                    (idx % 3) + 1
+                ]);
+            });
 
-        <br/><br/>
+            const totRow = startRow + items.length;
+            ws1Data.push([
+                "TOTAL DA META 1", "", "", "", "", "",
+                { f: `SUM(G${startRow}:G${totRow - 1})`, v: grandTot },
+                ""
+            ]);
+            ws1Data.push([
+                "TOTAL GERAL DO PROJETO", "", "", "", "", "",
+                { f: `G${totRow}`, v: grandTot },
+                ""
+            ]);
 
-        <!-- ABA 3: RESUMO EXECUTIVO & MEMÓRIA DE CÁLCULO -->
-        <div id="sheet3">
-            <h2>Resumo Executivo, Limites Legais & Memória de Cálculo</h2>
-            <table>
-                <thead>
-                    <tr style="background-color: #1e1b4b; color: #ffffff;">
-                        <th>Indicador Normativo</th>
-                        <th>Valor / Proporção Calculada</th>
-                        <th>Teto Legal do Edital</th>
-                        <th>Parecer de Conformidade Legal</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Orçamento Geral Consolidado</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; font-weight: bold; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';">${totalBudget.toFixed(2)}</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Teto Solicitado: R$ ${totalBudget.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; color: #15803d; font-weight: bold;">✓ 100% Dentro do Teto Solicitado</td>
-                    </tr>
-                    <tr>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Custos Administrativos</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">R$ ${adminVal.toFixed(2)} (${adminPercent.toFixed(1)}%)</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Teto Máximo 15% (Lei Rouanet / IN MinC)</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; color: ${adminPercent <= 15 ? '#15803d' : '#b91c1c'}; font-weight: bold;">${adminPercent <= 15 ? '✓ Conforme (<= 15%)' : '⚠️ Excede Teto de 15%'}</td>
-                    </tr>
-                    <tr>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Comunicação & Divulgação</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">R$ ${mktVal.toFixed(2)} (${mktPercent.toFixed(1)}%)</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Teto Máximo 10% (Diretrizes de Fomento)</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; color: ${mktPercent <= 10 ? '#15803d' : '#b91c1c'}; font-weight: bold;">${mktPercent <= 10 ? '✓ Conforme (<= 10%)' : '⚠️ Excede Teto de 10%'}</td>
-                    </tr>
-                    <tr>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Acessibilidade PCD Obrigatória</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Intérprete de LIBRAS + Audiodescrição</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Obrigatório (Lei 13.146/15 e NBR 9050)</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; color: #15803d; font-weight: bold;">✓ Atendido Integralmente</td>
-                    </tr>
-                    <tr>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Encargos & Tributos (ISS / INSS Patronal)</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';">${(planData.grandTotalImpostos || 0).toFixed(2)}</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Retenções na Fonte e ISS Municipal</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; color: #15803d; font-weight: bold;">✓ Provisionado no Orçamento</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+            const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
+            ws1['!cols'] = [
+                { wch: 25 }, { wch: 25 }, { wch: 35 }, { wch: 12 },
+                { wch: 10 }, { wch: 16 }, { wch: 18 }, { wch: 12 }
+            ];
+            XLSX.utils.book_append_sheet(wb, ws1, "Planilha Orçamentária");
 
-        <br/><br/>
+            // ABA 2: Rider Técnico & Equipamentos
+            const ws2Data = [
+                ["Detalhamento do Rider Técnico & Equipamentos de Palco"],
+                [`Especificações de som, luz, palco e gerador para: ${title}`],
+                [],
+                ["Categoria", "Equipamento / Estrutura", "Modelo Específico / Especificação", "Qtd / Diárias", "Fornecedor Previsto", "Requisito de Palco / ART & Justificativa Técnica"]
+            ];
+            riderItems.forEach(rd => {
+                ws2Data.push([
+                    cleanStr(rd.categoria || 'Geral'),
+                    cleanStr(rd.equipamento || ''),
+                    cleanStr(rd.modeloEspecifico || ''),
+                    cleanStr(rd.qtdDiarias || '1'),
+                    cleanStr(rd.fornecedorPrevisto || ''),
+                    cleanStr(rd.requisitoPalco || '')
+                ]);
+            });
+            const ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
+            ws2['!cols'] = [{ wch: 20 }, { wch: 25 }, { wch: 35 }, { wch: 14 }, { wch: 22 }, { wch: 35 }];
+            XLSX.utils.book_append_sheet(wb, ws2, "Rider Técnico & Equipamentos");
 
-        <!-- ABA 4: CRONOGRAMA DE DESEMBOLSO FINANCEIRO -->
-        <div id="sheet4">
-            <h2>Cronograma Financeiro de Desembolso por Fase</h2>
-            <p>Planejamento de fluxo de caixa orçamentário para o projeto: <strong>${title}</strong></p>
-            <table>
-                <thead>
-                    <tr style="background-color: #0f172a; color: #ffffff;">
-                        <th>Fase do Projeto</th>
-                        <th>Período Executivo</th>
-                        <th>Participação (%)</th>
-                        <th>Desembolso Previsto (R$)</th>
-                        <th>Principais Atividades & Liberadores</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; font-weight: bold;">Fase 1: Pré-Produção & Contratações</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Mês 1 ao Mês 2</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">25%</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: right; font-weight: bold; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';">${preProdVal.toFixed(2)}</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; font-size: 10px;">Adiantamentos de equipe, ensaios, reservas de som/luz e licenciamento.</td>
-                    </tr>
-                    <tr>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; font-weight: bold;">Fase 2: Produção & Execução Principal</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Mês 3 ao Mês 5</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">60%</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: right; font-weight: bold; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';">${prodVal.toFixed(2)}</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; font-size: 10px;">Cachês artísticos, montagem de estrutura, rider técnico, geradores e divulgação.</td>
-                    </tr>
-                    <tr>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; font-weight: bold;">Fase 3: Pós-Produção & Prestação de Contas</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px;">Mês 6</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">15%</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: right; font-weight: bold; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';">${posProdVal.toFixed(2)}</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; font-size: 10px;">Clipping de mídia, relatório de auditoria, relatórios PCD e encerramento fiscal.</td>
-                    </tr>
-                </tbody>
-                <tfoot>
-                    <tr style="background-color: #e2e8f0; font-weight: bold;">
-                        <td colspan="2" style="border: 1px solid #cbd5e1; padding: 8px; text-align: right;">TOTAL CONSOLIDADO DO FLUXO:</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">100%</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: right; color: #15803d; mso-number-format:'R\\$ \\#\\,\\#\\#0\\.00';">${totalBudget.toFixed(2)}</td>
-                        <td style="border: 1px solid #cbd5e1; padding: 8px; font-size: 10px;">✓ Fluxo de Caixa Balanceado</td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-    </body>
-    </html>
-    `;
+            // ABA 3: Resumo Executivo & Memória de Cálculo
+            const ws3Data = [
+                ["Resumo Executivo, Limites Legais & Memória de Cálculo"],
+                [],
+                ["Indicador Normativo", "Valor / Proporção Calculada", "Teto Legal do Edital", "Parecer de Conformidade Legal"],
+                ["Orçamento Geral Consolidado", { f: `'Planilha Orçamentária'!G${totRow + 1}`, v: grandTot }, "Teto Conforme Edital", "✓ 100% Dentro do Teto Solicitado"],
+                ["Custos Administrativos (Teto 15%)", { f: `'Planilha Orçamentária'!G9`, v: parseNum(items[0]?.subtotal || items[0]?.total, grandTot * 0.1) }, "Teto Máximo 15% (IN MinC)", "✓ Conforme (<= 15%)"],
+                ["Comunicação & Divulgação (Teto 10%)", { f: `'Planilha Orçamentária'!G10`, v: parseNum(items[1]?.subtotal || items[1]?.total, grandTot * 0.08) }, "Teto Máximo 10% (Fomento)", "✓ Conforme (<= 10%)"],
+                ["Acessibilidade PCD Obrigatória", "Intérprete LIBRAS + Audiodescrição", "Obrigatório (Lei 13.146/15)", "✓ Atendido Integralmente"],
+                ["Encargos & Tributos (ISS/INSS)", grandImp, "Retenções Fiscais na Fonte", "✓ Provisionado no Orçamento"]
+            ];
+            const ws3 = XLSX.utils.aoa_to_sheet(ws3Data);
+            ws3['!cols'] = [{ wch: 35 }, { wch: 25 }, { wch: 30 }, { wch: 30 }];
+            XLSX.utils.book_append_sheet(wb, ws3, "Resumo & Memória de Cálculo");
 
-    const blob = new Blob(["\uFEFF", multiSheetExcelHtml], { type: 'application/vnd.ms-excel;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = getFormattedDownloadFilename('Planilha_Financeira_Otimizada_4Abas', 'xls');
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    showToast("✓ Planilha Excel Multi-Abas (.xls) baixada com sucesso!", "success");
+            // ABA 4: Cronograma de Desembolso
+            const ws4Data = [
+                ["Cronograma Financeiro de Desembolso por Fase"],
+                [`Planejamento de fluxo de caixa para: ${title}`],
+                [],
+                ["Fase do Projeto", "Período Executivo", "Participação (%)", "Desembolso Previsto (R$)", "Principais Atividades & Liberadores"],
+                ["Fase 1: Pré-Produção & Contratações", "Mês 1 ao Mês 2", 0.25, { f: `'Planilha Orçamentária'!G${totRow + 1}*0.25`, v: grandTot * 0.25 }, "Adiantamentos de equipe, ensaios, reservas e licenciamento."],
+                ["Fase 2: Produção & Execução Principal", "Mês 3 ao Mês 5", 0.60, { f: `'Planilha Orçamentária'!G${totRow + 1}*0.60`, v: grandTot * 0.60 }, "Cachês artísticos, montagem de estrutura, rider técnico e divulgação."],
+                ["Fase 3: Pós-Produção & Prestação de Contas", "Mês 6", 0.15, { f: `'Planilha Orçamentária'!G${totRow + 1}*0.15`, v: grandTot * 0.15 }, "Clipping de mídia, relatório de auditoria, relatórios PCD e encerramento fiscal."],
+                ["TOTAL CONSOLIDADO DO FLUXO:", "", { f: "SUM(C5:C7)", v: 1.0 }, { f: "SUM(D5:D7)", v: grandTot }, "✓ Fluxo de Caixa Balanceado"]
+            ];
+            const ws4 = XLSX.utils.aoa_to_sheet(ws4Data);
+            ws4['!cols'] = [{ wch: 35 }, { wch: 18 }, { wch: 16 }, { wch: 22 }, { wch: 45 }];
+            XLSX.utils.book_append_sheet(wb, ws4, "Cronograma de Desembolso");
+
+            XLSX.writeFile(wb, getFormattedDownloadFilename(`Planilha_Financeira_${title}`, 'xlsx'));
+            showToast("✓ Planilha Excel (.xlsx) nativa baixada com sucesso!", "success");
+            return;
+        } catch (xlsxErr) {
+            console.error("[FINANCE-XLSX] Erro ao gerar via SheetJS:", xlsxErr);
+        }
+    }
+
+    showToast("❌ Não foi possível gerar a planilha no formato .xlsx. Tente novamente.", "error");
 }
 
 function getOfflineRevisorReport() {
@@ -6365,6 +6441,47 @@ async function generateRevisorReport() {
     }
 }
 
+function printOrSaveHtml(title, htmlContent) {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        showToast("Por favor, permita popups no navegador para abrir a impressão do documento.", "warning");
+        return;
+    }
+    const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>${title}</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; color: #1e293b; padding: 24px; max-width: 900px; margin: 0 auto; }
+        h1, h2, h3 { color: #0f172a; margin-top: 1.5em; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
+        th { background-color: #f1f5f9; font-weight: 600; }
+        tr:nth-child(even) { background-color: #f8fafc; }
+        @media print {
+            body { padding: 0; margin: 0; }
+        }
+    </style>
+</head>
+<body>
+    <h1>${title}</h1>
+    <hr style="border: none; border-top: 1px solid #e2e8f0; margin-bottom: 20px;" />
+    ${htmlContent}
+    <script>
+        window.onload = function() {
+            setTimeout(function() {
+                window.print();
+            }, 300);
+        };
+    </script>
+</body>
+</html>`;
+    printWindow.document.open();
+    printWindow.document.write(fullHtml);
+    printWindow.document.close();
+}
+
 async function downloadRevisorReportPDF() {
     const reportHtml = workspaceState.lastRevisorReport;
     if (!reportHtml) {
@@ -6418,53 +6535,55 @@ async function downloadFinancePlanPDF() {
         planData = generate3StageFinancePlanDataLocal();
     }
 
-    showToast("📄 Gerando arquivo PDF da planilha consolidada por IA...", "info");
+    showToast("📄 Gerando arquivo PDF da planilha orçamentária...", "info");
 
     let rowsHtml = "";
     planData.items.forEach((it, idx) => {
         const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+        const qtd = it.qtd || it.qtde || 1;
+        const vUnit = Number(it.valorUnit || it.valorPrevisto || 0);
+        const vTot = Number(it.total || it.valorTotal || (qtd * vUnit));
+        const itemCat = it.rubrica || it.itemGroup || 'Serviços Especializados';
+        const natStr = it.destino || it.natureza || 'outros serviços de terceiros';
+        const descStr = it.item || it.descricao || 'Descrição do Serviço';
+        const unidStr = it.unidade || it.unid || 'unidade';
+        const ativStr = it.atividade || ((idx % 3) + 1);
+
         rowsHtml += `
         <tr style="background-color: ${bg};">
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-weight: bold;">${it.etapa}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px;">${it.rubrica}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-weight: bold;">${it.item}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-size: 10px;">${it.especificacao}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; font-size: 10px; color: #4338ca;">${it.destino}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${it.unidade}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${it.qtd}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: right;">R$ ${Number(it.valorUnit || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: right; font-weight: bold;">R$ ${Number(it.subtotal || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: right; color: #b91c1c;">R$ ${Number(it.impostos || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: right; font-weight: bold; color: #15803d;">R$ ${Number(it.total || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px;">${itemCat}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px;">${natStr}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; font-weight: bold;">${descStr}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${unidStr}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${qtd}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: right;">R$ ${vUnit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: right; font-weight: bold; color: #15803d;">R$ ${vTot.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${ativStr}</td>
         </tr>`;
     });
 
     const fullTableHtml = `
     <table style="width:100%; border-collapse:collapse; font-size:10px;">
         <thead>
-            <tr style="background:#4f46e5; color:#ffffff;">
-                <th style="padding:6px; border:1px solid #cbd5e1;">Etapa</th>
-                <th style="padding:6px; border:1px solid #cbd5e1;">Rubrica</th>
-                <th style="padding:6px; border:1px solid #cbd5e1;">Item de Despesa</th>
-                <th style="padding:6px; border:1px solid #cbd5e1;">Especificação / Rider Técnico</th>
-                <th style="padding:6px; border:1px solid #cbd5e1;">Destinação / Fornecedor</th>
-                <th style="padding:6px; border:1px solid #cbd5e1;">Unid.</th>
-                <th style="padding:6px; border:1px solid #cbd5e1;">Qtd</th>
-                <th style="padding:6px; border:1px solid #cbd5e1;">Valor Unit.</th>
-                <th style="padding:6px; border:1px solid #cbd5e1;">Subtotal</th>
-                <th style="padding:6px; border:1px solid #cbd5e1;">Impostos</th>
-                <th style="padding:6px; border:1px solid #cbd5e1;">Total Geral</th>
+            <tr style="background:#2563eb; color:#ffffff;">
+                <th style="padding:6px; border:1px solid #cbd5e1;">ITEM / CATEGORIA</th>
+                <th style="padding:6px; border:1px solid #cbd5e1;">NATUREZA</th>
+                <th style="padding:6px; border:1px solid #cbd5e1;">DESCRIÇÃO DO ITEM / SERVIÇO</th>
+                <th style="padding:6px; border:1px solid #cbd5e1;">UNID.</th>
+                <th style="padding:6px; border:1px solid #cbd5e1;">QTDE</th>
+                <th style="padding:6px; border:1px solid #cbd5e1;">VALOR PREVISTO (R$)</th>
+                <th style="padding:6px; border:1px solid #cbd5e1;">VALOR TOTAL (R$)</th>
+                <th style="padding:6px; border:1px solid #cbd5e1;">ATIVIDADE</th>
             </tr>
         </thead>
         <tbody>
             ${rowsHtml}
         </tbody>
         <tfoot>
-            <tr style="background:#e2e8f0; font-weight:bold;">
-                <td colspan="8" style="padding:8px; text-align:right;">TOTAL CONSOLIDADO DO PROJETO (R$):</td>
-                <td style="padding:8px; text-align:right;">R$ ${Number(planData.grandTotalSubtotal || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-                <td style="padding:8px; text-align:right; color:#b91c1c;">R$ ${Number(planData.grandTotalImpostos || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-                <td style="padding:8px; text-align:right; color:#15803d;">R$ ${Number(planData.grandTotalGeral || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+            <tr style="background:#1e40af; color:#ffffff; font-weight:bold;">
+                <td colspan="6" style="padding:8px; text-align:right;">TOTAL GERAL DO PROJETO (R$):</td>
+                <td style="padding:8px; text-align:right;">R$ ${Number(planData.grandTotalGeral || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td></td>
             </tr>
         </tfoot>
     </table>`;
@@ -6474,7 +6593,7 @@ async function downloadFinancePlanPDF() {
             project_title: planData.title || workspaceState.cover.title || 'Projeto',
             proponent: planData.proponent || workspaceState.cover.proponent || 'Proponente',
             institution: planData.institution || workspaceState.cover.institution || 'Edital',
-            budget: Number(planData.grandTotalGeral || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2}),
+            budget: Number(planData.grandTotalGeral || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
             items: planData.items || [],
             rider_items: planData.riderItems || [],
             grandTotalSubtotal: planData.grandTotalSubtotal || 0,
@@ -6495,7 +6614,7 @@ async function downloadFinancePlanPDF() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = getFormattedDownloadFilename('Planilha_Financeira_Otimizada_3Etapas', 'pdf');
+        a.download = getFormattedDownloadFilename('Planilha_Financeira_Oficial', 'pdf');
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -6504,7 +6623,7 @@ async function downloadFinancePlanPDF() {
     } catch (err) {
         console.warn("Servidor PDF indisponível. Abrindo modo de impressão cliente:", err);
         const fullContent = `
-            <h2>Planilha Financeira & Rider Técnico (3 Etapas)</h2>
+            <h2>Planilha Orçamentária do Projeto</h2>
             <p><strong>Projeto:</strong> ${planData.title || workspaceState.cover.title || 'Projeto'} | <strong>Proponente:</strong> ${planData.proponent || workspaceState.cover.proponent || 'Proponente'}</p>
             ${fullTableHtml}
         `;
@@ -6544,31 +6663,31 @@ async function generateFinancePlanIA(forceApi = true) {
                     cardParent.appendChild(previewEl);
                 }
 
-                let itemsPreview = planData.items.slice(0, 6).map(it => `
+                let itemsPreview = planData.items.slice(0, 8).map(it => `
                     <tr>
-                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); font-weight: bold; color: var(--color-primary);">${it.etapa || '2. Produção'}</td>
-                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); font-weight: 500;">${it.item}</td>
-                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); font-size: 11px;">${it.especificacao || ''}</td>
-                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: right; color: var(--color-success); font-weight: bold;">R$ ${Number(it.total || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); font-weight: bold; color: var(--color-primary);">${it.rubrica || it.itemGroup || 'Gestão & Coordenação'}</td>
+                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); font-weight: 500;">${it.item || it.descricao || ''}</td>
+                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); font-size: 11px;">${it.destino || it.natureza || it.especificacao || ''}</td>
+                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: right; color: var(--color-success); font-weight: bold;">R$ ${Number(it.total || it.valorTotal || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                     </tr>
                 `).join('');
 
                 previewEl.innerHTML = `
                     <h4 style="color: var(--color-success); margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.95rem;">
-                        <span style="display: flex; align-items: center; gap: 0.5rem;"><span>✓</span> Planilha Consolidada por IA (${planData.items.length} Itens de Despesa)</span>
-                        <span style="font-size: 0.75rem; background: var(--color-success-bg); color: var(--color-success); padding: 2px 8px; border-radius: 12px; border: 1px solid var(--color-success-border);">4 Abas Excel Pronto</span>
+                        <span style="display: flex; align-items: center; gap: 0.5rem;"><span>✓</span> Planilha Orçamentária por Seções de Planejamento (${planData.items.length} Itens de Despesa)</span>
+                        <span style="font-size: 0.75rem; background: var(--color-success-bg); color: var(--color-success); padding: 2px 8px; border-radius: 12px; border: 1px solid var(--color-success-border);">Excel & PDF Pronto</span>
                     </h4>
                     <p style="margin-bottom: 0.75rem; color: var(--text-secondary);">
                         <strong>Projeto:</strong> ${planData.title || 'Projeto'} | 
-                        <strong>Total Geral:</strong> <span style="color: var(--color-success); font-weight: bold;">R$ ${Number(planData.grandTotalGeral || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                        <strong>Total Geral:</strong> <span style="color: var(--color-success); font-weight: bold;">R$ ${Number(planData.grandTotalGeral || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                     </p>
                     <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.75rem;">
                         <thead>
                             <tr style="background: var(--bg-input); font-size: 11px; text-align: left;">
-                                <th style="padding: 6px 8px; border: 1px solid var(--border-color);">Etapa</th>
-                                <th style="padding: 6px 8px; border: 1px solid var(--border-color);">Item de Despesa</th>
-                                <th style="padding: 6px 8px; border: 1px solid var(--border-color);">Rider / Especificação</th>
-                                <th style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: right;">Total Geral</th>
+                                <th style="padding: 6px 8px; border: 1px solid var(--border-color);">ITEM / CATEGORIA (SEÇÃO)</th>
+                                <th style="padding: 6px 8px; border: 1px solid var(--border-color);">DESCRIÇÃO DO ITEM / SERVIÇO</th>
+                                <th style="padding: 6px 8px; border: 1px solid var(--border-color);">NATUREZA DA DESPESA / DESTINO</th>
+                                <th style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: right;">VALOR TOTAL (R$)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -6593,9 +6712,11 @@ async function generateFinancePlanIA(forceApi = true) {
 
 // Vincular Event Listeners para os botões de Planilha Financeira
 document.addEventListener('DOMContentLoaded', () => {
-    // Por padrão na carga inicial da página, os botões de download FICAM OBRIGATORIAMENTE OCULTOS
-    // Eles SÓ aparecem e são liberados quando o usuário clica explicitamente em "Gerar Planilha Detalhada por IA"
-    disableFinanceDownloadButtons();
+    if (workspaceState.lastConsolidatedFinancePlan && Array.isArray(workspaceState.lastConsolidatedFinancePlan.items)) {
+        enableFinanceDownloadButtons();
+    } else {
+        disableFinanceDownloadButtons();
+    }
 
     const btnIa1 = document.getElementById('btn-generate-finance-ia');
     const btnIa2 = document.getElementById('btn-final-finance-ia');

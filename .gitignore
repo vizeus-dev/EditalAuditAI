@@ -13,3 +13,4 @@ server_output.log
 .idea/
 .vscode/
 .DS_Store
+scratch_*
