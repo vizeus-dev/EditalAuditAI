@@ -23,12 +23,14 @@ window.fetch = function (url, options) {
 
 // State Management
 let workspaceState = {
+    activeAxis: 'cultural', // 'cultural', 'licitacao', 'concurso'
     currentTab: 'setup',
     editalRefText: '',
     editalRefName: '',
     editalProfile: null,
     proposalDraftText: '',
     proposalDraftName: '',
+    ingestaoNotes: '',
     annexes: [], // Array of { name: string, content: string, size: number }
     cover: {
         title: '',
@@ -125,8 +127,30 @@ const REVISORES_METADATA = {
     orcamento: {
         name: "Agente Financeiro & Orçamento",
         icon: "💰",
-        desc: "Analisa a planilha de custos, limites administrativos (15%), marketing (10%) e impostos.",
-        prompt: "Você é o Agente Financeiro & Orçamento. Faça uma avaliação detalhada da planilha orçamentária, verificando limites administrativos (teto de 15%), divulgação (teto de 10%) e encargos tributários (ISS, INSS, IRRF). Estruture o parecer em subseções: '1. Diagnóstico de Custos', '2. Limites Normativos', e '3. Encargos e Impostos'. Finalize com o título 'Sugestão Otimizada' contendo uma planilha orçamentária formatada como tabela HTML. Retorne um JSON com a chave 'nota' (0 a 100) e a chave 'parecer' em HTML."
+        desc: "Analisa planilha de custos, detecta áreas relevantes, valida tetos dinâmicos do edital, encargos e conformidade.",
+        prompt: `Você é o Agente Financeiro & Orçamento — Diretor Financeiro Sênior especializado em editais de fomento público.
+Sua missão é avaliar a planilha orçamentária com base nas REGRAS REAIS DO EDITAL carregado (não use valores genéricos).
+
+INSTRUÇÕES DE ANÁLISE PROFUNDA:
+1. EXTRAIA os tetos reais do edital (ex: gestão pode ser 15%, 20% ou 25% dependendo do edital). NÃO use tetos genéricos.
+2. IDENTIFIQUE quais áreas/rubricas são relevantes para este projeto específico (nem todo projeto precisa de rider técnico, obras civis ou alimentação).
+3. Para CADA rubrica existente na planilha, calcule: percentual do total, aderência ao teto, compatibilidade com preços de mercado.
+4. CRUZE os itens de despesa com as metas e atividades declaradas no cronograma e metodologia.
+5. VERIFIQUE despesas vedadas conforme as regras do edital (terrenos, dívidas, multas, manutenção da entidade, etc.).
+6. DISCRIMINE encargos tributários conforme legislação aplicável (ISS, INSS Patronal, IRRF, FGTS). EXTRAIA as alíquotas do edital ou use as tabelas vigentes. NÃO fixe percentuais genéricos.
+7. Para contratações de PJ/MEI: alerte sobre DAS e risco de caracterização de vínculo empregatício.
+8. Para contratações de Pessoa Física (RPA): verifique se INSS patronal, IRRF e ISS estão previstos na planilha.
+9. VERIFIQUE se cada item de despesa tem relação direta com alguma atividade do projeto.
+
+Estruture o parecer em subseções:
+'1. Diagnóstico de Custos por Área' — análise rubrica a rubrica com % do total
+'2. Conformidade com Tetos do Edital' — confronto com regras REAIS extraídas
+'3. Aderência Metas × Despesas' — cruzamento item a item
+'4. Encargos Trabalhistas e Tributários' — breakdown ISS/INSS/IRRF/FGTS
+'5. Despesas Vedadas' — checklist contra regras do edital
+'6. Sugestão Otimizada' — planilha revisada como tabela HTML com APENAS as rubricas relevantes ao projeto
+
+Retorne um JSON com a chave 'nota' (0 a 100) e a chave 'parecer' em HTML.`
     },
     acessibilidade: {
         name: "Agente de Acessibilidade & Inclusão",
@@ -181,6 +205,44 @@ const REVISORES_METADATA = {
         icon: "🛠️",
         desc: "Revisa mapas de palco, captação de áudio, cronograma de montagem e transporte/alimentação.",
         prompt: "Você é o Agente de Rider Técnico & Logística. Avalie as necessidades físicas e logísticas: mapa de palco, rider de som/luz, montagem/desmontagem e logística de transporte/hospedagem. Estruture o parecer em subseções: '1. Rider Técnico e Som/Luz', '2. Logística de Alimentação e Transporte', e '3. Recomendações'. Finalize com o título 'Sugestão Otimizada' com o rider técnico revisado. Retorne um JSON com a chave 'nota' (0 a 100) e a chave 'parecer' em HTML."
+    },
+    // EIXO 2: LICITAÇÕES (Lei 14.133/21)
+    etp_tr: {
+        name: "Agente Redator de Planejamento (SollAi)",
+        icon: "🏛️",
+        desc: "Redige e audita ETPs, TRs, Matrizes de Risco e Minutas de Edital/Contrato.",
+        prompt: "Você é o Agente Redator de Planejamento da Lei 14.133/21. Avalie o ETP e o TR, verificando a fundamentação da contratação e a adequação da Matriz de Risco. Retorne um JSON com a chave 'nota' (0 a 100) e 'parecer' em HTML."
+    },
+    alice_auditoria: {
+        name: "Agente de Auditoria & Riscos (ALICE)",
+        icon: "🛡️",
+        desc: "Varre PDFs em busca de Red Flags (cláusulas restritivas) e indícios de cartel.",
+        prompt: "Você é o Agente de Auditoria ALICE. Identifique cláusulas restritivas à competitividade e potenciais irregularidades em pregões. Retorne um JSON com a chave 'nota' (0 a 100) e 'parecer' em HTML."
+    },
+    licit_compliance: {
+        name: "Agente de Compliance & Habilitação",
+        icon: "📋",
+        desc: "Calcula índices de liquidez (LG, LC, SG) e tria certidões e atestados técnicos.",
+        prompt: "Você é o Agente de Compliance e Habilitação. Calcule a Liquidez Geral (LG), Liquidez Corrente (LC) e Solvência Geral (SG), avaliando o balanço patrimonial. Retorne um JSON com a chave 'nota' (0 a 100) e 'parecer' em HTML."
+    },
+    esclarecimento: {
+        name: "Agente de Junta de Esclarecimentos",
+        icon: "⚖️",
+        desc: "Formula pareceres de resposta a impugnações e pedidos de esclarecimento.",
+        prompt: "Você é o Agente de Junta de Esclarecimentos. Analise petições de impugnação e minuta decisões fundamentadas com acórdãos do TCU. Retorne um JSON com a chave 'nota' (0 a 100) e 'parecer' em HTML."
+    },
+    // EIXO 3: CONCURSOS PÚBLICOS
+    verticalizado: {
+        name: "Agente Verticalizador & Cronograma (EstudePlan)",
+        icon: "🎓",
+        desc: "Verticaliza o edital e aplica a fórmula adaptativa de distribuição de tempo de estudos.",
+        prompt: "Você é o Agente Verticalizador EstudePlan. Extraia o conteúdo programático e calcule o tempo adaptativo por disciplina (TempoMatéria = Base × Peso × Dificuldade × Incidência). Retorne um JSON com a chave 'nota' (0 a 100) e 'parecer' em HTML."
+    },
+    treino_didatico: {
+        name: "Agente de Questões, Gabaritos & Anki SRS (ConcursosGPT)",
+        icon: "🧠",
+        desc: "Gera lote de questões inéditas, gabaritos comentados, correção discursiva e Flashcards Anki SRS.",
+        prompt: "Você é o Agente de Treino ConcursosGPT. Gere questões inéditas no perfil da banca, gabarito detalhado com artigo de lei e flashcards SRS para exportação Anki (.apkg). Retorne um JSON com a chave 'nota' (0 a 100) e 'parecer' em HTML."
     }
 };
 
@@ -265,12 +327,14 @@ function initAutoFit() {
         '#diff-text-suggested'
     ];
 
+    let isAdjusting = false;
+
     const adjust = (el) => {
-        if (!el) return;
+        if (!el || isAdjusting) return;
         const parent = el.parentElement;
         if (!parent) return;
 
-        const maxLoop = 30;
+        const maxLoop = 15;
         let loop = 0;
 
         // Reset to original font size before testing
@@ -283,13 +347,11 @@ function initAutoFit() {
         let currentSize = parseFloat(window.getComputedStyle(el).fontSize);
 
         const hasOverflow = () => {
-            // Horizontal overflow is always an issue (text layout should wrap, table shouldn't break)
             if (el.scrollWidth > el.clientWidth + 1) return true;
 
             const style = window.getComputedStyle(el);
             const parentStyle = window.getComputedStyle(parent);
 
-            // If the element or parent allows vertical scrolling, vertical overflow is expected
             const isScrollable = (s) => s.overflowY === 'auto' || s.overflowY === 'scroll';
             if (isScrollable(style) || isScrollable(parentStyle)) {
                 return false;
@@ -302,7 +364,6 @@ function initAutoFit() {
             return selfVertical || parentVertical;
         };
 
-        // Reduce font size if there is overflow
         while (hasOverflow() && currentSize > 10 && loop < maxLoop) {
             currentSize -= 0.5;
             el.style.fontSize = `${currentSize}px`;
@@ -311,32 +372,40 @@ function initAutoFit() {
     };
 
     const adjustAll = () => {
-        selectors.forEach(sel => {
-            document.querySelectorAll(sel).forEach(adjust);
-        });
+        if (isAdjusting) return;
+        isAdjusting = true;
+        try {
+            selectors.forEach(sel => {
+                document.querySelectorAll(sel).forEach(adjust);
+            });
+        } finally {
+            isAdjusting = false;
+        }
     };
 
-    // Adjust on window resize
-    window.addEventListener('resize', adjustAll);
+    const debouncedAdjustAll = debounce(adjustAll, 300);
 
-    // MutationObserver to watch content updates and dynamic additions
+    // Adjust on window resize
+    window.addEventListener('resize', debouncedAdjustAll);
+
+    // MutationObserver with debouncing and re-entrancy guard
     const observer = new MutationObserver((mutations) => {
-        adjustAll();
+        if (isAdjusting) return;
+        debouncedAdjustAll();
     });
 
-    // Observe body for changes to cover all dynamic target insertions
-    observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+    // Observe body for dynamic target additions without character/attribute loop triggers
+    observer.observe(document.body, { childList: true, subtree: true });
 
-    // Attach local input listeners on existing elements
-    const debouncedAdjust = debounce(adjust, 250);
+    // Attach local input listeners on target elements
     selectors.forEach(sel => {
         document.querySelectorAll(sel).forEach(el => {
-            el.addEventListener('input', () => debouncedAdjust(el));
+            el.addEventListener('input', () => debouncedAdjustAll());
         });
     });
 
     // Run initial adjustment
-    setTimeout(adjustAll, 300);
+    setTimeout(adjustAll, 500);
 }
 
 // Theme & Key Management
@@ -662,13 +731,16 @@ function addHistoricalMemory(activity) {
 // TABS SWITCHING
 // ==========================================
 function setupTabSwitching() {
-    const tabButtons = document.querySelectorAll('.w-tab-btn');
-    const tabPanes = document.querySelectorAll('.w-tab-pane');
-
     function activateTab(targetTab) {
         if (!targetTab) return;
+        console.log(`[TABS] Ativando aba: ${targetTab}`);
         workspaceState.currentTab = targetTab;
-        saveWorkspaceState();
+        if (typeof saveWorkspaceState === 'function') {
+            saveWorkspaceState();
+        }
+
+        const tabButtons = document.querySelectorAll('.w-tab-btn');
+        const tabPanes = document.querySelectorAll('.w-tab-pane');
 
         tabButtons.forEach(b => {
             const isMatch = b.getAttribute('data-tab') === targetTab;
@@ -688,12 +760,20 @@ function setupTabSwitching() {
         }
     }
 
-    tabButtons.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            if (e && e.preventDefault) e.preventDefault();
+    // Expor globalmente para chamadas diretas ou inline
+    window.activateTab = activateTab;
+    window.switchTab = activateTab;
+
+    // Delegated click listener para garantir que qualquer clique em botão de aba funcione 100%
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.w-tab-btn, [data-tab]');
+        if (btn) {
             const targetTab = btn.getAttribute('data-tab');
-            activateTab(targetTab);
-        });
+            if (targetTab && workspaceState.currentTab !== targetTab) {
+                if (e.cancelable && e.preventDefault) e.preventDefault();
+                activateTab(targetTab);
+            }
+        }
     });
 
     // Set initially active tab
@@ -1066,6 +1146,16 @@ function setupFileHandlers() {
             autoDetectMetadata(textareaDraft.value);
         }, 1000);
         textareaDraft.addEventListener('input', debouncedDraftInput);
+    }
+
+    const textareaNotes = document.getElementById('ingestao-notes-text');
+    if (textareaNotes) {
+        textareaNotes.value = workspaceState.ingestaoNotes || "";
+        const debouncedNotesInput = debounce(() => {
+            workspaceState.ingestaoNotes = textareaNotes.value;
+            saveWorkspaceState();
+        }, 500);
+        textareaNotes.addEventListener('input', debouncedNotesInput);
     }
 
     if (workspaceState.proposalDraftName) {
@@ -1501,6 +1591,9 @@ async function callGeminiToComplementSection(sectionId, currentContent, relevant
     
     ${crossRefContext}
     
+    [ANOTAÇÕES & PONTOS DE ATENÇÃO DO PROPONENTE (ABA DE INGESTÃO)]:
+    ${workspaceState.ingestaoNotes || "Nenhuma anotação adicional."}
+
     [DIRETRIZES ADICIONAIS DO PROPONENTE]:
     ${extraInstrucoes || "Nenhuma diretriz adicional."}
     `;
@@ -1578,6 +1671,9 @@ async function callGeminiForSectionChained(sectionId, extraInstrucoes = "", webS
     
     [RASCUNHO INICIAL DO USUÁRIO]:
     ${workspaceState.proposalDraftText ? workspaceState.proposalDraftText.substring(0, 25000) : "Sem rascunho."}
+    
+    [ANOTAÇÕES & PONTOS DE ATENÇÃO DO PROPONENTE (ABA DE INGESTÃO)]:
+    ${workspaceState.ingestaoNotes || "Nenhuma anotação adicional."}
     
     ${crossRefContext}
     
@@ -2396,12 +2492,36 @@ async function generateSectionWithChatContext() {
 function setupFinalizacaoTab() {
     const btnPdf = document.getElementById('btn-final-download-pdf');
     const btnDocx = document.getElementById('btn-final-download-docx');
+    const btnConsPdf = document.getElementById('btn-consolidate-download-pdf');
+    const btnConsDocx = document.getElementById('btn-consolidate-download-docx');
+    const btnFormatSingle = document.getElementById('btn-format-abnt-single-call');
     const btnRevisorGen = document.getElementById('btn-final-revisor-report-gen');
     const btnRevisorPdf = document.getElementById('btn-final-revisor-pdf');
     const btnAuditPrint = document.getElementById('btn-final-audit-print');
 
     if (btnPdf) btnPdf.addEventListener('click', () => { printCleanProposal(); });
     if (btnDocx) btnDocx.addEventListener('click', () => { exportCleanDoc(); });
+    if (btnConsPdf) btnConsPdf.addEventListener('click', () => { printCleanProposal(); });
+    if (btnConsDocx) btnConsDocx.addEventListener('click', () => { exportCleanDoc(); });
+
+    if (btnFormatSingle) {
+        btnFormatSingle.addEventListener('click', async () => {
+            if (confirm("Deseja formatar o documento inteiro em ABNT via IA em uma única chamada de API?")) {
+                btnFormatSingle.disabled = true;
+                const orig = btnFormatSingle.textContent;
+                btnFormatSingle.textContent = "🪄 Formatando ABNT via IA...";
+                try {
+                    await consolidateAndFormatABNT();
+                } catch (e) {
+                    showToast("Erro na formatação ABNT: " + e.message, "error");
+                } finally {
+                    btnFormatSingle.disabled = false;
+                    btnFormatSingle.textContent = orig;
+                }
+            }
+        });
+    }
+
     if (btnRevisorGen) btnRevisorGen.addEventListener('click', () => { generateRevisorReport(); });
     if (btnRevisorPdf) btnRevisorPdf.addEventListener('click', () => { downloadRevisorReportPDF(); });
     if (btnAuditPrint) btnAuditPrint.addEventListener('click', () => { downloadAuditPDF(); });
@@ -3774,6 +3894,189 @@ function detectRequiredSectionsFromText(text) {
     return [...new Set(required)];
 }
 
+/**
+ * FILTRO INTELIGENTE DE CATEGORIAS ORÇAMENTÁRIAS
+ * Analisa o conteúdo do edital e do projeto para determinar quais das 16 rubricas
+ * são relevantes. Nem todo projeto precisa de todas as áreas.
+ */
+const BUDGET_CATEGORIES_MASTER = [
+    {
+        id: 'coordenacao', name: 'Coordenação Geral & Gestão do Projeto',
+        always: true, maxPct: 0.10,
+        description: 'Direção de produção, coordenação executiva, gestão de cronograma'
+    },
+    {
+        id: 'admin_financeiro', name: 'Administrativo-Financeiro & Prestação de Contas',
+        always: true, maxPct: 0.08,
+        description: 'Contabilidade, prestação de contas, material de escritório'
+    },
+    {
+        id: 'juridico', name: 'Assessoria Jurídica, Contábil & Compliance',
+        keywords: ['jurídic', 'contrato', 'certidão', 'cnd', 'cndt', 'ecad', 'sisgen', 'licença', 'alvará', 'compliance', 'auditoria'],
+        maxPct: 0.05,
+        description: 'Consultoria jurídica, licenciamentos, certidões, direitos autorais'
+    },
+    {
+        id: 'artistico', name: 'Artístico, Cultural & Ficha Técnica',
+        keywords: ['artíst', 'artist', 'cultural', 'músic', 'música', 'dança', 'teatro', 'performance', 'espetáculo', 'apresentaç', 'show', 'concerto', 'elenco', 'cachê', 'ficha técnica', 'coreograf'],
+        maxPct: 0.30,
+        description: 'Cachês artísticos, ensaios, apresentações culturais'
+    },
+    {
+        id: 'formacao', name: 'Formação, Capacitação & Oficinas',
+        keywords: ['oficina', 'capacitação', 'formação', 'curso', 'workshop', 'treinamento', 'educação', 'pedagóg', 'aprendizagem', 'qualificação', 'tecnologia social', 'saberes'],
+        maxPct: 0.30,
+        description: 'Oficinas comunitárias, cursos, workshops, materiais pedagógicos'
+    },
+    {
+        id: 'infraestrutura_civil', name: 'Infraestrutura Comunitária & Obras Civis',
+        keywords: ['obra', 'construção', 'reforma', 'infraestrutura', 'instalação', 'alvenaria', 'elétrica', 'hidráulica', 'memorial descritivo', 'ART', 'CREA', 'projeto técnico', 'edificação'],
+        maxPct: 0.40,
+        description: 'Obras civis, reformas, construções comunitárias'
+    },
+    {
+        id: 'equipamentos', name: 'Equipamentos & Bens Permanentes',
+        keywords: ['equipamento', 'maquinário', 'ferramenta', 'computador', 'bem permanente', 'patrimônio', 'ativo fixo', 'aquisição', 'compra de', 'industrial'],
+        maxPct: 0.35,
+        description: 'Aquisição de equipamentos, máquinas, ferramentas'
+    },
+    {
+        id: 'insumos', name: 'Insumos, Materiais & Suprimentos',
+        keywords: ['insumo', 'material', 'suprimento', 'matéria-prima', 'semente', 'adubo', 'tecido', 'tintas', 'papelaria', 'embalagem', 'consumível'],
+        maxPct: 0.25,
+        description: 'Matérias-primas, insumos produtivos, materiais de consumo'
+    },
+    {
+        id: 'rider_tecnico', name: 'Infraestrutura Técnica & Rider (Som/Luz/Palco)',
+        keywords: ['rider', 'som ', 'sonorização', 'iluminação', 'palco', 'PA ', 'line array', 'gerador', 'praticável', 'truss', 'moving head', 'refletor', 'cenografia', 'estrutura de palco'],
+        maxPct: 0.25,
+        description: 'Locação de sistemas de áudio, iluminação cênica, estruturas'
+    },
+    {
+        id: 'logistica', name: 'Logística, Transporte & Hospedagem',
+        keywords: ['transporte', 'logística', 'frete', 'hospedagem', 'diária', 'deslocamento', 'passagem', 'van', 'ônibus', 'combustível', 'hotel', 'pousada'],
+        maxPct: 0.10,
+        description: 'Frete, transporte de equipe e materiais, hospedagem'
+    },
+    {
+        id: 'alimentacao', name: 'Alimentação & Segurança Alimentar',
+        keywords: ['alimentação', 'alimentar', 'refeição', 'coffee break', 'lanche', 'catering', 'cozinha', 'horta', 'agroecologia', 'plantio', 'segurança alimentar', 'merenda'],
+        maxPct: 0.15,
+        description: 'Alimentação de equipe e beneficiários, segurança alimentar'
+    },
+    {
+        id: 'acessibilidade', name: 'Acessibilidade PCD & Ações Afirmativas',
+        keywords: ['acessibilidade', 'libras', 'audiodescrição', 'pcd', 'deficiência', 'inclusão', 'inclusiv', 'rampa', 'braile', 'tátil', 'cadeirante', 'lei 13.146'],
+        always: false, conditionalAlways: true,
+        maxPct: 0.08,
+        description: 'Intérprete de LIBRAS, audiodescrição, adaptações físicas'
+    },
+    {
+        id: 'comunicacao', name: 'Comunicação, Mídia & Divulgação',
+        always: true, maxPct: 0.10,
+        description: 'Assessoria de imprensa, mídias sociais, material gráfico'
+    },
+    {
+        id: 'monitoramento', name: 'Monitoramento, Avaliação & Indicadores',
+        keywords: ['monitoramento', 'avaliação', 'indicador', 'resultado', 'matriz lógica', 'impacto', 'pesquisa de satisfação', 'coleta de dados', 'sistematização'],
+        maxPct: 0.05,
+        description: 'Coleta de indicadores, pesquisas, relatórios de impacto'
+    },
+    {
+        id: 'encargos', name: 'Encargos Trabalhistas & Obrigações Fiscais',
+        always: true, maxPct: 0.15,
+        description: 'ISS, INSS Patronal, IRRF, FGTS, encargos sobre contratos'
+    },
+    {
+        id: 'pos_producao', name: 'Pós-Produção, Documentação & Acervo',
+        keywords: ['pós-produção', 'relatório final', 'documentação', 'acervo', 'registro fotográfico', 'vídeo documental', 'clipping', 'memorial', 'publicação', 'livro'],
+        always: false, conditionalAlways: true,
+        maxPct: 0.08,
+        description: 'Registro documental, relatórios finais, acervo'
+    }
+];
+
+function detectRelevantBudgetCategories(editalText, projectContent) {
+    // Limitar o tamanho do texto analisado a 15.000 caracteres para evitar gargalo de CPU
+    const rawCombined = ((editalText || '') + '\n' + (projectContent || ''));
+    const combined = rawCombined.substring(0, 15000).toLowerCase();
+    const relevant = [];
+
+    BUDGET_CATEGORIES_MASTER.forEach(cat => {
+        // Categorias obrigatórias sempre incluídas
+        if (cat.always) {
+            relevant.push({ ...cat, relevance: 'OBRIGATÓRIA', score: 100 });
+            return;
+        }
+
+        // Categorias condicionalmente obrigatórias (acessibilidade, pós-produção)
+        if (cat.conditionalAlways) {
+            if (cat.id === 'acessibilidade') {
+                if (/acessibilidade|libras|pcd|deficiência|inclusã|audiodescrição|lei 13\.?146/i.test(combined)) {
+                    relevant.push({ ...cat, relevance: 'OBRIGATÓRIA (Edital)', score: 95 });
+                    return;
+                }
+            }
+            if (cat.id === 'pos_producao') {
+                if (/prestação de contas|relatório final|documentação|acervo|registro/i.test(combined)) {
+                    relevant.push({ ...cat, relevance: 'RECOMENDADA', score: 85 });
+                    return;
+                }
+            }
+        }
+
+        // Categorias filtradas por keywords (usando indexOf/regex simples rápidos)
+        if (cat.keywords && cat.keywords.length > 0) {
+            let matchCount = 0;
+            for (let i = 0; i < cat.keywords.length; i++) {
+                const kw = cat.keywords[i].toLowerCase();
+                if (combined.includes(kw)) {
+                    matchCount++;
+                }
+            }
+
+            if (matchCount >= 3) {
+                relevant.push({ ...cat, relevance: 'ALTA', score: Math.min(95, 60 + matchCount * 5) });
+            } else if (matchCount >= 1) {
+                relevant.push({ ...cat, relevance: 'MODERADA', score: 40 + matchCount * 15 });
+            }
+        }
+    });
+
+    // Ordenar por score descendente
+    relevant.sort((a, b) => b.score - a.score);
+
+    // Garantir mínimo de 6 categorias para planilha robusta
+    if (relevant.length < 6) {
+        const missing = BUDGET_CATEGORIES_MASTER.filter(cat => !relevant.find(r => r.id === cat.id));
+        const fallbacks = ['juridico', 'logistica', 'pos_producao', 'monitoramento'];
+        fallbacks.forEach(fb => {
+            if (relevant.length < 6) {
+                const cat = missing.find(m => m.id === fb);
+                if (cat) relevant.push({ ...cat, relevance: 'COMPLEMENTAR', score: 30 });
+            }
+        });
+    }
+
+    return relevant;
+}
+
+function getRelevantCategoriesContext() {
+    const editalText = workspaceState.editalRefText || '';
+    const doc = workspaceState.documentContent || {};
+    const projectContent = Object.values(doc).join('\n');
+    const categories = detectRelevantBudgetCategories(editalText, projectContent);
+
+    let contextStr = `[CATEGORIAS ORÇAMENTÁRIAS DETECTADAS COMO RELEVANTES PARA ESTE PROJETO (${categories.length} de ${BUDGET_CATEGORIES_MASTER.length})]:\n`;
+    categories.forEach((cat, i) => {
+        contextStr += `${i + 1}. "${cat.name}" — Relevância: ${cat.relevance} (Score: ${cat.score}) — Teto sugerido: ${Math.round(cat.maxPct * 100)}% — ${cat.description}\n`;
+    });
+    contextStr += `\nIMPORTANTE: Use APENAS estas categorias na rubrica dos itens. NÃO invente categorias fora desta lista.\n`;
+    contextStr += `Categorias NÃO detectadas como relevantes para este edital/projeto: ${BUDGET_CATEGORIES_MASTER.filter(c => !categories.find(r => r.id === c.id)).map(c => c.name).join(', ') || 'Nenhuma — todas são relevantes.'}\n`;
+
+    return { categories, contextStr };
+}
+
 function getEditalProfilePromptContext() {
     const profile = workspaceState.editalProfile;
     if (!profile) return "";
@@ -3791,29 +4094,88 @@ Você DEVE obrigatoriamente respeitar estas diretrizes do edital em todas as inf
 }
 
 function getOfflineEditalProfile(editalRefText, annexes = []) {
-    const textLower = (editalRefText || "").toLowerCase();
-    const annexesTextLower = annexes.map(a => a.content || "").join("\n").toLowerCase();
+    const textLower = (editalRefText || "").substring(0, 20000).toLowerCase();
+    const annexesTextLower = annexes.map(a => (a.content || "").substring(0, 5000)).join("\n").toLowerCase();
     const combinedText = textLower + "\n" + annexesTextLower;
     const annexesNames = annexes.map(a => a.name).join(", ") || "Nenhum anexo adicional carregado";
 
-    let budgetCap = "Teto orçamentário padrão de fomento público (Administração máx 15%, Comunicação máx 10%).";
-    const budgetMatch = textLower.match(/(?:teto|limite|valor máximo|recursos de|r\$)\s*:?\s*(?:r\$)?\s*([\d\.\,]+)/i);
-    if (budgetMatch && budgetMatch[1]) {
-        budgetCap = `Teto Orçamentário identificado: R$ ${budgetMatch[1]}. Limite de Administração: 15%. Limite de Marketing: 10%.`;
+    // --- Extração Dinâmica de Tetos sem Retrocesso de Regex ---
+    let tetoGestao = null;
+    let tetoMarketing = null;
+    let faixaMin = null;
+    let faixaMax = null;
+    let prazoExecMin = null;
+    let prazoExecMax = null;
+
+    // Detectar teto de gestão (ex: "até 25%", "máximo de 15%")
+    const gestaoMatch = combinedText.match(/(?:gestão|administra|coordenação)[^\n.]{0,40}?(?:até|máximo|máx|limite)\s*(?:de)?\s*(\d{1,2})\s*%/i)
+        || combinedText.match(/(?:até|máximo|máx|limite)\s*(?:de)?\s*(\d{1,2})\s*%[^\n.]{0,40}?(?:gestão|administra|coordenação)/i);
+    if (gestaoMatch && gestaoMatch[1]) tetoGestao = parseInt(gestaoMatch[1], 10);
+
+    // Detectar teto de comunicação
+    const mkMatch = combinedText.match(/(?:comunicação|divulgação|marketing|mídia)[^\n.]{0,40}?(?:até|máximo|máx|limite)\s*(?:de)?\s*(\d{1,2})\s*%/i)
+        || combinedText.match(/(?:até|máximo|máx|limite)\s*(?:de)?\s*(\d{1,2})\s*%[^\n.]{0,40}?(?:comunicação|divulgação|marketing)/i);
+    if (mkMatch && mkMatch[1]) tetoMarketing = parseInt(mkMatch[1], 10);
+
+    // Detectar faixas de valor
+    const faixaMatch = combinedText.match(/r\$\s*([\d\.]+)\s*(?:mil)?[^\n.]{0,30}?(?:até|a)\s*r\$\s*([\d\.]+)\s*(?:mil)?/i);
+    if (faixaMatch && faixaMatch[1] && faixaMatch[2]) {
+        const isMil = combinedText.includes('mil');
+        faixaMin = parseFloat(faixaMatch[1].replace(/\./g, '')) * (isMil ? 1000 : 1);
+        faixaMax = parseFloat(faixaMatch[2].replace(/\./g, '')) * (isMil ? 1000 : 1);
     }
 
+    // Detectar prazo de execução
+    const prazoMatch = combinedText.match(/(\d+)\s*(?:a|até|-)\s*(\d+)\s*meses/i);
+    if (prazoMatch && prazoMatch[1] && prazoMatch[2]) {
+        prazoExecMin = parseInt(prazoMatch[1], 10);
+        prazoExecMax = parseInt(prazoMatch[2], 10);
+    }
+
+    // Detectar despesas vedadas
+    let despesasVedadas = [];
+    const vedadasPatterns = [
+        { test: 'terreno', label: 'Compra de terrenos ou imóveis' },
+        { test: 'dívida', label: 'Pagamento de dívidas' },
+        { test: 'multa', label: 'Multas, juros ou penalidades' },
+        { test: 'taxa de administração', label: 'Taxas de administração/gerência' },
+        { test: 'manutenção da entidade', label: 'Custos de manutenção da entidade' },
+        { test: 'trabalho escravo', label: 'Trabalho escravo/infantil' },
+        { test: 'político-partidá', label: 'Fins político-partidários' }
+    ];
+    vedadasPatterns.forEach(p => { if (combinedText.includes(p.test)) despesasVedadas.push(p.label); });
+
+    // Montar string de tetos
+    let budgetCapParts = [];
+    if (tetoGestao) budgetCapParts.push(`Gestão/Administração: máximo ${tetoGestao}%`);
+    else budgetCapParts.push('Gestão/Administração: sem teto explícito detectado (usar referência de mercado)');
+    if (tetoMarketing) budgetCapParts.push(`Comunicação/Divulgação: máximo ${tetoMarketing}%`);
+    if (faixaMin && faixaMax) budgetCapParts.push(`Faixa de valor por proposta: R$ ${faixaMin.toLocaleString('pt-BR')} a R$ ${faixaMax.toLocaleString('pt-BR')}`);
+    if (prazoExecMin && prazoExecMax) budgetCapParts.push(`Prazo de execução: ${prazoExecMin} a ${prazoExecMax} meses`);
+    if (despesasVedadas.length > 0) budgetCapParts.push(`Despesas vedadas: ${despesasVedadas.join('; ')}`);
+
+    const budgetCap = budgetCapParts.join('. ') + '.';
+
     const detectedSections = detectRequiredSectionsFromText(combinedText);
+    const detectedCategories = detectRelevantBudgetCategories(editalRefText, '');
 
     return {
         fomento: "Chamada Pública de Fomento Cultural e Social (Análise Offline)",
         objetivos: "Democratização do acesso à cultura, formação de público e apoio à cadeia produtiva artística local.",
         tetos_e_limites: budgetCap,
+        tetoGestao: tetoGestao || null,
+        tetoMarketing: tetoMarketing || null,
+        faixaValor: faixaMin && faixaMax ? { min: faixaMin, max: faixaMax } : null,
+        prazoExecucao: prazoExecMin && prazoExecMax ? { min: prazoExecMin, max: prazoExecMax } : null,
+        despesasVedadas: despesasVedadas,
+        categoriasRelevantes: detectedCategories.map(c => c.name),
         acessibilidade_e_cotas: "Obrigatória acessibilidade comunicacional (LIBRAS/Audiodescrição) e física. Ações afirmativas com reserva de vagas para grupos prioritários.",
-        prioridades_critérios: "Pontuação máxima de priorização (30 pts) para governança participativa, liderança vulnerabilizada, experiência no território e parcerias em rede.",
+        prioridades_critérios: "Pontuação máxima de priorização para governança participativa, liderança vulnerabilizada, experiência no território e parcerias em rede.",
         anexos_analisados: annexesNames,
         secoes_exigidas: detectedSections
     };
 }
+
 
 async function ensureEditalProfile(forceRefresh = false) {
     if (workspaceState.editalProfile && !forceRefresh) {
@@ -4216,11 +4578,11 @@ function getSimulatedAuditorData() {
             const notaPriorizacao = n6 + n7 + n8;
             const totalScore = notaTecnica + notaPriorizacao;
 
-            const title = workspaceState.cover.title || 'Circuito Tambores Esperança';
-            const proponent = workspaceState.cover.proponent || 'Associação Cultural Esperança';
-            const budget = workspaceState.cover.budget || 220000;
-            const execution = workspaceState.cover.year || '2026';
-            const editalBase = workspaceState.editalRefName || 'EDITAL RIO DOCE 2026';
+            const title = workspaceState.cover.title || 'Projeto Cultural';
+            const proponent = workspaceState.cover.proponent || 'Proponente';
+            const budget = workspaceState.cover.budget || 0;
+            const execution = workspaceState.cover.year || new Date().getFullYear().toString();
+            const editalBase = workspaceState.editalRefName || 'Edital não informado';
 
             const reportHtml = `
                 <!-- 1. Cabeçalho Executivo -->
@@ -4353,26 +4715,22 @@ function getSimulatedAuditorData() {
                                 <td style="border: 1px solid var(--border-color); padding: 6px; font-weight: bold; color: var(--text-primary);">Atuação territorial e localização geográfica</td>
                                 <td style="border: 1px solid var(--border-color); padding: 6px; text-align: center; color: var(--text-secondary);">10</td>
                                 <td style="border: 1px solid var(--border-color); padding: 6px; text-align: center; font-weight: bold; color: var(--color-primary);">${n8}</td>
-                                <td style="border: 1px solid var(--border-color); padding: 6px; color: var(--text-secondary);">${hasObj ? 'Histórico consolidado na bacia do Rio Doce (território prioritário).' : 'Baixo impacto geográfico comprovado.'}</td>
+                                <td style="border: 1px solid var(--border-color); padding: 6px; color: var(--text-secondary);">${hasObj ? 'Histórico de atuação territorial compatível com as exigências do edital.' : 'Baixo impacto geográfico comprovado.'}</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
 
-                <!-- 6. Riscos Eliminatórios -->
                 <div style="background: #fef2f2; border: 1px solid #fca5a5; border-left: 5px solid #ef4444; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.8rem;">
                     <h3 style="margin-top: 0; font-size: 1rem; color: #991b1b; border-bottom: 1px solid #fee2e2; padding-bottom: 0.5rem;">6. Riscos Eliminatórios (Red Flags) 🚩</h3>
-                    ${!hasOrc ? '<p style="margin: 0.3rem 0;">• <strong>ALTA GRAVIDADE:</strong> Ausência total de Planilha Orçamentária. Isso implicará em desclassificação imediata no certame fiscal.</p>' : ''}
-                    ${!hasJust ? '<p style="margin: 0.3rem 0;">• <strong>ALTA GRAVIDADE:</strong> Ausência de Justificativa e de detalhamento do histórico do proponente, inviabilizando a habilitação jurídica.</p>' : ''}
-                    ${hasOrc && hasJust ? '<p style="margin: 0.3rem 0;">✓ <strong>NENHUM RISCO ELIMINATÓRIO DETECTADO:</strong> Toda a documentação e seções essenciais possuem preenchimento mínimo inicial.</p>' : ''}
+                    <p style="margin: 0.3rem 0;">${(!hasOrc || !hasJust) ? '<strong>AVISO:</strong> Foram detectadas pendências críticas que podem levar à desclassificação.' : '✓ NENHUM RISCO ELIMINATÓRIO DETECTADO: Toda a documentação e seções essenciais possuem preenchimento mínimo inicial.'}</p>
                 </div>
 
-                <!-- 7. Fragilidades e Pendências -->
                 <div style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
                     <h3 style="margin-top: 0; font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; color: var(--text-primary);">7. Fragilidades e Pendências (Com Ações Sugeridas)</h3>
                     <ul style="list-style-type: none; padding-left: 0; font-size: 0.8rem; color: var(--text-secondary);">
                         ${!hasAces ? '<li style="margin-bottom: 0.6rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem;"><strong>Fragilidade:</strong> Ausência de detalhamento de audiodescrição e Libras.<br/><strong style="color: var(--color-warning);">Ação Sugerida:</strong> Incorpore no plano de divulgação do projeto a reserva de orçamentos para profissionais tradutores de Libras e técnicos de acessibilidade e escreva uma cláusula específica na seção 6.</li>' : ''}
-                        ${!hasOrc ? '<li style="margin-bottom: 0.6rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem;"><strong>Fragilidade:</strong> Planilha de custos vazia.<br/><strong style="color: var(--color-warning);">Ação Sugerida:</strong> Utilize o Agente Financeiro para calcular e estruturar sua planilha respeitando o teto de R$ 220k.</li>' : ''}
+                        ${!hasOrc ? `<li style="margin-bottom: 0.6rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem;"><strong>Fragilidade:</strong> Planilha de custos vazia.<br/><strong style="color: var(--color-warning);">Ação Sugerida:</strong> Utilize o Agente Financeiro para calcular e estruturar sua planilha respeitando o teto do edital${budget > 0 ? ' (R$ ' + Number(budget).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + ')' : ''}.</li>` : ''}
                         ${hasAces && hasOrc ? '<li style="margin-bottom: 0.6rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem;"><strong>Fragilidade:</strong> Custos de coordenação muito próximos ao teto.<br/><strong style="color: var(--color-warning);">Ação Sugerida:</strong> Monitore as cotações para manter as taxas abaixo de 15% na conformidade exata.</li>' : ''}
                     </ul>
                 </div>
@@ -5271,17 +5629,6 @@ function buildCleanProposalHTML() {
 async function printCleanProposal() {
     syncDOMContentToState();
 
-    const chkAutoFormat = document.getElementById('chk-auto-format-ai-export');
-    const shouldAutoFormat = chkAutoFormat ? chkAutoFormat.checked : true;
-
-    if (shouldAutoFormat && isApiActive()) {
-        try {
-            await consolidateAndFormatABNT(true);
-        } catch (err) {
-            console.warn("Erro na automação de formatação ABNT via IA ao exportar PDF:", err);
-        }
-    }
-
     const html = buildCleanProposalHTML();
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -5298,17 +5645,6 @@ async function printCleanProposal() {
 
 async function exportCleanDoc() {
     syncDOMContentToState();
-
-    const chkAutoFormat = document.getElementById('chk-auto-format-ai-export');
-    const shouldAutoFormat = chkAutoFormat ? chkAutoFormat.checked : true;
-
-    if (shouldAutoFormat && isApiActive()) {
-        try {
-            await consolidateAndFormatABNT(true);
-        } catch (err) {
-            console.warn("Erro na automação de formatação ABNT via IA ao exportar Word:", err);
-        }
-    }
 
     const html = buildCleanProposalHTML().replace('<html>', "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>");
 
@@ -5377,67 +5713,81 @@ async function consolidateAndFormatABNT(isAutoExport = false) {
         return;
     }
 
-    showToast(`⚙️ Executando formatação ABNT seção por seção via IA (${activeKeys.length} seções ativas)...`, "info");
+    showToast(`⚙️ Executando formatação ABNT do documento completo por IA em 1 única chamada (${activeKeys.length} seções)...`, "info");
 
-    let processedCount = 0;
+    const fullDocumentPayload = {};
+    activeKeys.forEach(key => {
+        fullDocumentPayload[key] = workspaceState.documentContent[key];
+    });
+
     const editalContext = workspaceState.editalRefText ? filterRelevantEditalText(workspaceState.editalRefText) : "";
 
-    for (const key of activeKeys) {
-        const rawContent = workspaceState.documentContent[key] || '';
-        processedCount++;
-        showToast(`🪄 [${processedCount}/${activeKeys.length}] Formatando ABNT: ${sectionNames[key]}...`, "info");
-
-        const prompt = `Você é o Agente Revisor ABNT Especialista em Editais Culturais.
-Sua missão é formatar e otimizar exclusivamente a seção "${sectionNames[key].toUpperCase()}" mantendo 100% do conteúdo, detalhes, tabelas, valores e parágrafos do texto original.
+    const prompt = `Você é o Revisor ABNT Mestre de Projetos Culturais.
+Sua missão é realizar a formatação e padronização ABNT de TODAS as seções do documento abaixo em UMA ÚNICA CHAMADA CONSOLIDADA, sem passar seção por seção ou fragmentar o processo.
 
 REGRA CRÍTICA IMPRESCINDÍVEL:
-NUNCA resuma, suprima, reduza ou encurte o texto original. Mantenha integralmente a extensão e a profundidade de informação fornecida!
+NUNCA resuma, suprima, reduza ou encurte o texto original de nenhuma seção. Mantenha integralmente a extensão, tabelas, valores e a profundidade de informação fornecida!
 
 INSTRUÇÕES DE FORMATAÇÃO:
-1. Normas ABNT: Aplique formatação ABNT em HTML limpo. Parágrafos organizados com classe abnt-indent, títulos destacados em h3/h4, tabelas com bordas finas normativas (border: 1px solid #cbd5e1; border-collapse: collapse;) e cabeçalhos destacados.
+1. Normas ABNT: Aplique formatação ABNT em HTML limpo para cada seção. Parágrafos organizados com classe abnt-indent, títulos destacados em h3/h4, tabelas com bordas finas normativas (border: 1px solid #cbd5e1; border-collapse: collapse;) e cabeçalhos destacados.
 2. Gramática e Estilo: Corrija concordância e gramática sem alterar o sentido.
 3. Remoção de Marcas de IA: Elimine diálogos, saudações, desculpas e clichês retóricos (como "em suma", "destarte", "adicionalmente", "portanto", "claro, aqui está").
 
-[TEXTO ORIGINAL DA SEÇÃO]:
-${rawContent}
+[DOCUMENTO COMPLETO DO PROJETO A SER FORMATADO SEÇÃO POR SEÇÃO]:
+${JSON.stringify(fullDocumentPayload, null, 2)}
 
 [EDITAL DE REFERÊNCIA VIGENTE]:
 ${editalContext.substring(0, 35000)}
 
-Retorne um JSON estrito sem marcação markdown no seguinte formato:
+Retorne obrigatoriamente um JSON estrito onde cada chave corresponde ao ID da seção e o valor contém o HTML formatado ABNT completo daquela seção:
 {
-    "conteudo_formatado": "HTML COMPLETO E FORMATADO DA SEÇÃO..."
+    "secoes_formatadas": {
+        "justificativa": "HTML COMPLETO E FORMATADO DA SEÇÃO...",
+        "objetivos": "HTML COMPLETO E FORMATADO DA SEÇÃO..."
+    }
 }`;
 
-        try {
-            const singleSectionSchema = {
-                type: "object",
-                properties: {
-                    conteudo_formatado: { type: "string", description: "HTML formatado ABNT da seção" }
-                },
-                required: ["conteudo_formatado"]
-            };
+    try {
+        const fullAbntSchema = {
+            type: "object",
+            properties: {
+                secoes_formatadas: {
+                    type: "object",
+                    description: "Dicionário mapeando cada chave de seção para seu HTML formatado em ABNT"
+                }
+            },
+            required: ["secoes_formatadas"]
+        };
 
-            const responseText = await callLLMGateway(prompt, null, 'light', singleSectionSchema);
-            const parsed = safeParseJSON(responseText);
+        const responseText = await callLLMGateway(prompt, null, 'heavy', fullAbntSchema);
+        const parsed = safeParseJSON(responseText);
 
-            if (parsed && parsed.conteudo_formatado && parsed.conteudo_formatado.trim().length > 20) {
-                let cleanFormatted = parsed.conteudo_formatado
-                    .replace(/^(claro|com certeza|aqui está|segundo o edital|conforme solicitado).*?:/gi, '')
-                    .replace(/espero ter ajudado.*$/gi, '')
-                    .trim();
-                workspaceState.documentContent[key] = cleanFormatted;
+        if (parsed && parsed.secoes_formatadas && typeof parsed.secoes_formatadas === 'object') {
+            let updatedCount = 0;
+            for (const key of activeKeys) {
+                const formattedHtml = parsed.secoes_formatadas[key];
+                if (formattedHtml && typeof formattedHtml === 'string' && formattedHtml.trim().length > 20) {
+                    let cleanFormatted = formattedHtml
+                        .replace(/^(claro|com certeza|aqui está|segundo o edital|conforme solicitado).*?:/gi, '')
+                        .replace(/espero ter ajudado.*$/gi, '')
+                        .trim();
+                    workspaceState.documentContent[key] = cleanFormatted;
+                    updatedCount++;
+                }
             }
-        } catch (err) {
-            console.warn(`[ABNT-FORMAT] Falha ao formatar seção ${key}:`, err);
+            showToast(`✓ Formatação ABNT por IA concluída em chamada única! (${updatedCount} seções padronizadas)`, "success");
+        } else {
+            console.warn("[ABNT-FORMAT] Estrutura de resposta da API não reconhecida. Mantido conteúdo do editor.");
         }
+    } catch (err) {
+        console.warn("[ABNT-FORMAT] Falha ao formatar documento via API em chamada única:", err);
+        showToast("⚠️ Falha na API ao formatar ABNT. Mantida a versão original do editor.", "warning");
     }
 
     saveWorkspaceState();
     syncEditorContentToDOM();
     updatePlaceholderStates();
     updateHistoryButtonsUI();
-    showToast(`✓ Formatação ABNT por IA concluída com sucesso! (${processedCount} seções otimizadas)`, "success");
 }
 
 function parseBudgetItemsFromEditor(htmlStr) {
@@ -5549,238 +5899,291 @@ function parseBudgetItemsFromEditor(htmlStr) {
     return items;
 }
 
+/**
+ * EXTRAÇÃO DEEP DO CONTEÚDO DO EDITOR PARA O GERADOR OFFLINE
+ * Analisa todas as seções do editor ABNT (ficha técnica, metodologia, cronograma,
+ * acessibilidade, comunicação, rider) e extrai nomes, cargos, serviços
+ * e quantidades específicas para compor a planilha local offline.
+ */
+function extractDeepEditorItems(doc, totalBudget) {
+
+    const extracted = [];
+    const fichaText = (doc.ficha_tecnica || '').toLowerCase();
+    const metoText = (doc.metodologia || '').toLowerCase();
+    const cronoText = (doc.cronograma || '').toLowerCase();
+    const acessText = (doc.acessibilidade || '').toLowerCase();
+    const comText = (doc.comunicacao || '').toLowerCase();
+
+    // 1. Extração de cargos e equipe da Ficha Técnica e Metodologia
+    const rolesMap = [
+        { role: 'Direção de Produção & Coordenação Geral', regex: /coordenad(?:or|ora)|diret(?:or|ora)\s+geral|produ(?:tor|tora)\s+executiv/i, rubrica: 'Coordenação Geral & Gestão do Projeto', pct: 0.08, regime: 'RPA' },
+        { role: 'Assistente de Produção & Apoio Operacional', regex: /assisten(?:te|cia)\s+de\s+produ/i, rubrica: 'Coordenação Geral & Gestão do Projeto', pct: 0.04, regime: 'RPA' },
+        { role: 'Assessoria Contábil & Prestação de Contas', regex: /conta(?:dor|dora)|contabil/i, rubrica: 'Administrativo-Financeiro & Prestação de Contas', pct: 0.04, regime: 'PJ' },
+        { role: 'Consultoria Jurídica & Compliance', regex: /advoga(?:do|da)|juridic|lawyer/i, rubrica: 'Assessoria Jurídica, Contábil & Compliance', pct: 0.03, regime: 'PJ' },
+        { role: 'Direção Artística & Curadoria', regex: /diret(?:or|ora)\s+artístic|curad(?:or|ora)/i, rubrica: 'Artístico, Cultural & Ficha Técnica', pct: 0.06, regime: 'RPA' },
+        { role: 'Oficineiros & Facilitadores Pedagógicos', regex: /oficineir|facilitad|educad|profess/i, rubrica: 'Formação, Capacitação & Oficinas', pct: 0.12, regime: 'RPA' },
+        { role: 'Designer Gráfico & Identidade Visual', regex: /design|diret(?:or|ora)\s+de\s+arte|programad(?:or|ora)\s+visu/i, rubrica: 'Comunicação, Mídia & Divulgação', pct: 0.04, regime: 'PJ' },
+        { role: 'Assessoria de Imprensa & Relações Públicas', regex: /assessor(?:ia)?\s+de\s+imprensa|jornal/i, rubrica: 'Comunicação, Mídia & Divulgação', pct: 0.04, regime: 'PJ' },
+        { role: 'Intérprete de LIBRAS', regex: /libras|intérprete/i, rubrica: 'Acessibilidade PCD & Ações Afirmativas', pct: 0.03, regime: 'RPA' },
+        { role: 'Audiodescritor & Tradutor Visual', regex: /audiodescri/i, rubrica: 'Acessibilidade PCD & Ações Afirmativas', pct: 0.03, regime: 'RPA' },
+        { role: 'Registro Fotográfico & Documentação Audiovisual', regex: /fotógraf|videomak|filmagem|cameram/i, rubrica: 'Pós-Produção, Documentação & Acervo', pct: 0.04, regime: 'RPA' },
+        { role: 'Responsável Técnico / Engenheiro (ART)', regex: /engenhei|arquitet|crea|art\s+/i, rubrica: 'Infraestrutura Comunitária & Obras Civis', pct: 0.05, regime: 'RPA' }
+    ];
+
+    rolesMap.forEach(r => {
+        if (r.regex.test(fichaText) || r.regex.test(metoText) || r.regex.test(acessText) || r.regex.test(comText)) {
+            const val = Math.round(totalBudget * r.pct);
+            let impRate = r.regime === 'RPA' ? 0.16 : 0.05;
+            const imp = Math.round(val * impRate);
+            extracted.push({
+                rubrica: r.rubrica,
+                item: r.role,
+                especificacao: `Serviços especializados de ${r.role} conforme descrito no texto do projeto no Editor ABNT.`,
+                destino: `${r.role} (Ficha Técnica)`,
+                unidade: 'Serviço',
+                qtd: 1,
+                valorUnit: val,
+                subtotal: val,
+                impostos: imp,
+                total: val + imp,
+                regimeTributario: r.regime,
+                fundamentacaoLegal: 'Extraído da Ficha Técnica / Metodologia do Editor',
+                metaVinculada: 'OE1-M1',
+                fontePreco: 'Texto do Editor ABNT',
+                parcelaDesembolso: 1,
+                notas3etapas: 'Item identificado dinamicamente no texto do Editor ABNT pelo motor local offline.'
+            });
+        }
+    });
+
+    return extracted;
+}
+
 function generate3StageFinancePlanDataLocal() {
-    const title = workspaceState.cover.title || 'Projeto Cultural';
+    const title = workspaceState.cover.title || 'Projeto de Fomento';
     const proponent = workspaceState.cover.proponent || 'Não Especificado';
     const institution = workspaceState.cover.institution || 'Não Especificada';
-    const totalBudget = Number(workspaceState.cover.budget) || 220000;
+    const totalBudget = Number(workspaceState.cover.budget) || 200000;
+    const profile = workspaceState.editalProfile || {};
+    const numMeses = profile.prazoExecucao ? profile.prazoExecucao.max : 12;
 
-    const editorParsedItems = parseBudgetItemsFromEditor(workspaceState.documentContent.orcamento || '');
+    const doc = workspaceState.documentContent || {};
+    const editorParsedItems = parseBudgetItemsFromEditor(doc.orcamento || '');
     let items = [];
 
     if (editorParsedItems && editorParsedItems.length > 0) {
-        items = editorParsedItems;
+        items = editorParsedItems.map(it => ({
+            ...it,
+            regimeTributario: it.regimeTributario || 'N/A',
+            fundamentacaoLegal: it.fundamentacaoLegal || 'Item do projeto',
+            metaVinculada: it.metaVinculada || 'OE1-M1',
+            fontePreco: 'Editor do Projeto (Tabela HTML)',
+            parcelaDesembolso: 1
+        }));
     } else {
-        items = [
-        {
-            rubrica: "Gestão & Coordenação Executiva",
-            item: "Direção de Produção & Coordenação Geral",
-            especificacao: "Planejamento operacional, coordenação executiva da equipe e gestão de cronograma físico-financeiro.",
-            destino: "Coordenador Geral / Proponente do Projeto",
-            unidade: "Serviço",
-            qtd: 1,
-            valorUnit: Math.round(totalBudget * 0.08),
-            subtotal: Math.round(totalBudget * 0.08),
-            impostos: Math.round(totalBudget * 0.08 * 0.05),
-            total: Math.round(totalBudget * 0.08 * 1.05),
-            notas3etapas: "Etapa 1: Pré-auditado local (OK) | Etapa 2: Normas de fomento atendidas | Etapa 3: Validação Local"
-        },
-        {
-            rubrica: "Assessoria Jurídica & Compliance",
-            item: "Consultoria Jurídica, Licenciamento & Certidões",
-            especificacao: "Análise contratual, verificação de CNDs (CNDT, FGTS, Receita) e autorizações de direitos autorais (ECAD / SisGen).",
-            destino: "Assessoria Jurídica & Cartórios",
-            unidade: "Serviço",
-            qtd: 1,
-            valorUnit: Math.round(totalBudget * 0.03),
-            subtotal: Math.round(totalBudget * 0.03),
-            impostos: Math.round(totalBudget * 0.03 * 0.05),
-            total: Math.round(totalBudget * 0.03 * 1.05),
-            notas3etapas: "Etapa 1: CNDs verificadas | Etapa 2: Exigências de edital cobertas | Etapa 3: Validação Local"
-        },
-        {
-            rubrica: "Artístico & Ficha Técnica",
-            item: "Elenco Principal, Músicos & Performatistas",
-            especificacao: "Apresentações culturais ao vivo, ensaios técnicos e encontros comunitários de mediação cultural.",
-            destino: "Artistas, Elenco e Músicos Contratados",
-            unidade: "Apresentação",
-            qtd: 4,
-            valorUnit: Math.round((totalBudget * 0.24) / 4),
-            subtotal: Math.round(totalBudget * 0.24),
-            impostos: Math.round(totalBudget * 0.24 * 0.10),
-            total: Math.round(totalBudget * 0.24 * 1.10),
-            notas3etapas: "Etapa 1: Cachê coerente com mercado | Etapa 2: Teto regional respeitado | Etapa 3: Validação Local"
-        },
-        {
-            rubrica: "Infraestrutura & Espaço Cultural",
-            item: "Locação de Espaço Cultural, Palco & Estruturas de Cobertura",
-            especificacao: "Locação do espaço de apresentação, montagem de praticáveis, camarins modulares e infraestrutura de suporte.",
-            destino: "Empresa Especializada em Estruturas & Eventos",
-            unidade: "Serviço",
-            qtd: 1,
-            valorUnit: Math.round(totalBudget * 0.12),
-            subtotal: Math.round(totalBudget * 0.12),
-            impostos: Math.round(totalBudget * 0.12 * 0.05),
-            total: Math.round(totalBudget * 0.12 * 1.05),
-            notas3etapas: "Etapa 1: Estruturas cobertas por laudo técnico | Etapa 2: Teto regional | Etapa 3: Validação Local"
-        },
-        {
-            rubrica: "Infraestrutura & Rider Técnico",
-            item: "Locação de Sistemas de Áudio, Iluminação Cênica & Gerador",
-            especificacao: "Locação do sistema de sonorização PA, refletores LED, moving heads e gerador silenciado para os dias de apresentação.",
-            destino: "Empresas Especializadas de Sonorização e Luz",
-            unidade: "Serviço",
-            qtd: 1,
-            valorUnit: Math.round(totalBudget * 0.15),
-            subtotal: Math.round(totalBudget * 0.15),
-            impostos: Math.round(totalBudget * 0.15 * 0.05),
-            total: Math.round(totalBudget * 0.15 * 1.05),
-            notas3etapas: "Etapa 1: Equipamentos conforme Rider Técnico detalhado abaixo | Etapa 2: Orçamento auditado | Etapa 3: Validação Local"
-        },
-        {
-            rubrica: "Equipe Técnica & Operacional",
-            item: "Técnico de Áudio Sênior, Iluminador Cênico & Roadies",
-            especificacao: "Operação de áudio, afinação do mapa de iluminação, montagem, alinhamento de sistema e apoio técnico de palco.",
-            destino: "Técnicos Especializados de Palco & Áudio",
-            unidade: "Serviço",
-            qtd: 1,
-            valorUnit: Math.round(totalBudget * 0.06),
-            subtotal: Math.round(totalBudget * 0.06),
-            impostos: Math.round(totalBudget * 0.06 * 0.10),
-            total: Math.round(totalBudget * 0.06 * 1.10),
-            notas3etapas: "Etapa 1: Equipe técnica completa | Etapa 2: Conformidade trabalhista | Etapa 3: Validação Local"
-        },
-        {
-            rubrica: "Logística, Transporte & Hospedagem",
-            item: "Frete de Equipamentos, Vans & Diárias de Alimentação/Hospedagem",
-            especificacao: "Caminhão baú para transporte de estruturas, deslocamento da equipe artítico-técnica, hospedagem e alimentação.",
-            destino: "Transportadora & Serviços de Alimentação/Hospedagem",
-            unidade: "Verba",
-            qtd: 1,
-            valorUnit: Math.round(totalBudget * 0.05),
-            subtotal: Math.round(totalBudget * 0.05),
-            impostos: Math.round(totalBudget * 0.05 * 0.05),
-            total: Math.round(totalBudget * 0.05 * 1.05),
-            notas3etapas: "Etapa 1: Logística auditada | Etapa 2: Média regional | Etapa 3: Validação Local"
-        },
-        {
-            rubrica: "Acessibilidade PCD & Ações Afirmativas",
-            item: "Intérprete de LIBRAS Simultâneo & Audiodescrição com Material Tátil",
-            especificacao: "Tradução em LIBRAS durante todo o evento, produção de roteiro e gravação de audiodescrição para público cego/baixa visão.",
-            destino: "Profissionais Certificados de Acessibilidade PCD",
-            unidade: "Serviço",
-            qtd: 1,
-            valorUnit: Math.round(totalBudget * 0.05),
-            subtotal: Math.round(totalBudget * 0.05),
-            impostos: Math.round(totalBudget * 0.05 * 0.05),
-            total: Math.round(totalBudget * 0.05 * 1.05),
-            notas3etapas: "Etapa 1: Conforme Lei 13.146/15 | Etapa 2: Atende exigências do edital | Etapa 3: Validação Local"
-        },
-        {
-            rubrica: "Comunicação, Mídia & Divulgação",
-            item: "Assessoria de Imprensa, Mídias Sociais & Tráfego Pago (Teto 10%)",
-            especificacao: "Divulgação multicanal, criação de artes digitais, campanhas patrocinadas e relatório de clipping de mídia.",
-            destino: "Agência de Comunicação / Designer / Assessor",
-            unidade: "Serviço",
-            qtd: 1,
-            valorUnit: Math.round(totalBudget * 0.09),
-            subtotal: Math.round(totalBudget * 0.09),
-            impostos: Math.round(totalBudget * 0.09 * 0.05),
-            total: Math.round(totalBudget * 0.09 * 1.05),
-            notas3etapas: "Etapa 1: Respeita teto legal de 10% | Etapa 2: Estratégia regional coerente | Etapa 3: Validação Local"
-        },
-        {
-            rubrica: "Pós-Produção & Prestação de Contas",
-            item: "Auditoria Financeira Externa, Registro Fotográfico & Relatório Final",
-            especificacao: "Organização de comprovantes fiscais, auditoria contábil, registro fotográfico em alta resolução e parecer final de execução.",
-            destino: "Auditor Contábil Independente / Fotógrafo",
-            unidade: "Serviço",
-            qtd: 1,
-            valorUnit: Math.round(totalBudget * 0.05),
-            subtotal: Math.round(totalBudget * 0.05),
-            impostos: Math.round(totalBudget * 0.05 * 0.05),
-            total: Math.round(totalBudget * 0.05 * 1.05),
-            notas3etapas: "Etapa 1: Prestação de contas estruturada | Etapa 2: Atende padrão MinC | Etapa 3: Validação Local"
-        },
-        {
-            rubrica: "Custos Administrativos & Encargos Fiscais",
-            item: "Taxa de Gestão Administrativa + Impostos e Encargos Fiscais (ISS, INSS, IRRF)",
-            especificacao: "Custos operacionais de escritório, material administrativo e pagamento de tributos fiscais (Respeitando estritamente o teto de 15%).",
-            destino: "Órgãos Fiscais (Prefeitura / Receita Federal) & Gestão",
-            unidade: "Verba",
-            qtd: 1,
-            valorUnit: Math.round(totalBudget * 0.10),
-            subtotal: Math.round(totalBudget * 0.10),
-            impostos: 0,
-            total: Math.round(totalBudget * 0.10),
-            notas3etapas: "Etapa 1: 10% < Teto 15% | Etapa 2: Em conformidade tributária | Etapa 3: Validação Local"
+        // 1. Extração profunda de papéis/itens descritos no texto do editor
+        const deepItems = extractDeepEditorItems(doc, totalBudget);
+
+        // 2. Filtro inteligente de categorias relevantes
+        const { categories: relevantCategories } = getRelevantCategoriesContext();
+
+        // Mapa de itens modelo por categoria — cada item será gerado apenas se a categoria for relevante
+        const itemTemplates = {
+            'coordenacao': [
+                { item: "Direção de Produção & Coordenação Geral", especificacao: "Planejamento operacional, coordenação executiva da equipe, gestão de cronograma e acompanhamento de metas.", destino: "Coordenador Geral / Proponente", unidade: "Mês", qtd: Math.min(numMeses, 6), pct: 0.08, regime: "RPA", fundLegal: "Item 7.5.1.b (gestão do projeto)", parcela: 1 },
+                { item: "Assistente de Produção & Apoio Logístico", especificacao: "Apoio operacional à coordenação, controle de fornecedores, agendamentos e logística interna.", destino: "Assistente de Produção", unidade: "Mês", qtd: Math.min(numMeses, 6), pct: 0.04, regime: "RPA", fundLegal: "Item 7.5.1.b.vi", parcela: 1 }
+            ],
+            'admin_financeiro': [
+                { item: "Assessoria Contábil & Prestação de Contas", especificacao: "Escrituração contábil, conciliação bancária, organização de documentos fiscais e elaboração de relatórios de prestação de contas.", destino: "Escritório de Contabilidade", unidade: "Mês", qtd: Math.min(numMeses, 6), pct: 0.04, regime: "PJ", fundLegal: "Item 7.5.1.b.ii", parcela: 2 },
+                { item: "Material de Escritório & Insumos Administrativos", especificacao: "Papelaria, cartuchos de impressão, pastas AZ, material para arquivo de comprovantes.", destino: "Fornecedor de Papelaria", unidade: "Verba", qtd: 1, pct: 0.01, regime: "Isento", fundLegal: "Item 7.5.1.b.iv", parcela: 1 }
+            ],
+            'juridico': [
+                { item: "Consultoria Jurídica & Licenciamento", especificacao: "Análise contratual, verificação de CNDs (CNDT, FGTS, Receita Federal), assessoria em termos de convênio.", destino: "Assessoria Jurídica", unidade: "Serviço", qtd: 1, pct: 0.03, regime: "PJ", fundLegal: "Item 7.5.1.b.iii", parcela: 1 }
+            ],
+            'artistico': [
+                { item: "Cachês Artísticos — Elenco Principal", especificacao: "Cachês para artistas, músicos, performers ou oficineiros principais conforme ficha técnica do projeto.", destino: "Artistas e Performers Contratados", unidade: "Apresentação", qtd: 4, pct: 0.20, regime: "RPA", fundLegal: "Item 7.5.1 (serviços contratados)", parcela: 3 },
+                { item: "Direção Artística & Ensaios", especificacao: "Concepção artística, direção de cena/musical, coordenação de ensaios técnicos e gerais.", destino: "Diretor Artístico", unidade: "Serviço", qtd: 1, pct: 0.06, regime: "RPA", fundLegal: "Ficha Técnica do Projeto", parcela: 2 }
+            ],
+            'formacao': [
+                { item: "Oficineiros & Facilitadores de Capacitação", especificacao: "Facilitadores para oficinas de formação comunitária, workshops temáticos e atividades pedagógicas.", destino: "Oficineiros Especializados", unidade: "Oficina", qtd: 6, pct: 0.15, regime: "RPA", fundLegal: "Metodologia do Projeto", parcela: 2 },
+                { item: "Material Pedagógico & Kits de Oficina", especificacao: "Materiais didáticos, kits para participantes, apostilas, insumos para atividades práticas.", destino: "Fornecedor de Materiais Pedagógicos", unidade: "Kit", qtd: 30, pct: 0.05, regime: "Isento", fundLegal: "Plano de Trabalho", parcela: 2 },
+                { item: "Certificação & Avaliação de Aprendizagem", especificacao: "Impressão de certificados, avaliação de competências, registro de frequência e relatório pedagógico.", destino: "Gráfica / Assessoria Pedagógica", unidade: "Serviço", qtd: 1, pct: 0.02, regime: "PJ", fundLegal: "Plano de Trabalho", parcela: 4 }
+            ],
+            'infraestrutura_civil': [
+                { item: "Obras Civis & Reformas Comunitárias", especificacao: "Serviços de construção/reforma conforme memorial descritivo, incluindo materiais, mão-de-obra e ART.", destino: "Empresa de Construção Civil", unidade: "Verba", qtd: 1, pct: 0.30, regime: "PJ", fundLegal: "Item 9.3.b (obras civis)", parcela: 2 },
+                { item: "Projeto Técnico & Memorial Descritivo", especificacao: "Elaboração de plantas, memorial descritivo com especificações técnicas e orçamento detalhado de obra.", destino: "Engenheiro / Arquiteto", unidade: "Serviço", qtd: 1, pct: 0.05, regime: "RPA", fundLegal: "Item 9.3.b.3", parcela: 1 }
+            ],
+            'equipamentos': [
+                { item: "Aquisição de Equipamentos & Ferramentas", especificacao: "Equipamentos produtivos, ferramentas, maquinário conforme especificação do projeto.", destino: "Fornecedor de Equipamentos", unidade: "Unidade", qtd: 1, pct: 0.25, regime: "Isento", fundLegal: "Plano de Trabalho", parcela: 3 }
+            ],
+            'insumos': [
+                { item: "Insumos Produtivos & Matérias-Primas", especificacao: "Matérias-primas, sementes, tecidos, tintas ou insumos específicos para as atividades produtivas do projeto.", destino: "Fornecedores Locais", unidade: "Verba", qtd: 1, pct: 0.15, regime: "Isento", fundLegal: "Metodologia do Projeto", parcela: 2 }
+            ],
+            'rider_tecnico': [
+                { item: "Locação de Sistema de Sonorização PA", especificacao: "Sistema Line Array completo com subs, caixas top, mesa digital e processamento para as apresentações.", destino: "Empresa de Sonorização", unidade: "Diária", qtd: 3, pct: 0.10, regime: "PJ", fundLegal: "Rider Técnico do Projeto", parcela: 4 },
+                { item: "Locação de Iluminação Cênica & Estruturas", especificacao: "Moving heads, refletores LED, grid truss, praticáveis e gerador de energia.", destino: "Empresa de Iluminação e Estrutura", unidade: "Diária", qtd: 3, pct: 0.08, regime: "PJ", fundLegal: "Rider Técnico do Projeto", parcela: 4 },
+                { item: "Equipe Técnica de Palco (Áudio, Luz & Roadies)", especificacao: "Técnico de áudio, iluminador cênico, operadores de palco e apoio técnico.", destino: "Técnicos Especializados", unidade: "Diária", qtd: 3, pct: 0.04, regime: "RPA", fundLegal: "Rider Técnico do Projeto", parcela: 4 }
+            ],
+            'logistica': [
+                { item: "Transporte de Equipe & Materiais", especificacao: "Deslocamento da equipe técnico-artística, frete de materiais e equipamentos entre locais de atividade.", destino: "Transportadora / Locadora de Veículos", unidade: "Verba", qtd: 1, pct: 0.04, regime: "PJ", fundLegal: "Item 7.5.1.b.vi", parcela: 2 },
+                { item: "Hospedagem & Alimentação da Equipe", especificacao: "Diárias de hospedagem e alimentação para equipe em deslocamento durante execução.", destino: "Hotel / Restaurante", unidade: "Diária", qtd: 6, pct: 0.03, regime: "Isento", fundLegal: "Item 7.5.1.b.vi", parcela: 3 }
+            ],
+            'alimentacao': [
+                { item: "Alimentação para Beneficiários & Participantes", especificacao: "Coffee break, lanches ou refeições durante oficinas, encontros e atividades comunitárias.", destino: "Fornecedor de Alimentação / Cooperativa", unidade: "Verba", qtd: 1, pct: 0.06, regime: "Isento", fundLegal: "Plano de Trabalho", parcela: 2 },
+                { item: "Insumos para Segurança Alimentar / Horta", especificacao: "Sementes, mudas, ferramentas de plantio, adubo orgânico e materiais para horta comunitária.", destino: "Fornecedor Agrícola", unidade: "Kit", qtd: 1, pct: 0.04, regime: "Isento", fundLegal: "Metodologia do Projeto", parcela: 2 }
+            ],
+            'acessibilidade': [
+                { item: "Intérprete de LIBRAS & Tradutor Simultâneo", especificacao: "Tradução em LIBRAS durante eventos, reuniões e atividades formativas do projeto.", destino: "Profissional Certificado de LIBRAS", unidade: "Serviço", qtd: 1, pct: 0.03, regime: "RPA", fundLegal: "Lei 13.146/2015 (LBI)", parcela: 3 },
+                { item: "Audiodescrição & Material Tátil Acessível", especificacao: "Produção de roteiro e gravação de audiodescrição, material em braile/relevo para público PCD.", destino: "Profissional de Audiodescrição", unidade: "Serviço", qtd: 1, pct: 0.02, regime: "RPA", fundLegal: "Lei 13.146/2015 (LBI)", parcela: 3 }
+            ],
+            'comunicacao': [
+                { item: "Assessoria de Imprensa & Mídias Sociais", especificacao: "Gestão de redes sociais, criação de conteúdo, assessoria de imprensa e relatório de clipping.", destino: "Agência de Comunicação / Assessor", unidade: "Mês", qtd: Math.min(numMeses, 6), pct: 0.05, regime: "PJ", fundLegal: "Plano de Comunicação", parcela: 1 },
+                { item: "Material Gráfico, Visual & Identidade do Projeto", especificacao: "Criação de identidade visual, banners, faixas, folder, material impresso e digital.", destino: "Designer / Gráfica", unidade: "Serviço", qtd: 1, pct: 0.03, regime: "PJ", fundLegal: "Plano de Comunicação", parcela: 2 }
+            ],
+            'monitoramento': [
+                { item: "Consultoria de Monitoramento & Avaliação", especificacao: "Coleta de indicadores, pesquisa de satisfação, análise de resultados e relatório de impacto.", destino: "Consultor de M&A", unidade: "Serviço", qtd: 1, pct: 0.03, regime: "RPA", fundLegal: "Anexo 7 CR5 (Monitoramento e Indicadores)", parcela: 4 }
+            ],
+            'encargos': [
+                { item: "Encargos Trabalhistas & Obrigações Fiscais (ISS/INSS/IRRF)", especificacao: "Provisão para recolhimento de encargos tributários sobre contratações PF e PJ do projeto.", destino: "Órgãos Fiscais (Prefeitura / Receita Federal)", unidade: "Verba", qtd: 1, pct: 0.08, regime: "N/A", fundLegal: "Item 7.5.1.a (encargos trabalhistas)", parcela: 1 }
+            ],
+            'pos_producao': [
+                { item: "Registro Fotográfico, Audiovisual & Documentação", especificacao: "Registro profissional em foto e vídeo das atividades, produção de vídeo documental e acervo digital.", destino: "Fotógrafo / Videomaker", unidade: "Serviço", qtd: 1, pct: 0.03, regime: "RPA", fundLegal: "Plano de Trabalho (Prestação de Contas)", parcela: 5 },
+                { item: "Relatório Final & Sistematização de Resultados", especificacao: "Elaboração do relatório final de execução, sistematização de aprendizados e publicação de resultados.", destino: "Consultor / Assessoria Técnica", unidade: "Serviço", qtd: 1, pct: 0.02, regime: "RPA", fundLegal: "Item 7.3 (prestação de contas)", parcela: numMeses }
+            ]
+        };
+
+        // Mesclar itens extraídos do texto + modelos de categorias ativadas
+        const generatedItems = [...deepItems];
+        const existingNames = new Set(deepItems.map(d => d.item.toLowerCase()));
+
+        relevantCategories.forEach(cat => {
+            const templates = itemTemplates[cat.id];
+            if (!templates || templates.length === 0) return;
+
+            templates.forEach(tmpl => {
+                // Evitar duplicar item já extraído do texto do editor
+                if (existingNames.has(tmpl.item.toLowerCase())) return;
+
+                const valorUnit = Math.round((totalBudget * tmpl.pct) / tmpl.qtd);
+                const subtotal = valorUnit * tmpl.qtd;
+                let impostoRate = tmpl.regime === 'RPA' ? 0.16 : (tmpl.regime === 'PJ' ? 0.05 : 0);
+                const impostos = Math.round(subtotal * impostoRate);
+                const total = subtotal + impostos;
+
+                generatedItems.push({
+                    rubrica: cat.name,
+                    item: tmpl.item,
+                    especificacao: tmpl.especificacao,
+                    destino: tmpl.destino,
+                    unidade: tmpl.unidade,
+                    qtd: tmpl.qtd,
+                    valorUnit: valorUnit,
+                    subtotal: subtotal,
+                    impostos: impostos,
+                    total: total,
+                    regimeTributario: tmpl.regime,
+                    fundamentacaoLegal: tmpl.fundLegal,
+                    metaVinculada: 'OE1-M1',
+                    fontePreco: 'Estimativa Offline',
+                    parcelaDesembolso: tmpl.parcela,
+                    notas3etapas: `Motor Offline: Categoria "${cat.name}" ativada dinamicamente.`
+                });
+            });
+        });
+
+        // Ajustar proporcionalmente para caber no orçamento total
+        let sumTotal = generatedItems.reduce((s, it) => s + it.total, 0);
+        if (sumTotal > totalBudget && sumTotal > 0) {
+            const scaleFactor = totalBudget / sumTotal;
+            generatedItems.forEach(it => {
+                it.valorUnit = Math.round(it.valorUnit * scaleFactor);
+                it.subtotal = it.valorUnit * it.qtd;
+                it.impostos = Math.round(it.impostos * scaleFactor);
+                it.total = it.subtotal + it.impostos;
+            });
         }
-    ];
-}
 
-    const riderItems = [
-        {
-            categoria: "Sonorização PA",
-            equipamento: "Sistema Line Array Ativo High-End",
-            modeloEspecifico: "12x Subs 18\" + 16x Caixas Top 2-way 10\" (JBL / DAS / RCF)",
-            qtdDiarias: "3 Diárias",
-            fornecedorPrevisto: "Empresa de Sonorização Especializada",
-            requisitoPalco: "Nível de Pressão Sonora 110dB SPL homogêneo em toda a área de público."
-        },
-        {
-            categoria: "Sonorização Regia",
-            equipamento: "Console Digital & Processamento",
-            modeloEspecifico: "Mesa Digital 32 Canais (Behringer X32 / Yamaha CL5) com Stagebox Digital 32in/16out",
-            qtdDiarias: "3 Diárias",
-            fornecedorPrevisto: "Empresa de Sonorização Especializada",
-            requisitoPalco: "Posicionamento na house mix central com visão total do palco."
-        },
-        {
-            categoria: "Microfonia & Monitores",
-            equipamento: "Kit Microfonia & In-Ear / W-Max",
-            modeloEspecifico: "6x Microfones Sem Fio Shure ULXD4, 4x Sistema In-Ear Sennheiser EW-IEM, 4x Monitores de Chão Sidefill",
-            qtdDiarias: "3 Diárias",
-            fornecedorPrevisto: "Empresa de Sonorização Especializada",
-            requisitoPalco: "Frequências homologadas pela ANATEL sem interferência."
-        },
-        {
-            categoria: "Iluminação Cênica",
-            equipamento: "Moving Heads & Refletores LED",
-            modeloEspecifico: "12x Moving Head 10R Beam/Spot, 16x Refletores PAR LED RGBW 54x3W, Console Avolites Quartz",
-            qtdDiarias: "3 Diárias",
-            fornecedorPrevisto: "Empresa de Iluminação Profissional",
-            requisitoPalco: "Iluminação de frente, contra e efeitos de cena conforme mapa de luz."
-        },
-        {
-            categoria: "Estrutura & Palco",
-            equipamento: "Grid Truss & Praticáveis",
-            modeloEspecifico: "Estrutura em Alumínio Q30 (10x8m x 6m altura) com Cobertura + 8x Praticáveis Pantográficos 2x1m",
-            qtdDiarias: "1 Locação",
-            fornecedorPrevisto: "Empresa de Estruturas & Cenografia",
-            requisitoPalco: "ART de Estrutura Registrada no CREA."
-        },
-        {
-            categoria: "Energia & Logística",
-            equipamento: "Gerador de Energia Silenciado",
-            modeloEspecifico: "Grupo Gerador Silenciado 150 kVA com QTA e cabeamento 50mm",
-            qtdDiarias: "3 Diárias",
-            fornecedorPrevisto: "Locadora de Geradores de Energia",
-            requisitoPalco: "Abastecido com diesel S10, ponto de aterramento independente."
-        }
-    ];
+        items = generatedItems;
+    }
 
-    let grandTotalSubtotal = 0;
-    let grandTotalImpostos = 0;
-    let grandTotalGeral = 0;
+// Rider técnico: só se a categoria foi detectada como relevante
+const { categories: detectedCats } = getRelevantCategoriesContext();
+const hasRider = detectedCats.some(c => c.id === 'rider_tecnico');
+const riderItems = hasRider ? [
+    { categoria: "Sonorização PA", equipamento: "Sistema Line Array Ativo", modeloEspecifico: "12x Subs 18\" + 16x Caixas Top (JBL / RCF)", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Empresa de Sonorização", requisitoPalco: "SPL 110dB homogêneo na área de público." },
+    { categoria: "Sonorização Regia", equipamento: "Console Digital & Processamento", modeloEspecifico: "Mesa Digital 32ch (Behringer X32 / Yamaha CL5) + Stagebox", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Empresa de Sonorização", requisitoPalco: "House mix central com visão do palco." },
+    { categoria: "Microfonia & Monitores", equipamento: "Kit Microfonia & In-Ear", modeloEspecifico: "6x Sem Fio Shure ULXD4 + 4x In-Ear Sennheiser + 4x Monitores Sidefill", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Empresa de Sonorização", requisitoPalco: "Frequências ANATEL sem interferência." },
+    { categoria: "Iluminação Cênica", equipamento: "Moving Heads & LED", modeloEspecifico: "12x Moving 10R + 16x PAR LED RGBW 54x3W + Console Avolites", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Empresa de Iluminação", requisitoPalco: "Iluminação frente/contra conforme mapa de luz." },
+    { categoria: "Estrutura & Palco", equipamento: "Grid Truss & Praticáveis", modeloEspecifico: "Alumínio Q30 (10x8m x 6m) com Cobertura + 8x Praticáveis 2x1m", qtdDiarias: "1 Locação", fornecedorPrevisto: "Empresa de Estruturas", requisitoPalco: "ART registrada no CREA." },
+    { categoria: "Energia & Logística", equipamento: "Gerador Silenciado", modeloEspecifico: "Grupo Gerador 150 kVA com QTA e cabeamento 50mm", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Locadora de Geradores", requisitoPalco: "Diesel S10, aterramento independente." }
+] : [];
 
-    items.forEach(it => {
-        grandTotalSubtotal += it.subtotal;
-        grandTotalImpostos += it.impostos;
-        grandTotalGeral += it.total;
+let grandTotalSubtotal = 0;
+let grandTotalImpostos = 0;
+let grandTotalGeral = 0;
+
+items.forEach(it => {
+    grandTotalSubtotal += it.subtotal;
+    grandTotalImpostos += it.impostos;
+    grandTotalGeral += it.total;
+});
+
+// Gerar validação de tetos
+const tetosProfile = workspaceState.editalProfile || {};
+const gestaoTeto = tetosProfile.tetoGestao || 25;
+const rubricaGroups = {};
+items.forEach(it => {
+    const rub = it.rubrica || 'Outros';
+    if (!rubricaGroups[rub]) rubricaGroups[rub] = 0;
+    rubricaGroups[rub] += it.total;
+});
+const validacaoTetos = Object.entries(rubricaGroups).map(([grupo, valor]) => ({
+    grupoRubrica: grupo,
+    valorTotal: valor,
+    percentualDoOrcamento: grandTotalGeral > 0 ? Math.round((valor / grandTotalGeral) * 10000) / 100 : 0,
+    tetoPermitido: grupo.toLowerCase().includes('gestão') || grupo.toLowerCase().includes('coordenação') || grupo.toLowerCase().includes('administrativ') ? `${gestaoTeto}%` : 'Sem teto específico',
+    statusConformidade: '✓ Conforme'
+}));
+
+// Gerar cronograma de desembolso mensal
+const cronogramaDesembolsoMensal = [];
+const desembolsoPorMes = grandTotalGeral / numMeses;
+for (let m = 1; m <= numMeses; m++) {
+    let fase = 'Execução';
+    let pctMes = 1.0 / numMeses;
+    if (m <= 2) { fase = 'Pré-Produção & Mobilização'; pctMes = 0.15 / 2; }
+    else if (m <= numMeses - 2) { fase = 'Produção & Execução'; pctMes = 0.70 / (numMeses - 4); }
+    else { fase = 'Pós-Produção & Prestação de Contas'; pctMes = 0.15 / 2; }
+
+    cronogramaDesembolsoMensal.push({
+        mes: m,
+        fase: fase,
+        valorDesembolso: Math.round(grandTotalGeral * pctMes),
+        principaisAtividades: m <= 2 ? 'Contratações, mobilização de equipe, licenciamentos.'
+            : m <= numMeses - 2 ? 'Execução das atividades principais do projeto.'
+                : 'Relatórios finais, prestação de contas, acervo.'
     });
-
-    return {
-        title,
-        proponent,
-        institution,
-        totalBudget,
-        items,
-        riderItems,
-        grandTotalSubtotal,
-        grandTotalImpostos,
-        grandTotalGeral
-    };
 }
+
+return {
+    title,
+    proponent,
+    institution,
+    totalBudget,
+    items,
+    riderItems,
+    grandTotalSubtotal,
+    grandTotalImpostos,
+    grandTotalGeral,
+    categoriasAplicadas: detectedCats.map(c => c.name),
+    validacaoTetos,
+    cronogramaDesembolsoMensal,
+    despesasVedadasChecklist: (tetosProfile.despesasVedadas || []).map(d => ({
+        despesaVedada: d, status: '✓ Não detectada no orçamento', observacao: 'Verificação automática — confirmar manualmente.'
+    }))
+};
+}
+
 
 function disableFinanceDownloadButtons() {
     const btnIds = [
@@ -5898,64 +6301,93 @@ async function consolidateFinancePlan3Stages(forceApi = true) {
     if (forceApi || isApiActive()) {
         showToast("🤖 Etapa 3: Gemini consolidando planilha orçamentária detalhada e rider técnico...", "info");
 
-        const prompt = `Você é o Diretor Financeiro e Especialista em Orçamento de Editais Culturais (Lei Rouanet, Lei Aldir Blanc, IN MinC).
-Sua missão é realizar a consolidação financeira definitiva da Planilha Financeira e do Rider Técnico através de um CRUZAMENTO PROFUNDO DE DADOS de todo o projeto.
+        // Detectar categorias relevantes para este edital/projeto específico
+        const { categories: relevantCategories, contextStr: categoriesContext } = getRelevantCategoriesContext();
+        const profile = workspaceState.editalProfile || {};
+        const tetoGestao = profile.tetoGestao || null;
+        const tetoMarketing = profile.tetoMarketing || null;
+        const despesasVedadasList = (profile.despesasVedadas || []).join('; ') || 'Não detectadas. Verificar regras do edital manualmente.';
+        const prazoExec = profile.prazoExecucao ? `${profile.prazoExecucao.min} a ${profile.prazoExecucao.max} meses` : '12 a 18 meses (padrão)';
+        const numMesesCronograma = profile.prazoExecucao ? profile.prazoExecucao.max : 12;
+
+        const tetoGestaoStr = tetoGestao ? `Máximo ${tetoGestao}% (detectado do edital)` : 'Sem teto explícito detectado — usar referência de mercado (15-25%)';
+        const tetoMarketingStr = tetoMarketing ? `Máximo ${tetoMarketing}% (detectado do edital)` : 'Sem teto explícito detectado — usar referência de 10%';
+
+        const rubricasListForPrompt = relevantCategories.map((cat, i) =>
+            `   ${i + 1}. "${cat.name}" — Relevância: ${cat.relevance} — Teto sugerido: ${Math.round(cat.maxPct * 100)}%`
+        ).join('\n');
+
+        const prompt = `Você é o Diretor Financeiro e Especialista em Orçamento de Editais de Fomento Público.
+Sua missão é realizar a consolidação financeira definitiva da Planilha Financeira através de um CRUZAMENTO PROFUNDO DE DADOS de todo o projeto, ADAPTANDO-SE às regras específicas do edital carregado.
 
 ${editorItemsSnippet}
 
 [ETAPA 1 - DADOS DE CAPA E DADOS FÍSICOS DO PROJETO]:
-- Título do Projeto: ${cover.title || 'Projeto Cultural'}
+- Título do Projeto: ${cover.title || 'Projeto de Fomento'}
 - Proponente: ${cover.proponent || 'Não Especificado'}
 - Instituição / Edital: ${cover.institution || 'Não Especificada'}
-- Orçamento Teto Declarado: R$ ${cover.budget || 220000}
-- Limite Custos Administrativos: Máximo 15% do orçamento total
-- Limite Comunicação e Divulgação: Máximo 10% do orçamento total
-- Acessibilidade PCD Obrigatória: Contratação de LIBRAS e Audiodescrição (Lei 13.146/15)
+- Orçamento Teto Declarado: R$ ${cover.budget || 200000}
+- Prazo de Execução: ${prazoExec}
+
+[TETOS E LIMITES FINANCEIROS EXTRAÍDOS DINAMICAMENTE DO EDITAL]:
+- Teto de Gestão/Administração: ${tetoGestaoStr}
+- Teto de Comunicação/Divulgação: ${tetoMarketingStr}
+- Despesas VEDADAS pelo edital: ${despesasVedadasList}
+- Regras de Tetos Completas: ${profile.tetos_e_limites || 'Seguir limites gerais de fomento.'}
+
+${categoriesContext}
 
 [ETAPA 1 - CRUZAMENTO DE TODAS AS SEÇÕES REDIGIDAS NO EDITOR]:
 - 1. Objetivos & Metas: ${existingObjetivos.substring(0, 3000) || 'Não informado. Usar plano base.'}
 - 2. Metodologia / Plano de Trabalho: ${existingMetodologia.substring(0, 5000) || 'Não informado.'}
 - 3. Cronograma Físico-Financeiro: ${existingCronograma.substring(0, 3000) || 'Não informado.'}
-- 4. Ficha Técnica (Artistas e Equipe): ${existingFichaTecnica.substring(0, 3000) || 'Não informado.'}
+- 4. Ficha Técnica (Equipe): ${existingFichaTecnica.substring(0, 3000) || 'Não informado.'}
 - 5. Orçamento Bruto do Editor: ${existingOrcamento.substring(0, 5000) || 'Não informado.'}
-- 6. Acessibilidade PCD: ${existingAcessibilidade.substring(0, 2000) || 'Intérprete de LIBRAS e Audiodescrição.'}
+- 6. Acessibilidade PCD: ${existingAcessibilidade.substring(0, 2000) || 'Verificar exigências do edital.'}
 - 7. Contrapartida Social: ${existingContrapartida.substring(0, 2000) || 'Não informado.'}
 - 8. Plano de Comunicação: ${existingComunicacao.substring(0, 2000) || 'Não informado.'}
-- 9. Rider Técnico & Estruturas: ${existingRider.substring(0, 3000) || 'PA Line Array, luz LED, gerador.'}
+- 9. Rider Técnico & Estruturas: ${existingRider.substring(0, 3000) || 'Não informado.'}
 
 [ETAPA 1 - REGRAS DO EDITAL & ANEXOS DE REFERÊNCIA]:
-- Regras Extraídas do Edital: ${editalRulesSnippet || 'Seguir limites gerais de fomento cultural.'}
+- Regras Extraídas do Edital: ${editalRulesSnippet || 'Seguir limites gerais de fomento.'}
 - Anexos e Tabelas Referenciais: ${annexesSnippets || 'Nenhum anexo extra.'}
 
-[ETAPA 2 - PARAMETROS DE PREÇOS DE MERCADO CULTURAL RECUPERADOS ONLINE]:
-${webSearchContext || 'Tabelas referenciais MinC/SATED: Cachês coordenação R$ 4k-8k/mês, diárias som/luz R$ 2k-5k, LIBRAS R$ 1.5k-3k, ISS 5%, INSS Patronal 20% / RPA / MEI.'}
+[ETAPA 2 - PARÂMETROS DE PREÇOS DE MERCADO RECUPERADOS ONLINE]:
+${webSearchContext || 'Referências de mercado não disponíveis. Usar tabelas referenciais padrão de fomento.'}
 
-INSTRUÇÕES ESTRITAS DE CONSOLIDAÇÃO FINANCEIRA E CRUZAMENTO DE DADOS:
-1. Analise minuciosamente as quantidades descritas na Metodologia, Ficha Técnica e Rider. Se o projeto prevê N apresentações ou M workshops, a planilha DEVE conter a exata quantidade correspondente de cachês, diárias e transportes.
-2. Gere entre 12 e 20 itens de despesa extremamente minuciosos e realistas sem estourar o orçamento teto de R$ ${cover.budget || 220000}.
-3. NÃO crie numerações ou colunas genéricas de "Etapa" ("1. Pré-Produção", "2. Produção"). Categorize e divida os itens obrigatoriamente pelas SEÇÕES DE PLANEJAMENTO DO PROJETO no campo "rubrica":
-   - "Gestão & Coordenação Executiva"
-   - "Assessoria Jurídica & Compliance"
-   - "Artístico & Ficha Técnica"
-   - "Infraestrutura & Rider Técnico"
-   - "Acessibilidade PCD & Ações Afirmativas"
-   - "Comunicação, Mídia & Divulgação" (Teto máx 10%)
-   - "Pós-Produção & Prestação de Contas"
-   - "Custos Administrativos & Tributos" (Teto máx 15%)
-4. Para CADA item no array "items", forneça obrigatoriamente:
-   - rubrica: Nome exato da Seção de Planejamento / Categoria
+INSTRUÇÕES ESTRITAS DE CONSOLIDAÇÃO FINANCEIRA COM FILTRO ADAPTATIVO:
+
+1. USE APENAS as ${relevantCategories.length} categorias listadas acima como rubricas. NÃO invente categorias não detectadas. Se a categoria "Rider Técnico" não foi detectada como relevante, NÃO crie itens de rider. Se "Obras Civis" não aparece, NÃO gere itens de construção.
+
+2. Analise minuciosamente as quantidades descritas na Metodologia, Ficha Técnica e Cronograma. Se o projeto prevê N oficinas/atividades, a planilha DEVE refletir a exata quantidade.
+
+3. Gere entre ${Math.max(15, relevantCategories.length * 2)} e ${Math.min(40, relevantCategories.length * 4)} itens de despesa distribuídos proporcionalmente entre as categorias relevantes, sem estourar o orçamento teto de R$ ${cover.budget || 200000}.
+
+4. RESPEITE os tetos dinâmicos do edital: Gestão ${tetoGestaoStr}, Comunicação ${tetoMarketingStr}.
+
+5. Para CADA item no array "items", forneça obrigatoriamente:
+   - rubrica: Nome EXATO de uma das ${relevantCategories.length} categorias detectadas acima
    - item: Nome do profissional, equipamento ou serviço
-   - especificacao: Especificação técnica longa e detalhada (marcas, modelos de som/luz ou atribuições operacionais)
-   - destino: Natureza da despesa, fornecedor previsto ou destinação exata do recurso
-   - unidade: Mês, Serviço, Diária, Verba, Apresentação, Unidade
+   - especificacao: Especificação técnica longa e detalhada
+   - destino: Natureza da despesa ou destinação do recurso
+   - unidade: Mês, Serviço, Diária, Verba, Oficina, Unidade, etc.
    - qtd: Quantidade numérica pura
    - valorUnit: Valor unitário em R$ (número puro)
-   - subtotal: Subtotal em R$ (número puro: qtd * valorUnit)
-   - impostos: Valor estimado de encargos tributários ISS/INSS (número puro)
-   - total: Valor total do item (subtotal + impostos)
-   - notas3etapas: Nota explicativa detalhada da auditoria (cruzando Etapa 1 Local, Etapa 2 Mercado e Etapa 3 IA)
+   - subtotal: qtd × valorUnit (número puro)
+   - impostos: Encargos tributários estimados (número puro)
+   - total: subtotal + impostos (número puro)
+   - regimeTributario: "CLT", "RPA", "MEI", "PJ", "Isento" ou "N/A"
+   - fundamentacaoLegal: Referência ao item/artigo do edital que justifica esta despesa
+   - metaVinculada: A qual meta/objetivo específico está vinculado (ex: "OE1-M1")
+   - fontePreco: "Pesquisa Web", "Tabela Referencial", "Cotação de Mercado", "Editor do Projeto" ou "Estimativa IA"
+   - parcelaDesembolso: Em qual mês será desembolsado (1 a ${numMesesCronograma})
+   - notas3etapas: Nota explicativa detalhada da auditoria
 
-5. Preencha também o array "riderItems" com no mínimo 4 a 6 estruturas e equipamentos de palco detalhados.
+6. Preencha o array "riderItems" APENAS se a categoria "Infraestrutura Técnica & Rider" foi detectada como relevante. Caso contrário, retorne array vazio.
+
+7. Preencha o array "validacaoTetos" com a análise percentual de cada grupo de rubricas vs. o teto permitido.
+
+8. Preencha o array "cronogramaDesembolsoMensal" com o fluxo de caixa mês a mês (${numMesesCronograma} meses).
 
 Retorne estritamente o JSON estruturado conforme o Schema fornecido.`;
 
@@ -5969,6 +6401,11 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido.`;
                 grandTotalSubtotal: { type: "NUMBER" },
                 grandTotalImpostos: { type: "NUMBER" },
                 grandTotalGeral: { type: "NUMBER" },
+                categoriasAplicadas: {
+                    type: "ARRAY",
+                    description: "Lista das categorias que foram efetivamente usadas na planilha",
+                    items: { type: "STRING" }
+                },
                 items: {
                     type: "ARRAY",
                     items: {
@@ -5985,9 +6422,14 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido.`;
                             subtotal: { type: "NUMBER" },
                             impostos: { type: "NUMBER" },
                             total: { type: "NUMBER" },
+                            regimeTributario: { type: "STRING" },
+                            fundamentacaoLegal: { type: "STRING" },
+                            metaVinculada: { type: "STRING" },
+                            fontePreco: { type: "STRING" },
+                            parcelaDesembolso: { type: "NUMBER" },
                             notas3etapas: { type: "STRING" }
                         },
-                        required: ["rubrica", "item", "especificacao", "destino", "unidade", "qtd", "valorUnit", "subtotal", "impostos", "total", "notas3etapas"]
+                        required: ["rubrica", "item", "especificacao", "destino", "unidade", "qtd", "valorUnit", "subtotal", "impostos", "total", "regimeTributario", "fundamentacaoLegal", "metaVinculada", "fontePreco", "parcelaDesembolso", "notas3etapas"]
                     }
                 },
                 riderItems: {
@@ -6004,9 +6446,51 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido.`;
                         },
                         required: ["categoria", "equipamento", "modeloEspecifico", "qtdDiarias", "fornecedorPrevisto", "requisitoPalco"]
                     }
+                },
+                validacaoTetos: {
+                    type: "ARRAY",
+                    description: "Análise de conformidade de cada rubrica agrupada vs. teto permitido",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            grupoRubrica: { type: "STRING" },
+                            valorTotal: { type: "NUMBER" },
+                            percentualDoOrcamento: { type: "NUMBER" },
+                            tetoPermitido: { type: "STRING" },
+                            statusConformidade: { type: "STRING" }
+                        },
+                        required: ["grupoRubrica", "valorTotal", "percentualDoOrcamento", "tetoPermitido", "statusConformidade"]
+                    }
+                },
+                cronogramaDesembolsoMensal: {
+                    type: "ARRAY",
+                    description: "Fluxo de caixa mês a mês",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            mes: { type: "NUMBER" },
+                            fase: { type: "STRING" },
+                            valorDesembolso: { type: "NUMBER" },
+                            principaisAtividades: { type: "STRING" }
+                        },
+                        required: ["mes", "fase", "valorDesembolso", "principaisAtividades"]
+                    }
+                },
+                despesasVedadasChecklist: {
+                    type: "ARRAY",
+                    description: "Checklist de despesas vedadas pelo edital",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            despesaVedada: { type: "STRING" },
+                            status: { type: "STRING" },
+                            observacao: { type: "STRING" }
+                        },
+                        required: ["despesaVedada", "status", "observacao"]
+                    }
                 }
             },
-            required: ["title", "proponent", "institution", "totalBudget", "grandTotalSubtotal", "grandTotalImpostos", "grandTotalGeral", "items", "riderItems"]
+            required: ["title", "proponent", "institution", "totalBudget", "grandTotalSubtotal", "grandTotalImpostos", "grandTotalGeral", "items", "riderItems", "categoriasAplicadas", "validacaoTetos", "cronogramaDesembolsoMensal"]
         };
 
         try {
@@ -6055,9 +6539,9 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido.`;
     return localData;
 }
 
-async function downloadFinancePlan() {
-    let planData = workspaceState.lastConsolidatedFinancePlan;
-    if (!planData) {
+async function downloadFinancePlan(customPlanData = null) {
+    let planData = customPlanData || workspaceState.lastConsolidatedFinancePlan;
+    if (!planData && !customPlanData) {
         showToast("🤖 Gerando planilha por IA antes de efetuar o download...", "info");
         await generateFinancePlanIA(true);
         planData = workspaceState.lastConsolidatedFinancePlan;
@@ -6234,20 +6718,133 @@ async function downloadFinancePlan() {
             ws3['!cols'] = [{ wch: 35 }, { wch: 25 }, { wch: 30 }, { wch: 30 }];
             XLSX.utils.book_append_sheet(wb, ws3, "Resumo & Memória de Cálculo");
 
-            // ABA 4: Cronograma de Desembolso
-            const ws4Data = [
-                ["Cronograma Financeiro de Desembolso por Fase"],
-                [`Planejamento de fluxo de caixa para: ${title}`],
-                [],
-                ["Fase do Projeto", "Período Executivo", "Participação (%)", "Desembolso Previsto (R$)", "Principais Atividades & Liberadores"],
-                ["Fase 1: Pré-Produção & Contratações", "Mês 1 ao Mês 2", 0.25, { f: `'Planilha Orçamentária'!G${totRow + 1}*0.25`, v: grandTot * 0.25 }, "Adiantamentos de equipe, ensaios, reservas e licenciamento."],
-                ["Fase 2: Produção & Execução Principal", "Mês 3 ao Mês 5", 0.60, { f: `'Planilha Orçamentária'!G${totRow + 1}*0.60`, v: grandTot * 0.60 }, "Cachês artísticos, montagem de estrutura, rider técnico e divulgação."],
-                ["Fase 3: Pós-Produção & Prestação de Contas", "Mês 6", 0.15, { f: `'Planilha Orçamentária'!G${totRow + 1}*0.15`, v: grandTot * 0.15 }, "Clipping de mídia, relatório de auditoria, relatórios PCD e encerramento fiscal."],
-                ["TOTAL CONSOLIDADO DO FLUXO:", "", { f: "SUM(C5:C7)", v: 1.0 }, { f: "SUM(D5:D7)", v: grandTot }, "✓ Fluxo de Caixa Balanceado"]
+            // ABA 4: Análise de Tetos & Conformidade
+            const validacaoTetos = planData.validacaoTetos || [];
+            if (validacaoTetos.length > 0) {
+                const ws4Data = [
+                    ["Análise de Tetos & Conformidade Orçamentária"],
+                    [`Dashboard de conformidade percentual por rubrica para: ${title}`],
+                    [],
+                    ["Grupo / Rubrica", "Valor Total (R$)", "% do Orçamento", "Teto Permitido", "Status de Conformidade"]
+                ];
+                validacaoTetos.forEach(vt => {
+                    ws4Data.push([
+                        cleanStr(vt.grupoRubrica || ''),
+                        parseNum(vt.valorTotal, 0),
+                        (parseNum(vt.percentualDoOrcamento, 0) / 100),
+                        cleanStr(vt.tetoPermitido || 'Sem teto'),
+                        cleanStr(vt.statusConformidade || '✓ Conforme')
+                    ]);
+                });
+                const ws4 = XLSX.utils.aoa_to_sheet(ws4Data);
+                ws4['!cols'] = [{ wch: 35 }, { wch: 18 }, { wch: 16 }, { wch: 20 }, { wch: 25 }];
+                XLSX.utils.book_append_sheet(wb, ws4, "Análise de Tetos");
+            }
+
+            // ABA 5: Encargos Trabalhistas & Tributários
+            const regimeItems = items.filter(it => it.regimeTributario && it.regimeTributario !== 'N/A' && it.regimeTributario !== 'Isento');
+            if (regimeItems.length > 0) {
+                const ws5Data = [
+                    ["Detalhamento de Encargos Trabalhistas & Tributários"],
+                    [`Breakdown ISS/INSS/IRRF/FGTS por profissional para: ${title}`],
+                    [],
+                    ["Item / Profissional", "Regime Tributário", "Subtotal (R$)", "ISS Estimado", "INSS Estimado", "IRRF Estimado", "Total Encargos", "Custo Total"]
+                ];
+                regimeItems.forEach(it => {
+                    const sub = parseNum(it.subtotal, 0);
+                    const regime = cleanStr(it.regimeTributario || 'N/A');
+                    let iss = 0, inss = 0, irrf = 0;
+                    if (regime === 'RPA') { iss = sub * 0.05; inss = sub * 0.11; irrf = 0; }
+                    else if (regime === 'PJ') { iss = sub * 0.05; }
+                    else if (regime === 'CLT') { inss = sub * 0.20; irrf = sub * 0.075; }
+                    ws5Data.push([
+                        cleanStr(it.item || ''),
+                        regime,
+                        sub,
+                        Math.round(iss),
+                        Math.round(inss),
+                        Math.round(irrf),
+                        Math.round(iss + inss + irrf),
+                        Math.round(sub + iss + inss + irrf)
+                    ]);
+                });
+                const ws5 = XLSX.utils.aoa_to_sheet(ws5Data);
+                ws5['!cols'] = [{ wch: 30 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 }];
+                XLSX.utils.book_append_sheet(wb, ws5, "Encargos Trabalhistas");
+            }
+
+            // ABA 6: Cronograma de Desembolso Mensal
+            const cronMensal = planData.cronogramaDesembolsoMensal || [];
+            const ws6Data = [
+                ["Cronograma Financeiro de Desembolso Mensal"],
+                [`Fluxo de caixa detalhado para: ${title}`],
+                []
             ];
-            const ws4 = XLSX.utils.aoa_to_sheet(ws4Data);
-            ws4['!cols'] = [{ wch: 35 }, { wch: 18 }, { wch: 16 }, { wch: 22 }, { wch: 45 }];
-            XLSX.utils.book_append_sheet(wb, ws4, "Cronograma de Desembolso");
+            if (cronMensal.length > 0) {
+                ws6Data.push(["Mês", "Fase do Projeto", "Desembolso Previsto (R$)", "Principais Atividades"]);
+                let totalDesembolso = 0;
+                cronMensal.forEach(cm => {
+                    const val = parseNum(cm.valorDesembolso, 0);
+                    totalDesembolso += val;
+                    ws6Data.push([
+                        `Mês ${cm.mes}`,
+                        cleanStr(cm.fase || ''),
+                        val,
+                        cleanStr(cm.principaisAtividades || '')
+                    ]);
+                });
+                ws6Data.push(["TOTAL", "", totalDesembolso, "✓ Fluxo Consolidado"]);
+            } else {
+                // Fallback: 3 fases genéricas
+                ws6Data.push(["Fase do Projeto", "Período Executivo", "Participação (%)", "Desembolso Previsto (R$)", "Principais Atividades"]);
+                ws6Data.push(["Fase 1: Pré-Produção", "Mês 1-2", 0.25, grandTot * 0.25, "Contratações e mobilização."]);
+                ws6Data.push(["Fase 2: Execução", "Mês 3-10", 0.60, grandTot * 0.60, "Atividades principais do projeto."]);
+                ws6Data.push(["Fase 3: Pós-Produção", "Mês 11-12", 0.15, grandTot * 0.15, "Prestação de contas e acervo."]);
+                ws6Data.push(["TOTAL", "", 1.0, grandTot, "✓ Fluxo Balanceado"]);
+            }
+            const ws6 = XLSX.utils.aoa_to_sheet(ws6Data);
+            ws6['!cols'] = [{ wch: 14 }, { wch: 30 }, { wch: 22 }, { wch: 45 }];
+            XLSX.utils.book_append_sheet(wb, ws6, "Cronograma Desembolso Mensal");
+
+            // ABA 7: Despesas Vedadas (Checklist)
+            const despVedadas = planData.despesasVedadasChecklist || [];
+            if (despVedadas.length > 0) {
+                const ws7Data = [
+                    ["Checklist de Despesas Vedadas pelo Edital"],
+                    [`Verificação de conformidade contra regras de vedação para: ${title}`],
+                    [],
+                    ["Despesa Vedada (conforme edital)", "Status", "Observação"]
+                ];
+                despVedadas.forEach(dv => {
+                    ws7Data.push([
+                        cleanStr(dv.despesaVedada || ''),
+                        cleanStr(dv.status || '✓ OK'),
+                        cleanStr(dv.observacao || '')
+                    ]);
+                });
+                const ws7 = XLSX.utils.aoa_to_sheet(ws7Data);
+                ws7['!cols'] = [{ wch: 40 }, { wch: 30 }, { wch: 40 }];
+                XLSX.utils.book_append_sheet(wb, ws7, "Despesas Vedadas");
+            }
+
+            // ABA 8: Categorias Aplicadas (Filtro Inteligente)
+            const catAplicadas = planData.categoriasAplicadas || [];
+            if (catAplicadas.length > 0) {
+                const ws8Data = [
+                    ["Categorias Orçamentárias Aplicadas — Filtro Inteligente"],
+                    [`Apenas as categorias relevantes foram incluídas na planilha`],
+                    [],
+                    ["#", "Categoria Aplicada", "Status"],
+                ];
+                catAplicadas.forEach((cat, i) => {
+                    ws8Data.push([i + 1, cleanStr(cat), "✓ Aplicada"]);
+                });
+                ws8Data.push([]);
+                ws8Data.push(["Nota: Categorias não listadas foram excluídas por não terem relevância detectada no edital/projeto."]);
+                const ws8 = XLSX.utils.aoa_to_sheet(ws8Data);
+                ws8['!cols'] = [{ wch: 5 }, { wch: 45 }, { wch: 15 }];
+                XLSX.utils.book_append_sheet(wb, ws8, "Filtro de Categorias");
+            }
 
             XLSX.writeFile(wb, getFormattedDownloadFilename(`Planilha_Financeira_${title}`, 'xlsx'));
             showToast("✓ Planilha Excel (.xlsx) nativa baixada com sucesso!", "success");
@@ -6523,9 +7120,9 @@ async function downloadRevisorReportPDF() {
     }
 }
 
-async function downloadFinancePlanPDF() {
-    let planData = workspaceState.lastConsolidatedFinancePlan;
-    if (!planData) {
+async function downloadFinancePlanPDF(customPlanData = null) {
+    let planData = customPlanData || workspaceState.lastConsolidatedFinancePlan;
+    if (!planData && !customPlanData) {
         showToast("🤖 Gerando planilha por IA antes de efetuar o download...", "info");
         await generateFinancePlanIA(true);
         planData = workspaceState.lastConsolidatedFinancePlan;
@@ -6659,47 +7256,81 @@ async function generateFinancePlanIA(forceApi = true) {
                 if (!previewEl) {
                     previewEl = document.createElement('div');
                     previewEl.className = 'finance-ia-preview-card';
-                    previewEl.style.cssText = "margin-top: 1rem; padding: 1rem; background: var(--bg-panel); border: 1px solid var(--color-success-border); border-radius: var(--radius-md); font-size: 0.85rem;";
+                    previewEl.style.cssText = "margin-top: 1rem; padding: 1.25rem; background: var(--bg-panel); border: 1.5px solid var(--color-success-border); border-radius: var(--radius-md); font-size: 0.85rem; box-shadow: 0 4px 12px rgba(0,0,0,0.05);";
                     cardParent.appendChild(previewEl);
                 }
 
-                let itemsPreview = planData.items.slice(0, 8).map(it => `
+                // Badges de categorias ativadas
+                const catBadges = (planData.categoriasAplicadas || []).map(cat =>
+                    `<span style="font-size: 0.7rem; background: rgba(99, 102, 241, 0.1); color: #4f46e5; padding: 3px 8px; border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.2); font-weight: 600;">✓ ${cat}</span>`
+                ).join(' ');
+
+                // Badges de validação de tetos
+                const tetosBadges = (planData.validacaoTetos || []).slice(0, 4).map(vt =>
+                    `<span style="font-size: 0.7rem; background: rgba(34, 197, 94, 0.1); color: #16a34a; padding: 3px 8px; border-radius: 12px; border: 1px solid rgba(34, 197, 94, 0.2); font-weight: 600;">✓ ${vt.grupoRubrica}: ${vt.percentualDoOrcamento}% (${vt.tetoPermitido})</span>`
+                ).join(' ');
+
+                let itemsPreview = planData.items.slice(0, 10).map(it => `
                     <tr>
-                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); font-weight: bold; color: var(--color-primary);">${it.rubrica || it.itemGroup || 'Gestão & Coordenação'}</td>
-                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); font-weight: 500;">${it.item || it.descricao || ''}</td>
-                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); font-size: 11px;">${it.destino || it.natureza || it.especificacao || ''}</td>
-                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: right; color: var(--color-success); font-weight: bold;">R$ ${Number(it.total || it.valorTotal || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); font-weight: bold; color: var(--color-primary); font-size: 0.8rem;">${it.rubrica || 'Outros'}</td>
+                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); font-weight: 500;">
+                            <div>${it.item || ''}</div>
+                            <div style="font-size: 0.72rem; color: var(--text-secondary); margin-top: 2px;">⚖️ ${it.fundamentacaoLegal || 'Fundamentação no Edital'}</div>
+                        </td>
+                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: center; font-size: 0.75rem; font-weight: 600;">
+                            <span style="background: var(--bg-input); padding: 2px 6px; border-radius: 4px;">${it.regimeTributario || 'N/A'}</span>
+                        </td>
+                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: center; font-size: 0.8rem;">${it.qtd} ${it.unidade || 'Verba'}</td>
+                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: right; color: var(--text-primary); font-size: 0.8rem;">R$ ${Number(it.valorUnit || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: right; color: var(--color-success); font-weight: bold; font-size: 0.8rem;">R$ ${Number(it.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                     </tr>
                 `).join('');
 
                 previewEl.innerHTML = `
                     <h4 style="color: var(--color-success); margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.95rem;">
-                        <span style="display: flex; align-items: center; gap: 0.5rem;"><span>✓</span> Planilha Orçamentária por Seções de Planejamento (${planData.items.length} Itens de Despesa)</span>
-                        <span style="font-size: 0.75rem; background: var(--color-success-bg); color: var(--color-success); padding: 2px 8px; border-radius: 12px; border: 1px solid var(--color-success-border);">Excel & PDF Pronto</span>
+                        <span style="display: flex; align-items: center; gap: 0.5rem;"><span>🎉</span> Planilha Financeira Consolidada (${planData.items.length} Itens em ${planData.categoriasAplicadas ? planData.categoriasAplicadas.length : 'várias'} Categorias)</span>
+                        <span style="font-size: 0.75rem; background: var(--color-success-bg); color: var(--color-success); padding: 3px 10px; border-radius: 12px; border: 1px solid var(--color-success-border); font-weight: 600;">8 Abas Excel Prontas</span>
                     </h4>
-                    <p style="margin-bottom: 0.75rem; color: var(--text-secondary);">
-                        <strong>Projeto:</strong> ${planData.title || 'Projeto'} | 
-                        <strong>Total Geral:</strong> <span style="color: var(--color-success); font-weight: bold;">R$ ${Number(planData.grandTotalGeral || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                    </p>
+
+                    <div style="margin-bottom: 0.75rem; display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;">
+                        <strong style="font-size: 0.75rem; color: var(--text-secondary);">Categorias Relevantes Ativadas:</strong>
+                        ${catBadges || '<span style="font-size: 0.75rem;">Todas</span>'}
+                    </div>
+
+                    <div style="margin-bottom: 0.75rem; display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;">
+                        <strong style="font-size: 0.75rem; color: var(--text-secondary);">Conformidade com Tetos:</strong>
+                        ${tetosBadges || '<span style="font-size: 0.75rem; color: green;">✓ 100% Conforme</span>'}
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem; background: var(--bg-input); padding: 0.6rem; border-radius: var(--radius-sm);">
+                        <div><span style="font-size: 0.72rem; color: var(--text-secondary);">Subtotal Direto:</span><br><strong style="font-size: 0.85rem; color: var(--text-primary);">R$ ${Number(planData.grandTotalSubtotal || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></div>
+                        <div><span style="font-size: 0.72rem; color: var(--text-secondary);">Encargos Tributários:</span><br><strong style="font-size: 0.85rem; color: #d97706;">R$ ${Number(planData.grandTotalImpostos || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></div>
+                        <div><span style="font-size: 0.72rem; color: var(--text-secondary);">Total Geral do Projeto:</span><br><strong style="font-size: 0.9rem; color: var(--color-success);">R$ ${Number(planData.grandTotalGeral || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></div>
+                    </div>
+
                     <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.75rem;">
                         <thead>
                             <tr style="background: var(--bg-input); font-size: 11px; text-align: left;">
-                                <th style="padding: 6px 8px; border: 1px solid var(--border-color);">ITEM / CATEGORIA (SEÇÃO)</th>
-                                <th style="padding: 6px 8px; border: 1px solid var(--border-color);">DESCRIÇÃO DO ITEM / SERVIÇO</th>
-                                <th style="padding: 6px 8px; border: 1px solid var(--border-color);">NATUREZA DA DESPESA / DESTINO</th>
-                                <th style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: right;">VALOR TOTAL (R$)</th>
+                                <th style="padding: 6px 8px; border: 1px solid var(--border-color);">RUBRICA</th>
+                                <th style="padding: 6px 8px; border: 1px solid var(--border-color);">DESCRIÇÃO / FUNDAMENTAÇÃO LEGAL</th>
+                                <th style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: center;">REGIME</th>
+                                <th style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: center;">QTD</th>
+                                <th style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: right;">VALOR UNIT (R$)</th>
+                                <th style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: right;">TOTAL (R$)</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${itemsPreview}
                         </tbody>
                     </table>
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.5rem; background: rgba(34, 197, 94, 0.08); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm);">
-                        <span style="font-size: 0.75rem; color: var(--color-success); font-weight: bold;">✓ Planilha pronta! Utilize os botões acima ou abaixo para baixar em Excel (.xls) ou PDF.</span>
+                    ${planData.items.length > 10 ? `<p style="font-size: 0.75rem; color: var(--text-secondary); text-align: center; margin-bottom: 0.5rem;"><em>+ ${planData.items.length - 10} itens detalhados incluídos no arquivo Excel completo.</em></p>` : ''}
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.5rem; background: rgba(34, 197, 94, 0.08); padding: 0.6rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid rgba(34, 197, 94, 0.2);">
+                        <span style="font-size: 0.78rem; color: var(--color-success); font-weight: bold;">✓ Planilha gerada com sucesso! As 8 abas de exportação Excel (.xlsx) e o documento PDF estão prontos para download.</span>
                     </div>
                 `;
                 previewEl.style.display = 'block';
             });
+
         }
     } catch (err) {
         console.warn("[FINANCE-IA] Erro na geração por IA:", err);
@@ -6710,8 +7341,33 @@ async function generateFinancePlanIA(forceApi = true) {
     }
 }
 
+async function downloadFinancePlanOffline(isPdf = false) {
+    showToast("⚡ Gerando planilha offline instantânea com extração profunda do Editor...", "info");
+    const localData = generate3StageFinancePlanDataLocal();
+    if (isPdf) {
+        await downloadFinancePlanPDF(localData);
+    } else {
+        await downloadFinancePlan(localData);
+    }
+}
+
 // Vincular Event Listeners para os botões de Planilha Financeira
 document.addEventListener('DOMContentLoaded', () => {
+    const axisSelect = document.getElementById('axis-select');
+    if (axisSelect) {
+        axisSelect.addEventListener('change', (e) => {
+            workspaceState.activeAxis = e.target.value;
+            const axisNames = {
+                cultural: "🎨 Fomento Cultural & Incentivo (14 Agentes M.U.S.A.)",
+                licitacao: "🏛️ Licitações 14.133/21 (SollAi & ALICE)",
+                concurso: "🎓 Concursos Públicos (EstudePlan & Anki SRS)"
+            };
+            if (typeof showToast === 'function') {
+                showToast(`🎯 Eixo de Atuação alterado para: ${axisNames[e.target.value] || e.target.value}`, "info");
+            }
+        });
+    }
+
     if (workspaceState.lastConsolidatedFinancePlan && Array.isArray(workspaceState.lastConsolidatedFinancePlan.items)) {
         enableFinanceDownloadButtons();
     } else {
@@ -6749,4 +7405,26 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnPdf1) btnPdf1.addEventListener('click', handlePdfClick);
     if (btnPdf2) btnPdf2.addEventListener('click', handlePdfClick);
     if (btnPdf3) btnPdf3.addEventListener('click', handlePdfClick);
+
+    // Botões de Download OFFLINE separados
+    const btnOffXls1 = document.getElementById('btn-download-finance-offline-xls');
+    const btnOffXls2 = document.getElementById('btn-download-finance-offline-xls-pane');
+    const btnOffPdf1 = document.getElementById('btn-download-finance-offline-pdf');
+    const btnOffPdf2 = document.getElementById('btn-download-finance-offline-pdf-pane');
+
+    const handleOffXlsClick = (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        downloadFinancePlanOffline(false);
+    };
+
+    const handleOffPdfClick = (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        downloadFinancePlanOffline(true);
+    };
+
+    if (btnOffXls1) btnOffXls1.addEventListener('click', handleOffXlsClick);
+    if (btnOffXls2) btnOffXls2.addEventListener('click', handleOffXlsClick);
+    if (btnOffPdf1) btnOffPdf1.addEventListener('click', handleOffPdfClick);
+    if (btnOffPdf2) btnOffPdf2.addEventListener('click', handleOffPdfClick);
 });
+

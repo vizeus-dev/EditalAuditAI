@@ -36,8 +36,9 @@ window.offlineAuditor = {
         // --- 1. ANÁLISE ORÇAMENTÁRIA LOCAL ---
         const budgetAnalysis = this.analyzeBudgetLocal(doc.orcamento || "", cover.budget || 0);
 
-        // --- 2. ANÁLISE DOS 14 QUESITOS DE COMPLIANCE ---
-        const agentDefinitions = [
+        // --- 2. ANÁLISE DOS QUESITOS DE COMPLIANCE POR EIXO ---
+        const axis = workspaceState.activeAxis || "cultural";
+        let agentDefinitions = [
             { id: 'justificativa', title: 'Justificativa e Relevância', text: doc.justificativa, keywords: ['justificativa', 'relevância', 'cultural', 'social', 'impacto', 'proponente'] },
             { id: 'objetivos', title: 'Objetivos Geral e Específicos', text: doc.objetivos, keywords: ['objetivo', 'meta', 'público', 'beneficiário', 'formação', 'específico'] },
             { id: 'metodologia', title: 'Metodologia e Plano de Trabalho', text: doc.metodologia, keywords: ['metodologia', 'etapas', 'pré-produção', 'execução', 'pós-produção', 'fases'] },
@@ -53,6 +54,20 @@ window.offlineAuditor = {
             { id: 'sustentabilidade', title: 'Sustentabilidade e ESG', text: doc.sustentabilidade, keywords: ['sustentabilidade', 'resíduos', 'ecológico', 'reciclagem', 'carbono', 'ambiente'] },
             { id: 'rider', title: 'Rider Técnico e Logística', text: doc.rider, keywords: ['som', 'iluminação', 'palco', 'montagem', 'transporte', 'hospedagem', 'camarim'] }
         ];
+
+        if (axis === "licitacao") {
+            agentDefinitions = [
+                { id: 'etp_tr', title: 'ETP, TR e Minutas (SollAi)', text: doc.etp_tr || (workspaceState.proposalDraftText || ""), keywords: ['estudo técnico preliminar', 'etp', 'termo de referência', 'tr', 'matriz de risco', 'objeto'] },
+                { id: 'alice_auditoria', title: 'Auditoria Red Flags e Cartéis (ALICE)', text: doc.alice_auditoria || (workspaceState.editalRefText || ""), keywords: ['restrição', 'exclusividade', 'conluio', 'pesquisa de preços', 'marca', 'red flag'] },
+                { id: 'licit_compliance', title: 'Compliance e Liquidez Financeira', text: doc.licit_compliance || (workspaceState.proposalDraftText || ""), keywords: ['liquidez', 'balanço', 'certidão', 'atestado', 'solvência', 'patrimônio líquido'] },
+                { id: 'esclarecimento', title: 'Junta de Esclarecimentos e Impugnações', text: doc.esclarecimento || (workspaceState.ingestaoNotes || ""), keywords: ['impugnação', 'esclarecimento', 'recurso', 'parecer', 'pregoeiro', 'tcu'] }
+            ];
+        } else if (axis === "concurso") {
+            agentDefinitions = [
+                { id: 'verticalizado', title: 'Verticalizador e Alocação Adaptativa (EstudePlan)', text: doc.verticalizado || (workspaceState.editalRefText || ""), keywords: ['disciplina', 'conteúdo programático', 'tópicos', 'peso', 'horas', 'incidência'] },
+                { id: 'treino_didatico', title: 'Gerador de Questões e Anki SRS (ConcursosGPT)', text: doc.treino_didatico || (workspaceState.proposalDraftText || ""), keywords: ['questão', 'gabarito', 'banca', 'cebraspe', 'fgv', 'fcc', 'anki', 'flashcard'] }
+            ];
+        }
 
         const agentesResults = [];
         let totalTecnicaLocal = 0;
@@ -79,16 +94,31 @@ window.offlineAuditor = {
         const notaTecnicaFinal = Math.min(100, Math.round((totalTecnicaLocal / (agentDefinitions.length * 100)) * 100));
 
         // --- 3. CÁLCULO DA NOTA DE PRIORIZAÇÃO (0 a 30) ---
-        const notaPriorizacaoLocal = this.calculatePrioritizationScoreLocal(fullContext, cover);
+        const notaPriorizacaoLocal = this.calculatePrioritizationScoreLocal(fullContext, cover, workspaceState);
+
+        // --- 3.5. CHECKLIST DE DOCUMENTOS OBRIGATÓRIOS (Skill C) ---
+        const documentChecklist = this.generateDocumentChecklist(fullContext, workspaceState);
+        if (documentChecklist.pendentes.length > 0) {
+            documentChecklist.pendentes.forEach(doc => {
+                alertasLocais.push({
+                    tipo: "Documento Pendente",
+                    descricao: `Documento obrigatório não identificado na proposta: ${doc}.`,
+                    sugestao: `Providencie e anexe o documento "${doc}" antes da submissão.`,
+                    nivel: "ALTA"
+                });
+            });
+        }
 
         // --- 4. NOTA FINAL E ALERTAS ORÇAMENTÁRIOS ---
         const notaFinalCalculada = Math.min(130, Math.round(notaTecnicaFinal + notaPriorizacaoLocal));
 
-        if (budgetAnalysis.adminPercent > 15) {
+        // Extrair teto administrativo real do edital (em vez de fixar 15%)
+        const adminCeiling = this.extractAdminCeiling(workspaceState);
+        if (budgetAnalysis.adminPercent > adminCeiling) {
             alertasLocais.unshift({
                 tipo: "Estouro Orçamentário",
-                descricao: `Custos administrativos (${budgetAnalysis.adminPercent.toFixed(1)}%) ultrapassam o teto legal de 15%.`,
-                sugestao: "Reduza os cachês de coordenação/direção geral para se adequar ao limite.",
+                descricao: `Custos administrativos (${budgetAnalysis.adminPercent.toFixed(1)}%) ultrapassam o teto de ${adminCeiling}% identificado no edital.`,
+                sugestao: `Reduza as rubricas de coordenação/direção/gestão para se adequar ao limite de ${adminCeiling}% do edital.`,
                 nivel: "CRÍTICO"
             });
         }
@@ -105,11 +135,7 @@ window.offlineAuditor = {
             custos_administrativos_percentual: Math.round(budgetAnalysis.adminPercent * 10) / 10,
             agentes: agentesResults,
             alertas: alertasLocais,
-            ajustes: [
-                { alteracao: "Inclusão de Intérprete de LIBRAS", fator: "+5.0 pontos na Nota Técnica (Acessibilidade)" },
-                { alteracao: "Adequação do Teto Administrativo para 15%", fator: "Elimina risco de desclassificação legal" },
-                { alteracao: "Detalhamento de Indicadores Quantitativos", fator: "+3.5 pontos em Monitoramento" }
-            ],
+            ajustes: this._generateDynamicAdjustments(agentesResults, budgetAnalysis, workspaceState),
             isOfflineResult: true
         };
 
@@ -161,11 +187,14 @@ window.offlineAuditor = {
             }
         }
 
-        // Regras específicas adicionais
-        if (agent.id === 'orcamento' && budgetAnalysis.adminPercent > 15) {
-            score = Math.min(score, 55);
-            erros.push(`Custos administrativos em ${budgetAnalysis.adminPercent.toFixed(1)}% (teto é 15%).`);
-            recomendacoes.push("Reorganize a planilha orçamentária reduzindo rubricas administrativas.");
+        // Regras específicas adicionais — teto dinâmico extraído do edital
+        if (agent.id === 'orcamento') {
+            const adminCeiling = (agent._adminCeiling !== undefined) ? agent._adminCeiling : 15;
+            if (budgetAnalysis.adminPercent > adminCeiling) {
+                score = Math.min(score, 55);
+                erros.push(`Custos administrativos em ${budgetAnalysis.adminPercent.toFixed(1)}% (teto do edital: ${adminCeiling}%).`);
+                recomendacoes.push(`Reorganize a planilha orçamentária para ficar abaixo de ${adminCeiling}% em rubricas administrativas.`);
+            }
         }
 
         if (agent.id === 'acessibilidade' && !/libras|audiodescrição|rampa|braille/i.test(cleanText)) {
@@ -229,40 +258,106 @@ window.offlineAuditor = {
     },
 
     /**
-     * Calcula pontuação de priorização (0 a 30) baseada nos 7 critérios do Anexo 8
+     * Calcula pontuação de priorização (0 a 30) — DINÂMICO com base no perfil do edital.
+     * Em vez de critérios fixos de um edital específico, extrai as prioridades
+     * do perfil do edital carregado (editalProfile.prioridades_critérios) e
+     * verifica se a proposta menciona os termos-chave correspondentes.
      */
-    calculatePrioritizationScoreLocal: function (fullContext, cover) {
+    calculatePrioritizationScoreLocal: function (fullContext, cover, workspaceState) {
         let score = 0;
+        const profile = (workspaceState && workspaceState.editalProfile) || {};
+        const prioridadesText = (profile['prioridades_critérios'] || profile['prioridades_criterios'] || '').toLowerCase();
 
-        // 1. Governança Participativa (até 3.5)
-        if (/conselho|participativa|transparência|comitê/i.test(fullContext)) score += 3.5;
-        else score += 2.0;
+        // =====================================================================
+        // CRITÉRIOS UNIVERSAIS (aplicáveis a qualquer edital de fomento)
+        // Cada critério é genérico e testado por presença no contexto completo.
+        // A pontuação máxima por critério é proporcional (total = 30 pts / N critérios).
+        // =====================================================================
+        const universalCriteria = [
+            {
+                name: 'Governança Participativa e Transparência',
+                keywords: /conselho|participativa|transparência|comitê|governança|prestação de contas|assembleia/i,
+                weight: 4.0
+            },
+            {
+                name: 'Diversidade e Públicos Prioritários',
+                keywords: /mulheres|negros|pcd|idosos|jovens|comunidade|diversidade|inclusão|minoria|vulnerabilidade/i,
+                weight: 4.0
+            },
+            {
+                name: 'Equipe Representativa e Diversa',
+                keywords: /liderança feminina|quilombola|indígena|lgbtqia|afrodescendente|mestre|tradicion|protagonismo/i,
+                weight: 4.0
+            },
+            {
+                name: 'Experiência Territorial Comprovada',
+                keywords: /histórico|experiência|atuação|território|trajetória|comprovação|portfólio/i,
+                weight: 4.0
+            },
+            {
+                name: 'Coordenação por Agentes Vulnerabilizados',
+                keywords: /cadúnico|vulnerável|agricultor|rural|periferia|favela|ribeirinho|assentamento/i,
+                weight: 5.0
+            },
+            {
+                name: 'Parcerias Institucionais e em Rede',
+                keywords: /parceria|coletivo|rede|associação|cooperativa|colaboração|articulação|apoio institucional/i,
+                weight: 4.0
+            },
+            {
+                name: 'Impacto Territorial e Descentralização',
+                keywords: /interiorização|descentralização|periférico|região|municipal|distrital|comunidades/i,
+                weight: 5.0
+            }
+        ];
 
-        // 2. Público Prioritário (até 3.5)
-        if (/mulheres|negros|pcd|idosos|jovens|comunidade/i.test(fullContext)) score += 3.5;
-        else score += 1.5;
+        // Se o edital tem prioridades mapeadas, extrair palavras-chave adicionais
+        // e dar bônus para critérios que casam com as prioridades do edital
+        universalCriteria.forEach(criterion => {
+            const hasInProposal = criterion.keywords.test(fullContext);
+            // Bônus se o critério aparece também no perfil de prioridades do edital
+            const isEditalPriority = prioridadesText && criterion.name.toLowerCase().split(' ').some(w =>
+                w.length > 4 && prioridadesText.includes(w)
+            );
 
-        // 3. Equipe vulnerabilizada (até 3.5)
-        if (/liderança feminina|quilombola|indígena|lgbtqia\+/i.test(fullContext)) score += 3.5;
-        else score += 2.0;
+            if (hasInProposal) {
+                score += isEditalPriority ? criterion.weight : (criterion.weight * 0.85);
+            } else {
+                // Pontuação base mínima para não zerar nenhum critério
+                score += criterion.weight * 0.35;
+            }
+        });
 
-        // 4. Experiência prévia territorial (até 3.5)
-        if (/rio doce|litoral|histórico|experiência/i.test(fullContext)) score += 3.5;
-        else score += 1.5;
+        return Math.min(30, Math.round(score * 10) / 10);
+    },
 
-        // 5. Coordenação CadÚnico/Rural (até 6.5)
-        if (/cadúnico|vulnerável|agricultor|rural/i.test(fullContext)) score += 6.5;
-        else score += 3.0;
+    /**
+     * Cálculo de Índices Financeiros de Habilitação (Lei 14.133/21)
+     */
+    calculateFinancialRatios: function (ativoCirculante, rlp, passivoCirculante, pnc, ativoTotal) {
+        const passivoExigivel = (passivoCirculante || 0) + (pnc || 0);
+        const lg = passivoExigivel > 0 ? ((ativoCirculante || 0) + (rlp || 0)) / passivoExigivel : 1.0;
+        const lc = (passivoCirculante || 0) > 0 ? (ativoCirculante || 0) / passivoCirculante : 1.0;
+        const sg = passivoExigivel > 0 ? (ativoTotal || 0) / passivoExigivel : 1.0;
 
-        // 6. Parcerias em rede (até 3.5)
-        if (/parceria|coletivo|rede|associação/i.test(fullContext)) score += 3.5;
-        else score += 2.0;
+        return {
+            liquidezGeral: Math.round(lg * 100) / 100,
+            liquidezCorrente: Math.round(lc * 100) / 100,
+            solvenciaGeral: Math.round(sg * 100) / 100,
+            isHabilitado: lg >= 1.0 && lc >= 1.0 && sg >= 1.0
+        };
+    },
 
-        // 7. Localização geográfica (epicentro) (até 6.0)
-        if (/epicentro|calha|rio doce|litoral norte/i.test(fullContext) || /es|mg/i.test(cover.city || "")) score += 6.0;
-        else score += 3.0;
-
-        return Math.min(30, score);
+    /**
+     * Fórmula Adaptativa de Alocação de Tempo de Estudo (EstudePlan-inspired)
+     */
+    calculateAdaptiveStudyTime: function (baseHoras, pesoEdital, dificuldadeCandidato, incidenciaBanca) {
+        const base = baseHoras || 10;
+        const peso = pesoEdital || 1;
+        const dif = dificuldadeCandidato || 1;
+        const inc = incidenciaBanca || 1;
+        const tempoMateria = base * peso * dif * inc;
+        return Math.round(tempoMateria * 10) / 10;
     },
 
     /**
@@ -389,5 +484,183 @@ window.offlineAuditor = {
 
         </div>
         `;
+    },
+
+    /**
+     * NOVA FUNÇÃO — Extrai o teto administrativo real do edital carregado.
+     * Em vez de fixar 15%, analisa o texto do edital e do perfil para identificar
+     * o percentual correto (pode ser 15%, 20%, 25% dependendo do edital).
+     * Retorna 15 como fallback genérico se nenhum teto for encontrado.
+     */
+    extractAdminCeiling: function (workspaceState) {
+        const profile = (workspaceState && workspaceState.editalProfile) || {};
+        const tetosText = (profile.tetos_e_limites || '').toLowerCase();
+        const editalText = (workspaceState && workspaceState.editalRefText || '').toLowerCase();
+        const combinedText = `${tetosText} ${editalText}`;
+
+        // Procurar padrões como "até 25% para gestão", "máximo de 20% administrativo", "15% para custos de gestão"
+        const patterns = [
+            /(?:custos?\s*(?:de\s*)?(?:administra|gest[ãa]o|coordena))[\s\S]{0,80}?(\d{1,2})\s*%/i,
+            /(\d{1,2})\s*%[\s\S]{0,80}?(?:administra|gest[ãa]o|coordena)/i,
+            /(?:m[áa]ximo|teto|limite)[\s\S]{0,50}?(\d{1,2})\s*%[\s\S]{0,50}?(?:administra|gest[ãa]o)/i,
+            /(?:administra|gest[ãa]o)[\s\S]{0,50}?(?:m[áa]ximo|teto|limite)[\s\S]{0,30}?(\d{1,2})\s*%/i
+        ];
+
+        for (const pattern of patterns) {
+            const match = combinedText.match(pattern);
+            if (match && match[1]) {
+                const val = parseInt(match[1]);
+                if (val >= 5 && val <= 50) {
+                    console.log(`[OfflineAuditor] Teto administrativo extraído do edital: ${val}%`);
+                    return val;
+                }
+            }
+        }
+
+        // Fallback genérico padrão de fomento cultural (15%)
+        return 15;
+    },
+
+    /**
+     * NOVA FUNÇÃO — Gera ajustes dinamicamente baseado nos erros reais
+     * detectados pelos agentes, em vez de retornar sempre os mesmos 3 ajustes fixos.
+     */
+    _generateDynamicAdjustments: function (agentesResults, budgetAnalysis, workspaceState) {
+        const ajustes = [];
+
+        agentesResults.forEach(ag => {
+            if (ag.nota < 85 && ag.erros && ag.erros.length > 0) {
+                ajustes.push({
+                    alteracao: ag.erros[0],
+                    fator: `Agente ${ag.id.toUpperCase()}: ${ag.nota}/100 → melhoria estimada de +${Math.min(20, 100 - ag.nota)} pts`
+                });
+            }
+        });
+
+        // Alerta de teto administrativo se aplicável
+        const adminCeiling = this.extractAdminCeiling(workspaceState);
+        if (budgetAnalysis.adminPercent > adminCeiling) {
+            ajustes.unshift({
+                alteracao: `Adequação do teto administrativo para ≤ ${adminCeiling}%`,
+                fator: "Elimina risco de desclassificação por estouro orçamentário"
+            });
+        }
+
+        // Se nenhum ajuste foi gerado, informar que está em conformidade
+        if (ajustes.length === 0) {
+            ajustes.push({
+                alteracao: "Proposta em conformidade básica com os requisitos do edital.",
+                fator: "Nenhum ajuste crítico identificado pelo motor offline."
+            });
+        }
+
+        return ajustes;
+    },
+
+    /**
+     * NOVA FUNÇÃO (Skill C) — Gera checklist dinâmico de documentos obrigatórios.
+     * Analisa o edital e anexos para identificar documentos exigidos
+     * (CNPJ, Atas, Certidões, Cartas de Anuência, etc.) e verifica
+     * se aparecem mencionados na proposta do proponente.
+     */
+    generateDocumentChecklist: function (fullContext, workspaceState) {
+        const profile = (workspaceState && workspaceState.editalProfile) || {};
+        const editalText = (workspaceState && workspaceState.editalRefText || '').toLowerCase();
+        const fullLower = fullContext.toLowerCase();
+
+        // Banco de documentos comuns em editais de fomento — cada item é testado
+        // contra o edital para verificar se é exigido, e depois contra a proposta
+        const documentBank = [
+            { name: 'Cartão CNPJ atualizado', editalPattern: /cnpj|cadastro nacional/i, proposalPattern: /cnpj/i },
+            { name: 'Ata de Eleição da Diretoria vigente', editalPattern: /ata\s*(de\s*)?(elei[çc][ãa]o|diretoria|posse)/i, proposalPattern: /ata\s*(de\s*)?(elei[çc][ãa]o|diretoria|posse)/i },
+            { name: 'Estatuto Social registrado', editalPattern: /estatuto\s*social/i, proposalPattern: /estatuto/i },
+            { name: 'Certidão Negativa de Débitos (CND)', editalPattern: /cnd|certid[ãa]o\s*negativa\s*de\s*d[eé]bitos/i, proposalPattern: /cnd|certid[ãa]o.*d[eé]bito/i },
+            { name: 'Certidão FGTS', editalPattern: /fgts|certid[ãa]o.*fundo\s*de\s*garantia/i, proposalPattern: /fgts/i },
+            { name: 'Certidão CNDT (Trabalhista)', editalPattern: /cndt|certid[ãa]o.*trabalh/i, proposalPattern: /cndt/i },
+            { name: 'Carta de Anuência Comunitária', editalPattern: /carta\s*de\s*anu[eê]ncia|anu[eê]ncia\s*comunit/i, proposalPattern: /anu[eê]ncia/i },
+            { name: 'Plano de Trabalho', editalPattern: /plano\s*de\s*trabalho/i, proposalPattern: /plano\s*de\s*trabalho/i },
+            { name: 'Declaração de Contrapartida', editalPattern: /declara[çc][ãa]o.*contrapartida/i, proposalPattern: /contrapartida/i },
+            { name: 'Comprovante de endereço da sede', editalPattern: /comprovante\s*(de\s*)?endere[çc]o|sede/i, proposalPattern: /endere[çc]o.*sede|sede.*endere[çc]o/i },
+            { name: 'Licença do ECAD', editalPattern: /ecad|execu[çc][ãa]o.*musical|direitos?\s*autor/i, proposalPattern: /ecad/i },
+            { name: 'Registro no SisGen', editalPattern: /sisgen|patrim[oô]nio\s*gen[eé]tico|conhecimento\s*tradicional/i, proposalPattern: /sisgen/i }
+        ];
+
+        const exigidos = [];
+        const atendidos = [];
+        const pendentes = [];
+
+        documentBank.forEach(doc => {
+            // Verifica se o edital exige este documento
+            if (doc.editalPattern.test(editalText)) {
+                exigidos.push(doc.name);
+                // Verifica se a proposta menciona o documento
+                if (doc.proposalPattern.test(fullLower)) {
+                    atendidos.push(doc.name);
+                } else {
+                    pendentes.push(doc.name);
+                }
+            }
+        });
+
+        return { exigidos, atendidos, pendentes };
+    },
+
+    /**
+     * NOVA FUNÇÃO (Skill D) — Processa erratas e retificações de editais.
+     * Recebe o texto da errata e compara com o edital original,
+     * identificando mudanças em prazos, valores, regras e requisitos.
+     * Retorna um resumo estruturado das alterações detectadas.
+     */
+    processErrata: function (errataText, originalEditalText) {
+        if (!errataText || !originalEditalText) {
+            return { mudancas: [], resumo: 'Nenhuma errata ou edital original fornecido para comparação.' };
+        }
+
+        const errataLower = errataText.toLowerCase();
+        const mudancas = [];
+
+        // 1. Detectar mudanças de prazo/data
+        const datePatterns = [
+            /(?:novo\s*)?prazo[\s\S]{0,100}?(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{2,4})/gi,
+            /(?:prorroga|altera|retifica)[\s\S]{0,100}?(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{2,4})/gi,
+            /(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{2,4})[\s\S]{0,50}?(?:onde\s*se\s*l[eê]|passa\s*a\s*ser|altera)/gi
+        ];
+        datePatterns.forEach(pattern => {
+            let match;
+            while ((match = pattern.exec(errataText)) !== null) {
+                const context = errataText.substring(Math.max(0, match.index - 50), match.index + match[0].length + 50).trim();
+                mudancas.push({ tipo: '📅 Alteração de Prazo/Data', detalhe: context });
+            }
+        });
+
+        // 2. Detectar mudanças de valor monetário
+        const moneyPattern = /(?:onde\s*se\s*l[eê]|altera|retifica|passa\s*a\s*ser)[\s\S]{0,100}?r\$\s*[\d\.\,]+/gi;
+        let moneyMatch;
+        while ((moneyMatch = moneyPattern.exec(errataText)) !== null) {
+            const context = errataText.substring(Math.max(0, moneyMatch.index - 30), moneyMatch.index + moneyMatch[0].length + 30).trim();
+            mudancas.push({ tipo: '💰 Alteração de Valor', detalhe: context });
+        }
+
+        // 3. Detectar mudanças em itens/cláusulas
+        const clausePattern = /(?:item|cl[áa]usula|artigo|par[áa]grafo|inciso|al[ií]nea)\s*[\d\.]+[\s\S]{0,200}?(?:onde\s*se\s*l[eê]|passa\s*a\s*(?:ser|vigorar|ter)|fica\s*alterado|fica\s*retificado)/gi;
+        let clauseMatch;
+        while ((clauseMatch = clausePattern.exec(errataText)) !== null) {
+            const context = errataText.substring(clauseMatch.index, clauseMatch.index + clauseMatch[0].length + 100).trim();
+            mudancas.push({ tipo: '📋 Alteração de Cláusula', detalhe: context.substring(0, 250) });
+        }
+
+        // 4. Detectar inclusões/exclusões
+        if (/(?:inclui|acrescenta|adiciona)\s*(?:se|o\s*seguinte)/i.test(errataText)) {
+            mudancas.push({ tipo: '➕ Inclusão de novo requisito', detalhe: 'A errata inclui novos itens ou requisitos. Revise o texto completo da errata.' });
+        }
+        if (/(?:exclui|suprime|revoga)\s*(?:se|o\s*seguinte|o\s*item)/i.test(errataText)) {
+            mudancas.push({ tipo: '➖ Exclusão de requisito', detalhe: 'A errata exclui itens anteriormente exigidos. Verifique se sua proposta já não contempla itens removidos.' });
+        }
+
+        const resumo = mudancas.length > 0
+            ? `Foram detectadas ${mudancas.length} alteração(ões) na errata em relação ao edital original.`
+            : 'Nenhuma alteração significativa detectada pela análise automática. Recomenda-se revisão manual.';
+
+        return { mudancas, resumo };
     }
 };

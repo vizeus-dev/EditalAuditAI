@@ -2339,6 +2339,9 @@ body.dark-mode .tab-btn:hover {
     gap: 0.25rem;
     overflow-x: auto;
     scrollbar-width: none;
+    position: relative;
+    z-index: 10;
+    pointer-events: auto;
 }
 .workspace-tabs::-webkit-scrollbar {
     display: none;
@@ -2356,6 +2359,9 @@ body.dark-mode .tab-btn:hover {
     border-radius: var(--radius-sm) var(--radius-sm) 0 0;
     transition: all var(--transition-fast) ease;
     white-space: nowrap;
+    position: relative;
+    z-index: 10;
+    pointer-events: auto;
 }
 
 .w-tab-btn:hover {

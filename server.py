@@ -18,6 +18,7 @@ import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from html.parser import HTMLParser
 from services.api import LLMGateway, DocumentRetriever
+from services.skills.anki_exporter import create_anki_apkg_zip
 
 # ReportLab imports at top-level
 from reportlab.lib.pagesizes import A4, landscape
@@ -1523,52 +1524,164 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     col_letter = get_column_letter(col[0].column)
                     ws3.column_dimensions[col_letter].width = max(max_l + 3, 16)
 
-                # ABA 4: Cronograma de Desembolso
-                ws4 = wb.create_sheet(title="Cronograma de Desembolso")
-                ws4.cell(row=1, column=1, value="Cronograma Financeiro de Desembolso por Fase").font = title_font
-                ws4.cell(row=2, column=1, value=f"Planejamento de fluxo de caixa orçamentário para: {project_title}").font = sub_font
+                # ABA 4: Análise de Tetos & Conformidade
+                validacao_tetos = data.get('validacaoTetos', [])
+                if validacao_tetos:
+                    ws4 = wb.create_sheet(title="Análise de Tetos")
+                    ws4.cell(row=1, column=1, value="Análise de Tetos & Conformidade Orçamentária").font = title_font
+                    ws4.cell(row=2, column=1, value=f"Dashboard de conformidade para: {project_title}").font = sub_font
+                    
+                    headers4 = ["Grupo / Rubrica", "Valor Total (R$)", "% do Orçamento", "Teto Permitido", "Status de Conformidade"]
+                    for c_idx, h in enumerate(headers4, start=1):
+                        c = ws4.cell(row=4, column=c_idx, value=h)
+                        c.fill = summary_header_fill; c.font = header_font; c.border = thin_border
+                    
+                    for idx, vt in enumerate(validacao_tetos):
+                        r = 5 + idx
+                        ws4.cell(row=r, column=1, value=vt.get('grupoRubrica', '')).font = bold_font
+                        c_val = ws4.cell(row=r, column=2, value=parse_num(vt.get('valorTotal', 0)))
+                        c_val.font = bold_font; c_val.number_format = currency_fmt
+                        c_pct = ws4.cell(row=r, column=3, value=parse_num(vt.get('percentualDoOrcamento', 0)) / 100)
+                        c_pct.font = regular_font; c_pct.number_format = pct_fmt
+                        ws4.cell(row=r, column=4, value=vt.get('tetoPermitido', 'Sem teto')).font = regular_font
+                        ws4.cell(row=r, column=5, value=vt.get('statusConformidade', '✓ Conforme')).font = bold_font
+                        for c_idx in range(1, 6):
+                            ws4.cell(row=r, column=c_idx).border = thin_border
+                    
+                    for col in ws4.columns:
+                        max_l = max(len(str(cell.value or '')) for cell in col)
+                        col_letter = get_column_letter(col[0].column)
+                        ws4.column_dimensions[col_letter].width = max(max_l + 3, 14)
+
+                # ABA 5: Encargos Trabalhistas & Tributários
+                regime_items = [it for it in items if it.get('regimeTributario') and it.get('regimeTributario') not in ('N/A', 'Isento')]
+                if regime_items:
+                    ws5 = wb.create_sheet(title="Encargos Trabalhistas")
+                    ws5.cell(row=1, column=1, value="Detalhamento de Encargos Trabalhistas & Tributários").font = title_font
+                    ws5.cell(row=2, column=1, value=f"Breakdown ISS/INSS/IRRF por profissional para: {project_title}").font = sub_font
+                    
+                    headers5 = ["Item / Profissional", "Regime", "Subtotal (R$)", "ISS", "INSS", "IRRF", "Total Encargos", "Custo Total"]
+                    for c_idx, h in enumerate(headers5, start=1):
+                        c = ws5.cell(row=4, column=c_idx, value=h)
+                        c.fill = timeline_header_fill; c.font = header_font; c.border = thin_border
+                    
+                    for idx, it in enumerate(regime_items):
+                        r = 5 + idx
+                        sub = parse_num(it.get('subtotal', 0))
+                        regime = it.get('regimeTributario', 'N/A')
+                        iss = sub * 0.05 if regime in ('RPA', 'PJ') else 0
+                        inss = sub * 0.11 if regime == 'RPA' else (sub * 0.20 if regime == 'CLT' else 0)
+                        irrf = sub * 0.075 if regime == 'CLT' else 0
+                        
+                        row_data = [
+                            (clean_str(it.get('item', '')), bold_font),
+                            (regime, regular_font),
+                            (sub, regular_font),
+                            (round(iss), regular_font),
+                            (round(inss), regular_font),
+                            (round(irrf), regular_font),
+                            (round(iss + inss + irrf), bold_font),
+                            (round(sub + iss + inss + irrf), bold_font)
+                        ]
+                        for c_idx, (val, fn) in enumerate(row_data, start=1):
+                            c = ws5.cell(row=r, column=c_idx, value=val)
+                            c.font = fn; c.border = thin_border
+                            if c_idx >= 3: c.number_format = currency_fmt
+                    
+                    for col in ws5.columns:
+                        max_l = max(len(str(cell.value or '')) for cell in col)
+                        col_letter = get_column_letter(col[0].column)
+                        ws5.column_dimensions[col_letter].width = max(max_l + 3, 14)
+
+                # ABA 6: Cronograma de Desembolso Mensal
+                ws6 = wb.create_sheet(title="Cronograma Desembolso Mensal")
+                ws6.cell(row=1, column=1, value="Cronograma Financeiro de Desembolso Mensal").font = title_font
+                ws6.cell(row=2, column=1, value=f"Fluxo de caixa para: {project_title}").font = sub_font
                 
-                headers4 = ["Fase do Projeto", "Período Executivo", "Participação (%)", "Desembolso Previsto (R$)", "Principais Atividades & Liberadores"]
-                for c_idx, h in enumerate(headers4, start=1):
-                    c = ws4.cell(row=4, column=c_idx, value=h)
-                    c.fill = timeline_header_fill; c.font = header_font; c.border = thin_border
-                    c.alignment = Alignment(horizontal="center" if c_idx in (3,4) else "left", vertical="center")
-
-                flow_rows = [
-                    ("Fase 1: Pré-Produção & Contratações", "Mês 1 ao Mês 2", 0.25, f"='Planilha Orçamentária 3 Etapas'!K{tot_r}*0.25", "Adiantamentos de equipe, ensaios, reservas e licenciamento."),
-                    ("Fase 2: Produção & Execução Principal", "Mês 3 ao Mês 5", 0.60, f"='Planilha Orçamentária 3 Etapas'!K{tot_r}*0.60", "Cachês artísticos, montagem de estrutura, rider técnico e divulgação."),
-                    ("Fase 3: Pós-Produção & Prestação de Contas", "Mês 6", 0.15, f"='Planilha Orçamentária 3 Etapas'!K{tot_r}*0.15", "Clipping de mídia, relatório de auditoria, relatórios PCD e encerramento fiscal."),
-                ]
+                cron_mensal = data.get('cronogramaDesembolsoMensal', [])
+                if cron_mensal:
+                    headers6 = ["Mês", "Fase do Projeto", "Desembolso Previsto (R$)", "Principais Atividades"]
+                    for c_idx, h in enumerate(headers6, start=1):
+                        c = ws6.cell(row=4, column=c_idx, value=h)
+                        c.fill = timeline_header_fill; c.font = header_font; c.border = thin_border
+                    
+                    total_desembolso = 0
+                    for idx, cm in enumerate(cron_mensal):
+                        r = 5 + idx
+                        val = parse_num(cm.get('valorDesembolso', 0))
+                        total_desembolso += val
+                        ws6.cell(row=r, column=1, value=f"Mês {cm.get('mes', idx+1)}").font = bold_font
+                        ws6.cell(row=r, column=2, value=cm.get('fase', '')).font = regular_font
+                        c_val = ws6.cell(row=r, column=3, value=val)
+                        c_val.font = bold_font; c_val.number_format = currency_fmt
+                        ws6.cell(row=r, column=4, value=cm.get('principaisAtividades', '')).font = regular_font
+                        for c_idx in range(1, 5):
+                            ws6.cell(row=r, column=c_idx).border = thin_border
+                    
+                    # Total row
+                    tr = 5 + len(cron_mensal)
+                    ws6.cell(row=tr, column=1, value="TOTAL").font = bold_font
+                    c_tot = ws6.cell(row=tr, column=3, value=total_desembolso)
+                    c_tot.font = bold_font; c_tot.number_format = currency_fmt
+                    ws6.cell(row=tr, column=4, value="✓ Fluxo Consolidado").font = bold_font
+                    for c_idx in range(1, 5):
+                        c = ws6.cell(row=tr, column=c_idx)
+                        c.fill = total_fill; c.border = thin_border
+                else:
+                    # Fallback: 3 fases
+                    headers6f = ["Fase", "Período", "% Participação", "Desembolso (R$)", "Atividades"]
+                    for c_idx, h in enumerate(headers6f, start=1):
+                        c = ws6.cell(row=4, column=c_idx, value=h)
+                        c.fill = timeline_header_fill; c.font = header_font; c.border = thin_border
+                    
+                    flow_rows = [
+                        ("Fase 1: Pré-Produção", "Mês 1-2", 0.25, f"='Planilha Orçamentária 3 Etapas'!K{tot_r}*0.25", "Contratações e mobilização."),
+                        ("Fase 2: Execução", "Mês 3-10", 0.60, f"='Planilha Orçamentária 3 Etapas'!K{tot_r}*0.60", "Atividades principais."),
+                        ("Fase 3: Pós-Produção", "Mês 11-12", 0.15, f"='Planilha Orçamentária 3 Etapas'!K{tot_r}*0.15", "Prestação de contas."),
+                    ]
+                    for idx, (fase, per, pct, form, ativ) in enumerate(flow_rows):
+                        r = 5 + idx
+                        ws6.cell(row=r, column=1, value=fase).font = bold_font
+                        ws6.cell(row=r, column=2, value=per).font = regular_font
+                        c_pct = ws6.cell(row=r, column=3, value=pct)
+                        c_pct.font = regular_font; c_pct.number_format = pct_fmt
+                        c_val = ws6.cell(row=r, column=4, value=form)
+                        c_val.font = bold_font; c_val.number_format = currency_fmt
+                        ws6.cell(row=r, column=5, value=ativ).font = regular_font
+                        for c_idx in range(1, 6):
+                            ws6.cell(row=r, column=c_idx).border = thin_border
                 
-                for idx, (fase, per, pct, form, ativ) in enumerate(flow_rows):
-                    r = 5 + idx
-                    ws4.cell(row=r, column=1, value=fase).font = bold_font
-                    ws4.cell(row=r, column=2, value=per).font = regular_font
-                    
-                    c_pct = ws4.cell(row=r, column=3, value=pct)
-                    c_pct.font = regular_font; c_pct.number_format = pct_fmt; c_pct.alignment = Alignment(horizontal="center")
-                    
-                    c_val = ws4.cell(row=r, column=4, value=form)
-                    c_val.font = bold_font; c_val.number_format = currency_fmt; c_val.alignment = Alignment(horizontal="right")
-                    
-                    ws4.cell(row=r, column=5, value=ativ).font = regular_font
-                    for c_idx in range(1, 6):
-                        ws4.cell(row=r, column=c_idx).border = thin_border
-
-                ws4.cell(row=8, column=1, value="TOTAL CONSOLIDADO DO FLUXO:").font = bold_font
-                ws4.cell(row=8, column=3, value="=SUM(C5:C7)").number_format = pct_fmt
-                ws4.cell(row=8, column=3).alignment = Alignment(horizontal="center")
-                ws4.cell(row=8, column=4, value="=SUM(D5:D7)").number_format = currency_fmt
-                ws4.cell(row=8, column=4).alignment = Alignment(horizontal="right")
-                ws4.cell(row=8, column=5, value="✓ Fluxo de Caixa Balanceado").font = bold_font
-                for c_idx in range(1, 6):
-                    c = ws4.cell(row=8, column=c_idx)
-                    c.font = bold_font; c.fill = total_fill; c.border = thin_border
-
-                for col in ws4.columns:
+                for col in ws6.columns:
                     max_l = max(len(str(cell.value or '')) for cell in col)
                     col_letter = get_column_letter(col[0].column)
-                    ws4.column_dimensions[col_letter].width = max(max_l + 3, 14)
+                    ws6.column_dimensions[col_letter].width = max(max_l + 3, 14)
+
+                # ABA 7: Despesas Vedadas (Checklist)
+                desp_vedadas = data.get('despesasVedadasChecklist', [])
+                if desp_vedadas:
+                    ws7 = wb.create_sheet(title="Despesas Vedadas")
+                    ws7.cell(row=1, column=1, value="Checklist de Despesas Vedadas pelo Edital").font = title_font
+                    ws7.cell(row=2, column=1, value=f"Verificação de conformidade para: {project_title}").font = sub_font
+                    
+                    headers7 = ["Despesa Vedada (conforme edital)", "Status", "Observação"]
+                    for c_idx, h in enumerate(headers7, start=1):
+                        c = ws7.cell(row=4, column=c_idx, value=h)
+                        c.fill = PatternFill(start_color="DC2626", end_color="DC2626", fill_type="solid")
+                        c.font = header_font; c.border = thin_border
+                    
+                    for idx, dv in enumerate(desp_vedadas):
+                        r = 5 + idx
+                        ws7.cell(row=r, column=1, value=dv.get('despesaVedada', '')).font = bold_font
+                        ws7.cell(row=r, column=2, value=dv.get('status', '✓ OK')).font = bold_font
+                        ws7.cell(row=r, column=3, value=dv.get('observacao', '')).font = regular_font
+                        for c_idx in range(1, 4):
+                            ws7.cell(row=r, column=c_idx).border = thin_border
+                    
+                    for col in ws7.columns:
+                        max_l = max(len(str(cell.value or '')) for cell in col)
+                        col_letter = get_column_letter(col[0].column)
+                        ws7.column_dimensions[col_letter].width = max(max_l + 3, 14)
+
 
                 excel_buffer = io.BytesIO()
                 wb.save(excel_buffer)
@@ -1623,6 +1736,8 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 edital_text = data.get('editalRefText', '')
                 annexes = data.get('annexes', [])
                 api_key = data.get('api_key', '')
+                cover = data.get('cover', {})  # Skill A: Receber dados do proponente para cruzamento
+                model = data.get('model') or os.environ.get('GEMINI_DEFAULT_MODEL') or 'gemini-3.5-flash'
                 model = data.get('model') or os.environ.get('GEMINI_DEFAULT_MODEL') or 'gemini-3.5-flash'
                 
                 if not edital_text.strip():
@@ -1641,7 +1756,19 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     for a in annexes
                 ]) if annexes else "Sem anexos adicionais."
 
-                analyze_prompt = f"""Você é o Auditor-Geral e Analista Estrutural de editais públicos e privados de cultura.
+                # Skill A: Cruzar perfil do proponente com edital se dados disponíveis
+                proponent_context = ""
+                if cover and (cover.get('title') or cover.get('proponent') or cover.get('city')):
+                    proponent_context = f"""\n\n[DADOS DO PROPONENTE PARA CRUZAMENTO ESTRATÉGICO]:
+- Título do Projeto: {cover.get('title', 'Não informado')}
+- Proponente: {cover.get('proponent', 'Não informado')}
+- Cidade/UF: {cover.get('city', 'Não informado')}
+- Orçamento Pretendido: R$ {cover.get('budget', 0)}
+- Ano de Execução: {cover.get('year', 'Não informado')}
+
+Para a chave "compatibilidade_estrategica", analise a compatibilidade entre o perfil deste proponente (localização, público-alvo provável, capacidade orçamentária) e os objetivos/elegibilidade do edital. Indique grau de aderência e riscos de inelegibilidade."""
+
+                analyze_prompt = f"""Você é o Auditor-Geral e Analista Estrutural de editais públicos e privados.
 Sua missão é analisar minuciosamente o Edital principal e seus Anexos fornecidos abaixo para mapear e extrair o perfil estrutural e as regras de conformidade que devem governar todo e qualquer texto ou proposta gerada para este edital.
 
 [CONTEÚDO DO EDITAL DE REFERÊNCIA]:
@@ -1649,15 +1776,17 @@ Sua missão é analisar minuciosamente o Edital principal e seus Anexos fornecid
 
 [ANEXOS ADICIONAIS]:
 {annexes_context}
+{proponent_context}
 
 Mapeie e estruture as informações em um objeto JSON contendo exatamente as seguintes chaves:
-1. fomento: Nome da lei de incentivo ou linha de fomento (ex: Lei Rouanet, Lei Paulo Gustavo, Lei Aldir Blanc, Fomento Direto, Fomento Privado, etc.).
+1. fomento: Nome da lei de incentivo ou linha de fomento identificada no edital.
 2. objetivos: Resumo curto e claro do foco temático, objetivos principais do edital e tipos de projetos elegíveis.
-3. tetos_e_limites: Valores máximos (teto por projeto) e limites percentuais para rubricas (ex: limite de custos administrativos, divulgação/marketing, assessoria, etc.).
-4. acessibilidade_e_cotas: Regras obrigatórias de acessibilidade (libras, audiodescrição) e políticas de ação afirmativa/cotas (raça, gênero, PCD, territórios).
-5. prioridades_critérios: Critérios de prioridade, desempate e avaliação (ex: proponentes estreantes, interiorização, descentralização, diversidade).
+3. tetos_e_limites: Valores máximos (teto por projeto) e limites percentuais REAIS para rubricas conforme definidos no edital (ex: limite de custos administrativos, divulgação, assessoria).
+4. acessibilidade_e_cotas: Regras obrigatórias de acessibilidade e políticas de ação afirmativa/cotas conforme o edital.
+5. prioridades_critérios: Critérios de prioridade, desempate e avaliação extraídos dos anexos de pontuação.
 6. anexos_analisados: Lista compacta dos anexos enviados e a importância de cada um para o projeto.
 7. secoes_exigidas: Lista contendo apenas as chaves das seções especificamente exigidas ou necessárias conforme o edital e anexos (escolhidas estritamente entre: "justificativa", "objetivos", "metodologia", "cronograma", "orcamento", "acessibilidade", "publico", "contrapartida", "comunicacao", "ficha_tecnica", "monitoramento", "compliance", "sustentabilidade", "rider").
+8. compatibilidade_estrategica: Parecer breve sobre a compatibilidade entre o proponente e o edital (grau de aderência, riscos de inelegibilidade, oportunidades). Se nenhum dado do proponente foi fornecido, retorne "Dados do proponente não informados para análise de compatibilidade.".
 
 Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem blocos markdown ou explicações fora do JSON."""
 
@@ -1673,9 +1802,10 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem blocos 
                         "secoes_exigidas": {
                             "type": "ARRAY",
                             "items": {"type": "STRING"}
-                        }
+                        },
+                        "compatibilidade_estrategica": {"type": "STRING"}
                     },
-                    "required": ["fomento", "objetivos", "tetos_e_limites", "acessibilidade_e_cotas", "prioridades_critérios", "anexos_analisados", "secoes_exigidas"]
+                    "required": ["fomento", "objetivos", "tetos_e_limites", "acessibilidade_e_cotas", "prioridades_critérios", "anexos_analisados", "secoes_exigidas", "compatibilidade_estrategica"]
                 }
 
                 print("[SERVER] Iniciando análise prévia do edital...")
@@ -1731,6 +1861,7 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem blocos 
                 cover = data.get('cover', {})
                 editalRefText = data.get('editalRefText', '')
                 proposalDraftText = data.get('proposalDraftText', '')
+                ingestaoNotes = data.get('ingestaoNotes', '')
                 annexes = data.get('annexes', [])
                 historicalMemories = data.get('historicalMemories', [])
                 editalProfile = data.get('editalProfile', {})
@@ -1752,13 +1883,42 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem blocos 
                     for a in annexes
                 ]) if annexes else "Sem anexos adicionais."
                 
-                # Single Prompt focused on proposal generation (Tarefa 1)
-                unified_prompt = f"""Você é uma inteligência artificial de elite especialista em captação de recursos públicos e editais de cultura (Lei Rouanet, Lei Aldir Blanc, IN MinC, editais estaduais e municipais do Brasil).
-Sua missão é realizar um cruzamento exaustivo e rigoroso entre os dados do edital, seus anexos e o rascunho fornecido para redigir uma proposta cultural completa de altíssimo nível.
+                # Determinar quais seções gerar com base no perfil do edital
+                all_sections = ['justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento', 'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica', 'monitoramento', 'compliance', 'sustentabilidade', 'rider']
+                secoes_exigidas = editalProfile.get('secoes_exigidas', all_sections) if editalProfile else all_sections
+                if not secoes_exigidas or len(secoes_exigidas) == 0:
+                    secoes_exigidas = all_sections
+                
+                # Descritores dinâmicos para cada seção
+                section_descriptors = {
+                    'justificativa': 'Justificativa longa, detalhada e persuasiva defendendo o mérito, relevância social e impacto no território.',
+                    'objetivos': 'Objetivo geral claro e objetivos específicos listados como itens de realizações quantificáveis.',
+                    'metodologia': 'Metodologia operacional detalhando passo-a-passo as fases de Pré-produção, Execução e Pós-produção.',
+                    'cronograma': 'Cronograma formatado obrigatoriamente como tabela HTML (<table>) organizado por meses.',
+                    'orcamento': 'Planilha orçamentária como tabela HTML com colunas: Item, Quantidade, Unidade, Valor Unitário (R$), Valor Total (R$). Respeite rigorosamente os tetos percentuais REAIS extraídos do edital (NÃO use valores genéricos como 15% ou 10%).',
+                    'acessibilidade': 'Plano de acessibilidade física, atitudinal e sensorial/comunicacional e cotas afirmativas exigidas pelo edital.',
+                    'publico': 'Público-Alvo: perfil demográfico, social e etário detalhado dos beneficiários.',
+                    'contrapartida': 'Contrapartida Social e Legado duradouro oferecido gratuitamente à comunidade.',
+                    'comunicacao': 'Plano de Comunicação e Divulgação nas mídias sociais, imprensa e peças gráficas.',
+                    'ficha_tecnica': 'Ficha Técnica com minibios e cargos da equipe principal para atestar a exequibilidade operacional.',
+                    'monitoramento': 'Plano de Monitoramento, Avaliação e Indicadores de sucesso (Matriz Lógica).',
+                    'compliance': 'Mecanismos de compliance legal, certidões negativas necessárias conforme o edital.',
+                    'sustentabilidade': 'Plano de Sustentabilidade e práticas ESG para mitigação de impactos ambientais.',
+                    'rider': 'Rider Técnico detalhando necessidades físicas, mapa de palco, som/luz, montagem e logística.'
+                }
+                
+                # Gerar descrições apenas para as seções exigidas pelo edital
+                sections_text = "\n".join([
+                    f"{i+1}. {sec}: {section_descriptors.get(sec, 'Seção solicitada pelo edital.')}"
+                    for i, sec in enumerate(secoes_exigidas)
+                ])
+
+                unified_prompt = f"""Você é uma inteligência artificial de elite especialista em captação de recursos públicos e editais de fomento.
+Sua missão é realizar um cruzamento exaustivo e rigoroso entre os dados do edital, seus anexos, o rascunho fornecido e as anotações/orientações específicas do proponente para redigir uma proposta completa de altíssimo nível.
 
 **INSTRUÇÕES CRÍTICAS DE REDAÇÃO (EVITE RESPOSTAS GENÉRICAS):**
 - Redija cada seção de forma densa, completa, profissional e contextualizada para o projeto. Não faça resumos, resenhas ou redações rasas.
-- Incorpore profundamente o conteúdo e as ideias presentes no [RASCUNHO DO PROPONENTE]. Use suas informações específicas como base e enriqueça-as tecnicamente.
+- Incorpore profundamente o conteúdo e as ideias presentes no [RASCUNHO DO PROPONENTE] e em [ANOTAÇÕES E PONTOS DE ATENÇÃO DO PROPONENTE].
 - Respeite e atenda estritamente aos tetos financeiros, limites percentuais, regras de acessibilidade e critérios de priorização descritos no [PERFIL E REGRAS ESTRUTURAIS DO EDITAL] e no [CONTEÚDO DO EDITAL].
 - A redação deve estar pronta para submissão oficial (sem placeholders como "[inserir nome]", "[definir data]" ou marcas/pistas de IA).
 
@@ -1781,24 +1941,14 @@ Sua missão é realizar um cruzamento exaustivo e rigoroso entre os dados do edi
 [RASCUNHO DO PROPONENTE]:
 {proposalDraftText[:50000]}
 
+[ANOTAÇÕES E PONTOS DE ATENÇÃO DO PROPONENTE (DIRECIONAMENTO DOS AGENTES DE DOMÍNIO)]:
+{ingestaoNotes[:20000] if ingestaoNotes else "Nenhuma anotação adicional."}
+
 ---
 
-### MISSÃO: REDIGIR AS 14 SEÇÕES DA PROPOSTA CULTURAL
-Gere a redação das seguintes 14 seções (deve conter tags HTML de cabeçalho h3 ou h4 e parágrafos dentro de cada texto):
-1. justificativa: Justificativa longa, detalhada e persuasiva defendendo o mérito cultural, relevância social e impacto no território.
-2. objetivos: Objetivo geral claro e objetivos específicos listados como itens de realizações físicas e pedagógicas quantificáveis.
-3. metodologia: Descreva a metodologia detalhando passo-a-passo e de forma operacional as fases de Pré-produção, Execução e Pós-produção.
-4. cronograma: Formate obrigatoriamente como tabela HTML (<table>, <tr>, <td>) organizada por meses (Mês 1 a Mês 6).
-5. orcamento: Formate orçamentária como tabela HTML (<table>, <tr>, <td>) com colunas: Item, Quantidade, Unidade, Valor Unitário (R$), Valor Total (R$). Respeite rigorosamente as regras de limite (máx 15% para custos administrativos e máx 10% para divulgação) aplicadas sobre o teto do projeto.
-6. acessibilidade: Descreva o plano de acessibilidade física, atitudinal e sensorial/comunicacional (como contratação de LIBRAS/audiodescrição) e as cotas afirmativas do projeto.
-7. publico: Público-Alvo e Perfil demográfico, social e etário detalhado dos beneficiários.
-8. contrapartida: Contrapartida Social e Legado duradouro oferecido gratuitamente à comunidade.
-9. comunicacao: Plano de Comunicação e Divulgação nas mídias sociais, imprensa e peças gráficas.
-10. ficha_tecnica: Ficha Técnica com minibios e cargos da equipe principal para atestar a exequibilidade operacional.
-11. monitoramento: Plano de Monitoramento, Avaliação e Indicadores de sucesso quantitativos e qualitativos (Matriz Lógica).
-12. compliance: Mecanismos de compliance legal, certidões negativas necessárias, Ecad, SisGen e direitos autorais.
-13. sustentabilidade: Plano de Sustentabilidade e práticas ESG para mitigação de impactos ambientais.
-14. rider: Rider Técnico detalhando necessidades físicas, mapa de palco, rider de som/luz, montagem e logística de transporte/hospedagem.
+### MISSÃO: REDIGIR AS SEÇÕES DA PROPOSTA CONFORME EXIGIDO PELO EDITAL
+Gere a redação das seguintes seções identificadas como obrigatórias/relevantes pelo perfil do edital (deve conter tags HTML de cabeçalho h3 ou h4 e parágrafos dentro de cada texto):
+{sections_text}
 
 Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos em markdown ou explicações fora do JSON."""
 
@@ -1878,6 +2028,24 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos
                 else:
                     self.send_json_response(500, {"error": f"Erro na geração unificada: {str(e)}"})
 
+        elif self.path == '/api/export-anki':
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                deck_name = data.get('deck_name', 'Baralho_Concursos_SRS')
+                flashcards = data.get('flashcards', [])
+                zip_bytes = create_anki_apkg_zip(deck_name, flashcards)
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/zip')
+                self.send_header('Content-Disposition', f'attachment; filename="{deck_name}.apkg"')
+                self.send_header('Content-Length', str(len(zip_bytes)))
+                self.end_headers()
+                self.wfile.write(zip_bytes)
+            except Exception as ex:
+                self.send_json_response(500, {"error": f"Erro ao gerar pacote Anki: {str(ex)}"})
+
         elif self.path == '/api/llm/generate':
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
@@ -1897,7 +2065,7 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos
                 # --- TRUNCAMENTO DE SEGURANÇA NO SERVIDOR ---
                 MAX_EDITAL_CHARS = 1000000
                 MAX_ANNEX_CHARS = 500000
-                MAX_FINAL_PROMPT_CHARS = 300000
+                MAX_FINAL_PROMPT_CHARS = 600000
                 
                 # Context items for RAG (with safety truncation)
                 edital_text = data.get('edital_text', '')

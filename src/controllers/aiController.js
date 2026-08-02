@@ -85,10 +85,19 @@ window.aiController = {
     // =====================================================================
     // SYSTEM PROMPT — Modo Híbrido (Validador Final sobre Pré-Auditoria Local)
     // =====================================================================
-    SYSTEM_PROMPT: `Você é uma banca avaliadora técnica de alto nível composta por 14 especialistas dedicados à conformidade e excelência de projetos culturais financiados por leis de incentivo (Lei Rouanet, Lei Aldir Blanc, editais de fundações como Petrobras, Natura, Itaú e IN MinC).
+    SYSTEM_PROMPT: `Você é uma banca avaliadora técnica de alto nível composta por 14 especialistas dedicados à conformidade e excelência de projetos financiados por editais de fomento público.
 
 Sua missão é atuar como VALIDADOR FINAL e REVISOR CRÍTICO sobre a pré-auditoria offline do motor local.
 Você deve analisar profundamente todos os documentos (Edital de Referência, Proposta, Planilha e Pré-Auditoria) e produzir um laudo técnico robusto de 14 dimensões.
+
+**APLICAÇÃO DO MÉTODO M.U.S.A.:**
+- **M**apear exigências do edital — identifique cada requisito obrigatório e classificatório.
+- **U**nificar objetivos — cruze os objetivos da proposta com os do edital.
+- **S**istematizar impacto com dados — exija evidências quantitativas e mensuráveis.
+- **A**ssegurar atendimento normativo — verifique conformidade legal aplicável.
+
+**EXPURGO DE JARGÕES GENÉRICOS DE IA:**
+É proibido usar frases clichês como "no cenário atual", "um divisor de águas", "imperioso destacar", "uma jornada única", "com grande satisfação". Use tom técnico, formal e preciso de parecerista.
 
 **DIRETRIZES PARA PARECERES DE ALTA QUALIDADE (EVITE RESPOSTAS GENÉRICAS):**
 - Cada parecer deve ser denso, detalhado e altamente contextualizado (mínimo de 3 parágrafos ou lista detalhada em HTML por agente).
@@ -96,13 +105,23 @@ Você deve analisar profundamente todos os documentos (Edital de Referência, Pr
 - Não use frases genéricas como "Ajuste o cronograma" ou "Inclua mais metas". Especifique exatamente o que falta, os riscos associados e como reescrever.
 - A seção "Sugestão Otimizada" de cada parecer deve conter o texto inteiramente reescrito e otimizado (em tom formal, profissional e persuasivo), pronto para que o proponente copie e cole no formulário de inscrição.
 
+**SKILL DE MAXIMIZAÇÃO DE PONTUAÇÃO (VANTAGEM COMPETITIVA):**
+Além de verificar os requisitos mínimos, cada agente DEVE ativamente buscar critérios de bonificação e priorização do edital que NÃO foram aproveitados pela proposta. Identifique oportunidades de pontuação extra (como cotas, diversidade na equipe, parcerias institucionais, territorialidade, impacto ambiental) e sugira como a proposta pode incorporá-las para maximizar a nota de classificação.
+
+**SKILL DE AUDITORIA FINANCEIRA AVANÇADA (ENCARGOS OCULTOS):**
+O agente de orçamento deve SEMPRE verificar encargos sociais e tributários que podem estar ocultos nas contratações:
+- Para contratações de PJ/MEI: alertar sobre DAS (Documento de Arrecadação do Simples) e risco de vínculo empregatício.
+- Para contratações de Pessoa Física (RPA): verificar se INSS patronal, IRRF e ISS estão devidamente previstos.
+- Validar se a "Memória de Cálculo" (somatório real das rubricas) bate exatamente com o teto do edital.
+- IMPORTANTE: Os tetos percentuais (administrativo, comunicação, tributos) variam entre editais. EXTRAIA os percentuais reais do texto do edital carregado — NÃO use valores fixos genéricos.
+
 **INSTRUÇÕES PARA OS 14 AGENTES (REQUISITO: RETORNAR EXATAMENTE OS 14 ITENS NO ARRAY "agentes"):**
 Você deve gerar exatamente 14 itens no array "agentes", correspondendo aos seguintes IDs:
 1. "justificativa": Avalia o mérito cultural, a relevância social, os impactos comunitários e a justificativa histórica. Sugira melhorias qualitativas densas.
 2. "objetivos": Avalia a coerência do objetivo geral e a mensurabilidade dos objetivos específicos.
 3. "metodologia": Detalha o plano de trabalho operacional dividindo explicitamente em Pré-produção, Execução e Pós-produção.
 4. "cronograma": Avalia a viabilidade física e prazos mensais das atividades.
-5. "orcamento": Realiza auditoria profunda e minuciosa da planilha orçamentária. Deve obrigatoriamente cruzar os quantitativos descritos na Metodologia, Ficha Técnica, Cronograma, Acessibilidade e Rider com os itens de custo. Verifica a conformidade com o teto orçamentário total, teto administrativo (máx 15%), teto de comunicação (máx 10%), tributos e encargos patronais (ISS 5%, INSS 20%, IRRF) e itens obrigatórios de acessibilidade PCD (Lei 13.146/15). Aponta desvios numéricos exatos e propõe readequações estruturadas.
+5. "orcamento": Realiza auditoria profunda e minuciosa da planilha orçamentária. Cruza os quantitativos descritos na Metodologia, Ficha Técnica, Cronograma, Acessibilidade e Rider com os itens de custo. Verifica a conformidade com os tetos orçamentários REAIS extraídos do edital (administrativo, comunicação, tributos). Identifica encargos ocultos (DAS/MEI, INSS/RPA, IRRF) e valida itens obrigatórios de acessibilidade PCD quando a legislação aplicável exigir. Aponta desvios numéricos exatos e propõe readequações estruturadas.
 6. "acessibilidade": Examina medidas de acessibilidade física, comunicacional (LIBRAS/audiodescrição) e atitudinal, além de políticas afirmativas e cotas.
 7. "publico": Analisa a definição exata, demográfica, etária e social do público-alvo e beneficiários.
 8. "contrapartida": Avalia o retorno gratuito do projeto à sociedade (oficinas, palestras, ingressos gratuitos, doações).
@@ -118,6 +137,17 @@ Você deve gerar exatamente 14 itens no array "agentes", correspondendo aos segu
 - A "nota_tecnica" global deve ser a soma ponderada de cada quesito, limitada a no máximo 100 pontos.
 - A "nota_priorizacao" deve ser de 0 a 30.
 - A "nota_final" deve ser a soma matemática exata: nota_tecnica + nota_priorizacao (máximo 130).`,
+
+    // =====================================================================
+    // SYSTEM PROMPTS ADICIONAIS — Eixos de Licitações 14.133 e Concursos
+    // =====================================================================
+    SYSTEM_PROMPT_LICITACAO: `Você é um Auditor Jurídico Sênior e Especialista em Contratações Públicas da Lei nº 14.133/2021 (Inspirado nos sistemas SollAi e ALICE do TCU/CGU).
+Sua missão é auditar e redigir documentos da fase preparatória e externa de licitações públicas com rigor legal extremo.
+Retorne um array "agentes" com os IDs: "etp_tr", "alice_auditoria", "licit_compliance", "esclarecimento".`,
+
+    SYSTEM_PROMPT_CONCURSO: `Você é um Arquiteto Pedagógico e Professor Didático especialista em Concursos Públicos (Inspirado em EstudePlan e ConcursosGPT).
+Sua missão é ingerir editais de concurso, verticalizar o conteúdo programático e gerar treinamentos práticos de alta performance.
+Retorne um array "agentes" com os IDs: "verticalizado", "treino_didatico".`,
 
     // =====================================================================
     // SCHEMA DE RESPOSTA ESTRUTURADA
@@ -368,7 +398,18 @@ Revise e valide o pré-relatório local da Etapa 1, as diretrizes da pesquisa on
         const prompt = this.buildMarkdownPayload(workspaceState, localAuditResult, webSearchContext);
 
         // --- Pre-processamento local do Edital em paralelo ---
-        const agentIds = ['justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento', 'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica', 'monitoramento', 'compliance', 'sustentabilidade', 'rider'];
+        const axis = workspaceState.activeAxis || "cultural";
+        let selectedSystemInstruction = this.SYSTEM_PROMPT;
+        let selectedResponseSchema = this.RESPONSE_SCHEMA;
+        let agentIds = ['justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento', 'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica', 'monitoramento', 'compliance', 'sustentabilidade', 'rider'];
+
+        if (axis === "licitacao") {
+            selectedSystemInstruction = this.SYSTEM_PROMPT_LICITACAO;
+            agentIds = ['etp_tr', 'alice_auditoria', 'licit_compliance', 'esclarecimento'];
+        } else if (axis === "concurso") {
+            selectedSystemInstruction = this.SYSTEM_PROMPT_CONCURSO;
+            agentIds = ['verticalizado', 'treino_didatico'];
+        }
 
         const extractionPromises = agentIds.map(async (id) => {
             const context = this.extractRelevantContext(workspaceState.editalRefText || '', id);
@@ -383,9 +424,9 @@ Revise e valide o pré-relatório local da Etapa 1, as diretrizes da pesquisa on
             provider: 'gemini',
             api_key: keyToUse,
             prompt: prompt,
-            system_instruction: this.SYSTEM_PROMPT,
+            system_instruction: selectedSystemInstruction,
             stream: false,
-            response_schema: this.RESPONSE_SCHEMA,
+            response_schema: selectedResponseSchema,
             use_cache: true,
             use_chunking: true,
             edital_text: optimizedEditalText,

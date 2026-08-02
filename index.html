@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     
-    <link rel="stylesheet" href="styles.css?v=2">
+    <link rel="stylesheet" href="styles.css?v=15">
 </head>
 <body>
     <header>
@@ -19,6 +19,13 @@
             <span class="logo-icon">⚖️</span>
             <span class="logo-text">EditalAudit AI</span>
         </h1>
+        <div class="axis-selector-wrapper" style="display: flex; align-items: center; margin-left: 1rem;">
+            <select id="axis-select" style="background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); padding: 0.35rem 0.75rem; border-radius: 8px; font-weight: 600; font-size: 0.85rem; cursor: pointer;">
+                <option value="cultural">🎨 Eixo 1: Fomento Cultural & Incentivo (M.U.S.A. 14 Agentes)</option>
+                <option value="licitacao">🏛️ Eixo 2: Licitações 14.133/21 (SollAi & ALICE)</option>
+                <option value="concurso">🎓 Eixo 3: Concursos Públicos (EstudePlan & Anki SRS)</option>
+            </select>
+        </div>
         <div class="header-actions">
             <button class="btn btn-secondary" id="btn-clear-all-context" style="width: auto; background: var(--color-error-bg); color: var(--color-error); border-color: var(--color-error-border); padding: 0.3rem 0.6rem; font-size: 0.75rem;" title="Limpa todo o histórico de editais, anexos, rascunhos e proposta do editor">🧹 Limpar Contexto</button>
             <div class="theme-switch-wrapper" title="Alternar Tema Escuro/Claro">
@@ -256,6 +263,17 @@
                         </div>
                         <div class="text-input-container" style="margin-top: 1rem;">
                             <textarea id="proposal-draft-text" placeholder="Cole seu rascunho preliminar de proposta aqui..." style="height: 350px; min-height: 250px;"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- CAIXA DE ANOTAÇÕES E INSTRUÇÕES ESPECÍFICAS DO PROPONENTE -->
+                    <div class="card">
+                        <h3>📝 Anotações & Instruções Específicas do Proponente</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.75rem;">
+                            Acrescente aqui observações extras que não estão nos anexos do rascunho ou direcionamentos específicos para os agentes de domínio analisarem com atenção (ex: foco em acessibilidade LIBRAS, teto orçamentário específico, contrapartida social ou perfil do público).
+                        </p>
+                        <div class="text-input-container">
+                            <textarea id="ingestao-notes-text" placeholder="Digite aqui suas observações complementares ou orientações de domínio para a IA..." style="width: 100%; height: 160px; min-height: 120px; padding: 0.8rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); font-family: var(--font-body); font-size: 0.9rem; line-height: 1.5; color: var(--text-primary); resize: vertical; outline: none;"></textarea>
                         </div>
                     </div>
 
@@ -688,12 +706,20 @@
 
                     <!-- SEÇÃO PLANILHA FINANCEIRA DO REVISOR -->
                     <div class="card" id="revisor-finance-card" style="margin-bottom: 1.5rem;">
-                        <h3>💰 Planilha Financeira Otimizada (3 Etapas de Auditoria)</h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Clique em "Gerar Planilha Detalhada por IA" para executar as <strong>3 Etapas</strong> (1. Cruzamento Offline Local, 2. Pesquisa de Mercado Online, 3. Consolidação IA Gemini). Os botões de download serão liberados após a geração.</p>
-                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                        <h3>💰 Planilha Financeira Otimizada (IA & Offline)</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Escolha entre a <strong>Geração por IA (Gemini)</strong> com cruzamento de 3 etapas ou o <strong>Download Instantâneo Offline</strong> baseado nos dados do Editor ABNT.</p>
+                        
+                        <div style="margin-bottom: 0.75rem; font-weight: 600; font-size: 0.85rem; color: var(--color-primary);">🤖 Opção 1: Geração & Consolidação por IA (Gemini 3 Etapas)</div>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 1.25rem;">
                             <button type="button" class="btn btn-primary" id="btn-generate-finance-ia" style="width: auto; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #ffffff; border: none; font-weight: 600;">🤖 Gerar Planilha Detalhada por IA</button>
-                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-download-finance-xls-main" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border);">📊 Baixar Planilha Orçamentária (.xlsx)</button>
-                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-download-finance-pdf-main" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.2);">📄 Baixar Planilha em PDF</button>
+                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-download-finance-xls-main" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border);">📊 Baixar Planilha IA (.xlsx)</button>
+                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-download-finance-pdf-main" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.2);">📄 Baixar Planilha IA (.pdf)</button>
+                        </div>
+
+                        <div style="margin-bottom: 0.75rem; font-weight: 600; font-size: 0.85rem; color: var(--color-success);">⚡ Opção 2: Gerar & Baixar Planilha Offline (Instantâneo do Editor)</div>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                            <button type="button" class="btn btn-secondary" id="btn-download-finance-offline-xls" style="width: auto; background: rgba(34, 197, 94, 0.1); color: var(--color-success); border: 1px solid var(--color-success-border); font-weight: 600;" title="Gera e baixa a planilha instantaneamente a partir dos dados do editor ABNT local">⚡ Baixar Planilha Offline (.xlsx)</button>
+                            <button type="button" class="btn btn-secondary" id="btn-download-finance-offline-pdf" style="width: auto; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color);" title="Gera o PDF instantâneo a partir dos dados do editor ABNT local">📄 Baixar Planilha Offline (.pdf)</button>
                         </div>
                     </div>
 
@@ -702,8 +728,8 @@
                         <h3>🏆 Finalização do Projeto</h3>
                         <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">Gere a versão definitiva do projeto cultural contendo todo o conteúdo revisado, formatado e auditado conforme a norma ABNT.</p>
                         <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                            <button type="button" class="btn btn-primary" id="btn-consolidate-download-pdf" style="width: auto; background: var(--color-success); border: none;">🖨️ Consolidar e Baixar PDF</button>
-                            <button type="button" class="btn btn-secondary" id="btn-consolidate-download-docx" style="width: auto;">📝 Consolidar e Baixar Word (.doc)</button>
+                            <button type="button" class="btn btn-primary" id="btn-consolidate-download-pdf" style="width: auto; background: var(--color-success); border: none;" title="Download instantâneo offline em PDF">🖨️ Consolidar e Baixar PDF (Instantâneo Offline)</button>
+                            <button type="button" class="btn btn-secondary" id="btn-consolidate-download-docx" style="width: auto;" title="Download instantâneo offline em Word">📝 Consolidar e Baixar Word (.doc) (Instantâneo Offline)</button>
                         </div>
                     </div>
                 </div>
@@ -715,36 +741,45 @@
                         <p>Central de consolidação e download de todos os entregáveis do projeto (Proposta ABNT, Planilha Financeira e Laudos Auditados).</p>
                     </div>
 
-                    <!-- CARD 1: PROPOSTA CULTURAL DEFINTIVA -->
+                    <!-- CARD 1: PROPOSTA CULTURAL DEFINITIVA -->
                     <div class="card" style="border: 2px solid var(--color-success); margin-bottom: 1.5rem; background: linear-gradient(135deg, rgba(34, 197, 94, 0.05), var(--bg-card));">
                         <h3 style="color: var(--color-success); display: flex; align-items: center; gap: 0.5rem;">
                             <span>🏆</span> Finalização do Projeto (Proposta Cultural Definitiva)
                         </h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Gere a versão definitiva do projeto cultural contendo todo o conteúdo revisado, formatado e auditado conforme a norma ABNT.</p>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Gere a versão definitiva do projeto cultural contendo todo o conteúdo revisado, formatado e auditado conforme a norma ABNT (suporte completo a até 100 páginas de texto).</p>
                         
-                        <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.25rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; color: var(--text-primary); background: var(--bg-panel); padding: 0.6rem 0.8rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                            <input type="checkbox" id="chk-auto-format-ai-export" checked style="width: 16px; height: 16px; accent-color: var(--color-success); cursor: pointer;">
-                            <span>🪄 Executar Formatação Detalhada ABNT via IA ao Exportar (Processamento Seção por Seção sem Resumir)</span>
-                        </label>
+                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.25rem;">
+                            <button type="button" class="btn btn-secondary" id="btn-format-abnt-single-call" style="width: auto; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.3); font-weight: 600;" title="Executa a formatação ABNT completa por IA em uma única chamada de API (documento inteiro)">🪄 Formatar Documento Completo em ABNT via IA (Chamada Única)</button>
+                        </div>
 
                         <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                            <button type="button" class="btn btn-primary" id="btn-final-download-pdf" style="width: auto; background: var(--color-success); border: none;">🖨️ Consolidar e Baixar PDF</button>
-                            <button type="button" class="btn btn-secondary" id="btn-final-download-docx" style="width: auto;">📝 Consolidar e Baixar Word (.doc)</button>
+                            <button type="button" class="btn btn-primary" id="btn-final-download-pdf" style="width: auto; background: var(--color-success); border: none;" title="Download instantâneo offline sem passar por agentes">🖨️ Consolidar e Baixar PDF (Instantâneo Offline)</button>
+                            <button type="button" class="btn btn-secondary" id="btn-final-download-docx" style="width: auto;" title="Download instantâneo offline em formato Word">📝 Consolidar e Baixar Word (.doc) (Instantâneo Offline)</button>
                         </div>
                     </div>
 
                     <!-- CARD 2: PLANILHA FINANCEIRA OTIMIZADA -->
                     <div class="card" style="margin-bottom: 1.5rem;">
                         <h3 style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span>💰</span> Planilha Financeira Otimizada (3 Etapas de Auditoria)
+                            <span>💰</span> Planilha Financeira Otimizada (IA & Offline)
                         </h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">Clique em "Gerar Planilha Detalhada por IA" para executar o fluxo das <strong>3 Etapas</strong>. Os botões de download em Excel e PDF serão liberados após a consolidação.</p>
-                        <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Gere a planilha orçamentária por <strong>IA (Gemini)</strong> ou efetue o <strong>Download Instantâneo Offline</strong> diretamente do editor ABNT.</p>
+                        
+                        <div style="margin-bottom: 0.5rem; font-weight: 600; font-size: 0.85rem; color: var(--color-primary);">🤖 Planilha por IA (Gemini 3 Etapas):</div>
+                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; margin-bottom: 1.25rem;">
                             <button type="button" class="btn btn-primary" id="btn-final-finance-ia" style="width: auto; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #ffffff; border: none; font-weight: 600;">🤖 Gerar Planilha Detalhada por IA</button>
-                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-final-finance-xls" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border);">📊 Baixar Planilha Orçamentária (.xlsx)</button>
-                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-final-finance-pdf" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.2);">📄 Baixar Planilha em PDF</button>
+                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-final-finance-xls" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border);">📊 Baixar Planilha IA (.xlsx)</button>
+                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-final-finance-pdf" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.2);">📄 Baixar Planilha IA (.pdf)</button>
+                        </div>
+
+                        <div style="margin-bottom: 0.5rem; font-weight: 600; font-size: 0.85rem; color: var(--color-success);">⚡ Planilha Offline (Dados do Editor):</div>
+                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+                            <button type="button" class="btn btn-secondary" id="btn-download-finance-offline-xls-pane" style="width: auto; background: rgba(34, 197, 94, 0.1); color: var(--color-success); border: 1px solid var(--color-success-border); font-weight: 600;" title="Gera e baixa a planilha instantaneamente a partir dos dados do editor ABNT local">⚡ Baixar Planilha Offline (.xlsx)</button>
+                            <button type="button" class="btn btn-secondary" id="btn-download-finance-offline-pdf-pane" style="width: auto; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color);" title="Gera o PDF instantâneo a partir dos dados do editor ABNT local">📄 Baixar Planilha Offline (.pdf)</button>
                         </div>
                     </div>
+
+
 
                     <!-- CARD 3: RELATÓRIO DO REVISOR -->
                     <div class="card" style="margin-bottom: 1.5rem;">
@@ -805,17 +840,17 @@
     <!-- CDNs & Dependências Local -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
-    <script src="src/xlsx.full.min.js?v=11"></script>
+    <script src="src/xlsx.full.min.js?v=15"></script>
     
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Banco Local IndexedDB & Motor de Inferência Offline -->
-    <script src="src/controllers/auditorDB.js?v=11"></script>
-    <script src="src/controllers/offlineAuditor.js?v=11"></script>
+    <script src="src/controllers/auditorDB.js?v=15"></script>
+    <script src="src/controllers/offlineAuditor.js?v=15"></script>
 
     <!-- Controlador de IA (substitui Skills e Orchestrator) -->
-    <script src="src/controllers/aiController.js?v=11"></script>
-    <script src="sample_data.js?v=11"></script>
-    <script src="app.js?v=11"></script>
+    <script src="src/controllers/aiController.js?v=15"></script>
+    <script src="sample_data.js?v=15"></script>
+    <script src="app.js?v=15"></script>
 </body>
 </html>
