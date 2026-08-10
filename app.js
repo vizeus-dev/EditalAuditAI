@@ -279,6 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupFinalizacaoTab();
     setupRevisor();
     setupAuditor();
+    setupSupervisor();
     setupBiblioteca();
     setupTabSwitching();
 
@@ -662,14 +663,25 @@ async function callLLMGateway(prompt, systemInstruction = null, weight = 'light'
 
 
 
-// State Persist
+// State Persist (Integrado com StateIntegrityManager - 3 Níveis)
 let _saveTimeout = null;
 function saveWorkspaceState() {
-    // Debounce persistence to avoid heavy localStorage writes on every keystroke
+    if (window._skipSaveWorkspace) return;
+
+    if (window.StateIntegrityManager && typeof window.StateIntegrityManager.persistStateSafe === 'function') {
+        window.StateIntegrityManager.persistStateSafe(workspaceState);
+        return;
+    }
+
+    // Debounce fallback para localStorage clássico
     if (_saveTimeout) clearTimeout(_saveTimeout);
     _saveTimeout = setTimeout(() => {
-        localStorage.setItem('edital_audit_workspace_state', JSON.stringify(workspaceState));
-    }, 2000);
+        try {
+            localStorage.setItem('edital_audit_workspace_state', JSON.stringify(workspaceState));
+        } catch (e) {
+            console.warn("[WORKSPACE] Erro ao salvar no LocalStorage fallback:", e);
+        }
+    }, 1000);
 }
 
 function restoreWorkspaceState() {
@@ -712,6 +724,18 @@ function restoreWorkspaceState() {
         } catch (e) {
             console.error("Error restoring workspaceState:", e);
         }
+    }
+
+    // Tentar enriquecer assincronamente a partir do Vault L3 IndexedDB se disponível
+    if (window.StateIntegrityManager && typeof window.StateIntegrityManager.restoreStateSafe === 'function') {
+        window.StateIntegrityManager.restoreStateSafe(workspaceState).then(fullState => {
+            if (fullState && fullState !== workspaceState) {
+                workspaceState = fullState;
+                if (typeof syncEditorContentToDOM === 'function') syncEditorContentToDOM();
+                if (typeof updateCoverPreviewDOM === 'function') updateCoverPreviewDOM();
+                if (typeof renderAnnexesList === 'function') renderAnnexesList();
+            }
+        }).catch(err => console.warn('[WORKSPACE] Restauração assíncrona do IDB:', err));
     }
 }
 
@@ -929,31 +953,25 @@ function setupEditorToolbar() {
     });
 }
 
-function syncDOMContentToState() {
-    const getVal = (id) => {
-        const el = document.getElementById(id);
-        return (el && el.classList.contains('is-placeholder')) ? '' : el.innerHTML;
-    };
-    workspaceState.documentContent.justificativa = getVal('sec-justificativa');
-    workspaceState.documentContent.objetivos = getVal('sec-objetivos');
-    workspaceState.documentContent.metodologia = getVal('sec-metodologia');
-    workspaceState.documentContent.cronograma = getVal('sec-cronograma');
-    workspaceState.documentContent.orcamento = getVal('sec-orcamento');
-    workspaceState.documentContent.acessibilidade = getVal('sec-acessibilidade');
-    workspaceState.documentContent.publico = getVal('sec-publico');
-    workspaceState.documentContent.contrapartida = getVal('sec-contrapartida');
-    workspaceState.documentContent.comunicacao = getVal('sec-comunicacao');
-    workspaceState.documentContent.ficha_tecnica = getVal('sec-ficha_tecnica');
-    workspaceState.documentContent.monitoramento = getVal('sec-monitoramento');
-    workspaceState.documentContent.compliance = getVal('sec-compliance');
-    workspaceState.documentContent.sustentabilidade = getVal('sec-sustentabilidade');
-    workspaceState.documentContent.rider = getVal('sec-rider');
-    saveWorkspaceState();
+let _lastSyncedContentHashes = {};
 
-    // CORREÇÃO BUG #2: Removida a auditoria automática que disparava a cada
-    // digitação no editor, causando múltiplas chamadas concorrentes de web
-    // scraping (DuckDuckGo) e sobrecarga do backend. A auditoria agora só
-    // executa quando o usuário aciona explicitamente o botão de auditar.
+function syncDOMContentToState() {
+    let hasChanges = false;
+    const sections = ['justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento', 'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica', 'monitoramento', 'compliance', 'sustentabilidade', 'rider'];
+    
+    sections.forEach(key => {
+        const el = document.getElementById(`sec-${key}`);
+        const currentVal = (el && !el.classList.contains('is-placeholder')) ? el.innerHTML : ((workspaceState.documentContent && workspaceState.documentContent[key]) || '');
+        if (_lastSyncedContentHashes[key] !== currentVal) {
+            _lastSyncedContentHashes[key] = currentVal;
+            workspaceState.documentContent[key] = currentVal;
+            hasChanges = true;
+        }
+    });
+
+    if (hasChanges) {
+        saveWorkspaceState();
+    }
 }
 
 function syncEditorContentToDOM() {
@@ -1724,9 +1742,14 @@ async function generateBasicProposal() {
 
         allSections.forEach(secKey => {
             if (!requiredSections.includes(secKey)) {
-                workspaceState.documentContent[secKey] = "";
-                const el = document.getElementById(`sec-${secKey}`);
-                if (el) el.innerHTML = "";
+                const existing = (workspaceState.documentContent && workspaceState.documentContent[secKey]) ? workspaceState.documentContent[secKey].trim() : "";
+                if (existing.length === 0) {
+                    workspaceState.documentContent[secKey] = "";
+                    const el = document.getElementById(`sec-${secKey}`);
+                    if (el) el.innerHTML = "";
+                } else {
+                    console.log(`[INGESTOR] Seção '${secKey}' não listada explicitamente no edital, mas preservada por conter texto redigido (${existing.length} caracteres).`);
+                }
             }
         });
         syncEditorContentToDOM();
@@ -1982,55 +2005,133 @@ async function processAnnexFile(file) {
     }
 }
 
+function sanitizeExtractedText(rawText) {
+    if (!rawText || typeof rawText !== 'string') return '';
+    
+    // 1. Remove UTF-8 BOM
+    let text = rawText.replace(/^\uFEFF/, '');
+    
+    // 2. Remove non-printable control characters (except \n, \r, \t)
+    text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+    
+    // 3. Normalize multiple null / non-breaking spaces
+    text = text.replace(/\u00A0/g, ' ');
+    
+    // 4. Excessive UPPERCASE normalization (>75% uppercase in texts > 120 chars)
+    if (text.length > 120) {
+        const letters = text.replace(/[^a-zA-ZáàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ]/g, '');
+        if (letters.length > 50) {
+            const upperCount = (letters.match(/[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ]/g) || []).length;
+            const upperRatio = upperCount / letters.length;
+            if (upperRatio > 0.75) {
+                console.log("[SANITIZER] Texto em caixa alta excessiva detectado. Normalizando para capitalização mista...");
+                text = text.toLowerCase().replace(/(^\s*|\.\s*|\n\s*)([a-záàâãéêíóôõúç])/g, (m, p1, p2) => p1 + p2.toUpperCase());
+            }
+        }
+    }
+    
+    // 5. Collapse excessive spaces
+    text = text.replace(/[ \t]{4,}/g, '  ');
+    return text.trim();
+}
+
 async function extractTextFromFile(file) {
+    if (!file) throw new Error("Nenhum arquivo fornecido.");
+
+    const fileName = file.name || "";
+    const fileExt = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+    const mimeType = (file.type || "").toLowerCase();
+
+    // Rejeitar explicitamente arquivos binários não textuais
+    const rejectedExtensions = ['.exe', '.bin', '.dll', '.zip', '.rar', '.7z', '.tar', '.gz', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.mp3', '.mp4', '.avi', '.mov', '.wav', '.m4a'];
+    if (rejectedExtensions.includes(fileExt) || mimeType.startsWith('image/') || mimeType.startsWith('audio/') || mimeType.startsWith('video/')) {
+        throw new Error(`Tipo de arquivo não suportado (${fileExt || mimeType || 'binário'}). Por favor, envie documentos em formato PDF, DOCX ou TXT.`);
+    }
+
+    const isPdf = mimeType === 'application/pdf' || fileExt === '.pdf';
+    const isDocx = mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || fileExt === '.docx';
+
     const reader = new FileReader();
-    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.toLowerCase().endsWith('.docx');
 
     return new Promise((resolve, reject) => {
         reader.onload = async (e) => {
             const buffer = e.target.result;
             try {
+                let extractedText = "";
                 if (isPdf) {
-                    const text = await readPdfText(buffer);
-                    resolve(text);
+                    extractedText = await readPdfText(buffer);
                 } else if (isDocx) {
-                    const text = await readDocxText(buffer);
-                    resolve(text);
+                    extractedText = await readDocxText(buffer);
                 } else {
                     try {
                         const decoder = new TextDecoder('utf-8', { fatal: true });
-                        resolve(decoder.decode(buffer));
+                        extractedText = decoder.decode(buffer);
                     } catch (utfErr) {
                         const decoder = new TextDecoder('iso-8859-1');
-                        resolve(decoder.decode(buffer));
+                        extractedText = decoder.decode(buffer);
                     }
                 }
+                const sanitized = sanitizeExtractedText(extractedText);
+                if (!sanitized || sanitized.length === 0) {
+                    throw new Error("O arquivo não contém texto legível ou está vazio.");
+                }
+                resolve(sanitized);
             } catch (err) {
                 reject(err);
             }
         };
-        reader.onerror = () => reject(new Error("Erro de leitura do arquivo."));
+        reader.onerror = () => reject(new Error("Falha ao ler o arquivo físico. Verifique permissões do navegador."));
+        reader.onabort = () => reject(new Error("Leitura do arquivo foi cancelada."));
         reader.readAsArrayBuffer(file);
     });
 }
 
 async function readPdfText(arrayBuffer) {
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    if (!pdfjsLib) throw new Error("Biblioteca PDF.js não carregada.");
+    
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let text = "";
-    for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        text += content.items.map(item => item.str).join(" ") + "\n";
-    }
-    return text;
+    
+    // Safety timeout de 30 segundos para PDFs gigantes ou travados
+    const pdfPromise = (async () => {
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        let text = "";
+        let totalPages = pdf.numPages;
+        
+        for (let i = 1; i <= totalPages; i++) {
+            try {
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                const pageText = content.items.map(item => item.str).join(" ");
+                text += `[PÁGINA ${i}]\n` + pageText + "\n\n";
+            } catch (pageErr) {
+                console.warn(`[PDF] Erro ao ler página ${i}:`, pageErr);
+            }
+        }
+        
+        // Detecção de PDF escaneado (imagem sem OCR)
+        const avgCharsPerPage = totalPages > 0 ? text.length / totalPages : 0;
+        if (avgCharsPerPage < 40 && totalPages > 0) {
+            if (typeof showToast === 'function') {
+                showToast("⚠️ Atenção: O PDF parece ser uma imagem digitalizada sem camada de texto (OCR necessário).", "warning");
+            }
+        }
+        
+        return text;
+    })();
+
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Tempo limite de processamento do PDF excedido (30s).")), 30000)
+    );
+
+    return Promise.race([pdfPromise, timeoutPromise]);
 }
 
 async function readDocxText(arrayBuffer) {
+    if (!window.mammoth) throw new Error("Biblioteca Mammoth (DOCX) não carregada.");
     const result = await window.mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-    return result.value;
+    return result.value || "";
 }
 
 function renderAnnexesList() {
@@ -2277,6 +2378,14 @@ function setupRedator() {
             runSequentialRedactor();
         });
     }
+
+    if (selectSec) {
+        selectSec.addEventListener('change', () => {
+            updateRedatorSupervisorCapsule();
+        });
+    }
+
+    updateRedatorSupervisorCapsule();
 }
 
 // ==========================================
@@ -2808,6 +2917,18 @@ async function callGeminiForRedator(section, promptText, webSearchContext = "") 
         auditFeedback = `\n[ALERTAS DE COMPLIANCE E INCONFORMIDADES DA AUDITORIA A SEREM RESOLVIDOS OBRIGATORIAMENTE NESSA SEÇÃO]:\n${relevantIssues.join('\n')}\n`;
     }
 
+    // Injetar Diretrizes do Supervisor Estratégico para esta seção
+    let supervisorDirectiveContext = "";
+    if (workspaceState.supervisorDecisions && Array.isArray(workspaceState.supervisorDecisions.decisoes_secoes)) {
+        const supDec = workspaceState.supervisorDecisions.decisoes_secoes.find(d => d.secao === section);
+        if (supDec) {
+            supervisorDirectiveContext = `\n[DIRETRIZ ESTRATÉGICA VINCULANTE DO SUPERVISOR PARA ESTA SEÇÃO (STATUS: ${supDec.status})]:
+- Diagnóstico do Supervisor: ${supDec.diagnostico}
+- Ação Prescritiva Obrigatória para a Redação: ${supDec.diretriz_redacao}
+${supDec.pontos_criticos && supDec.pontos_criticos.length > 0 ? '- Pontos Críticos a Corrigir: ' + supDec.pontos_criticos.join('; ') : ''}\n`;
+        }
+    }
+
     const editalText = filterRelevantEditalText(workspaceState.editalRefText || "", section);
     const draftText = workspaceState.proposalDraftText || "";
     const editalProfileContext = getEditalProfilePromptContext();
@@ -2820,6 +2941,7 @@ async function callGeminiForRedator(section, promptText, webSearchContext = "") 
     
     REGRAS DE ANÁLISE PROFUNDA E OTIMIZAÇÃO:
     - LEITURA E INCORPORAÇÃO MANDATÓRIA DAS ANOTAÇÕES: Se o usuário/proponente escreveu instruções ou anotações na caixa de ideias/chat ("INSTRUÇÕES E ANOTAÇÕES MANDATÓRIAS DO USUÁRIO"), você DEVE obrigatoriamente ler, incorporar e contemplar cada uma dessas diretrizes na redação da seção e explicar na justificativa como foram aplicadas.
+    - DIRETRIZ VINCULANTE DO SUPERVISOR: Caso haja diretriz do Supervisor abaixo, atenda-a com prioridade máxima para sanar as fragilidades apontadas na auditoria e na revisão.
     - Realize um cruzamento rigoroso de conformidade e responda a todas as exigências do Edital e de seus Anexos relativas a esta seção.
     - Alinhe perfeitamente a redação desta seção com o conteúdo das outras seções já geradas (coerência entre justificativa, metodologia, cronograma, planilha de custos e acessibilidade).
     - Resolva todos os alertas de auditoria e sugestões de ajuste listados para esta seção.
@@ -2836,6 +2958,7 @@ async function callGeminiForRedator(section, promptText, webSearchContext = "") 
     [Aqui você escreve em texto corrido detalhadamente o que foi adequado, o que encontrou de mudanças e por que essa versão é melhor/conforme]
     
     ${editalProfileContext}
+    ${supervisorDirectiveContext}
 
     [TÍTULO DO PROJETO]: ${workspaceState.cover.title || "Não definido"}
     [PROPONENTE]: ${workspaceState.cover.proponent || "Não definido"}
@@ -3141,6 +3264,14 @@ function setupRevisor() {
         });
     });
 
+    // Botão de avançar para o Supervisor
+    const btnGotoSupervisor = document.getElementById('btn-goto-supervisor');
+    if (btnGotoSupervisor) {
+        btnGotoSupervisor.addEventListener('click', () => {
+            switchTab('supervisor');
+        });
+    }
+
     // Botão de rodar único agente
     const btnSingle = document.getElementById('btn-run-single-agent');
     if (btnSingle) {
@@ -3170,7 +3301,7 @@ function setupRevisor() {
             } finally {
                 _isProcessingAPI = false;
                 btnRevisorConsolidated.disabled = false;
-                btnRevisorConsolidated.textContent = "✨ Otimizar Proposta Completa (Supervisor)";
+                btnRevisorConsolidated.textContent = "✨ Otimizar Proposta Completa";
             }
         });
     }
@@ -3251,16 +3382,45 @@ function selectRevisor(agentKey) {
 
 function updateRevisorPanelUI() {
     const meta = REVISORES_METADATA[activeRevisor];
-    const result = workspaceState.revisorAgentsResults[activeRevisor];
+    const result = workspaceState.revisorAgentsResults ? workspaceState.revisorAgentsResults[activeRevisor] : null;
 
-    document.getElementById('revisor-panel-title').textContent = `${meta.icon} Parecer: ${meta.name}`;
+    const rawRequired = (workspaceState.editalProfile && Array.isArray(workspaceState.editalProfile.secoes_exigidas))
+        ? workspaceState.editalProfile.secoes_exigidas
+        : [];
+    const isRequired = rawRequired.length === 0 || rawRequired.map(s => s.toLowerCase().trim()).includes(activeRevisor.toLowerCase());
+
+    const titleEl = document.getElementById('revisor-panel-title');
+    if (titleEl) {
+        titleEl.textContent = `${meta.icon} Parecer: ${meta.name}${!isRequired ? ' (Não Exigido no Edital)' : ''}`;
+    }
 
     const scoreEl = document.getElementById('revisor-panel-score');
     const feedbackEl = document.getElementById('revisor-panel-feedback');
 
-    if (result) {
-        scoreEl.textContent = `${result.nota}/100`;
-        feedbackEl.innerHTML = renderTextOrMarkdown(result.parecer);
+    if (!isRequired) {
+        if (scoreEl) scoreEl.innerHTML = `<span style="font-size:0.9rem; color:var(--text-muted);">Não Exigido</span>`;
+        if (feedbackEl) feedbackEl.innerHTML = `<p style="color:var(--text-muted); font-style:italic;">Esta seção não foi mapeada como obrigatória no regulamento deste edital. A banca examinadora não avaliará nem pontuará esta área.</p>`;
+        return;
+    }
+
+    if (result && !result.notRequired) {
+        const confianca = result.confianca || "ALTA";
+        const confClass = confianca === "ALTA" ? "badge-confidence-alta" : (confianca === "MEDIA" ? "badge-confidence-media" : "badge-confidence-baixa");
+        scoreEl.innerHTML = `<span>${result.nota}/100</span> <span class="${confClass}" title="Nível de fundamentação">${confianca === 'ALTA' ? '✓ Alta Confiança' : (confianca === 'MEDIA' ? '⚡ Média' : '⚠️ Preliminar')}</span>`;
+        
+        let renderedHtml = renderTextOrMarkdown(result.parecer);
+        
+        // Se houver sugestão otimizada no parecer, injeta o botão de 1-clique
+        if (/Sugestão|Otimizada|Proposta/i.test(result.parecer)) {
+            renderedHtml += `
+            <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+                <button type="button" class="btn-apply-suggestion" onclick="window.applyOptimizedSuggestion('${activeRevisor}')">
+                    ✨ Aplicar Sugestão no Editor Visual
+                </button>
+            </div>`;
+        }
+
+        feedbackEl.innerHTML = renderedHtml;
     } else {
         scoreEl.textContent = `--`;
         feedbackEl.innerHTML = `<p>${meta.desc}</p><p style="color: var(--text-muted); margin-top: 0.5rem;"><em>Parecer não gerado para este sub-agente. Clique em "Analisar apenas este agente" ou "Acionar Todos" para rodar a avaliação.</em></p>`;
@@ -3277,6 +3437,41 @@ function updateRevisorPanelUI() {
         pdfBtn.style.display = hasFinance ? 'inline-block' : 'none';
     }
 }
+
+window.applyOptimizedSuggestion = function(sectionKey) {
+    if (!sectionKey) sectionKey = activeRevisor;
+    const result = workspaceState.revisorAgentsResults[sectionKey];
+    if (!result || !result.parecer) {
+        showToast("Nenhuma sugestão disponível para esta seção.", "warning");
+        return;
+    }
+
+    let suggestionText = "";
+    const parecer = result.parecer;
+    const match = parecer.match(/(?:<h[234][^>]*>.*?(?:Sugestão|Otimizada|Proposta).*?<\/h[234]>)([\s\S]*)/i);
+    if (match && match[1]) {
+        suggestionText = match[1].trim();
+    } else {
+        suggestionText = parecer;
+    }
+
+    if (suggestionText) {
+        if (typeof pushProposalHistoryState === 'function') {
+            pushProposalHistoryState(`Antes de Aplicar Sugestão de ${sectionKey.toUpperCase()}`);
+        }
+        workspaceState.documentContent[sectionKey] = suggestionText;
+        const targetEl = document.getElementById(`sec-${sectionKey}`);
+        if (targetEl) {
+            targetEl.innerHTML = suggestionText;
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            targetEl.classList.add('agent-pulse');
+            setTimeout(() => targetEl.classList.remove('agent-pulse'), 2200);
+        }
+        syncDOMContentToState();
+        updatePlaceholderStates();
+        showToast(`✨ Sugestão aplicada com sucesso à seção ${sectionKey.toUpperCase()}! (Ctrl+Z para desfazer)`, "success");
+    }
+};
 
 async function runSingleAgent(agentKey) {
     syncDOMContentToState();
@@ -3423,8 +3618,33 @@ async function runAllAgents() {
             }
         });
 
-        // Chamada única ao aiController.runAudit (Garante Etapa 1 Offline DB -> Etapa 2 Web Search -> Etapa 3 API Gemini)
-        const consolidatedResult = await window.aiController.runAudit(workspaceState);
+        // Callback para atualizar a UI progressivamente em tempo real por área
+        const onAreaProgress = (areaResult) => {
+            if (!areaResult || !Array.isArray(areaResult.agentes)) return;
+            areaResult.agentes.forEach(ag => {
+                const badge = document.getElementById(`status-${ag.id}`);
+                if (badge) {
+                    badge.textContent = `Nota: ${ag.nota}`;
+                    badge.className = "agent-status-badge status-completed";
+                }
+                // Salvar resultado incremental
+                if (!workspaceState.revisorAgentsResults) workspaceState.revisorAgentsResults = {};
+                workspaceState.revisorAgentsResults[ag.id] = {
+                    nota: ag.nota,
+                    confianca: ag.confianca || "ALTA",
+                    parecer: ag.parecer,
+                    erros: ag.erros || [],
+                    recomendacoes: ag.recomendacoes || []
+                };
+            });
+
+            if (areaResult.agentes.some(ag => ag.id === activeRevisor)) {
+                updateRevisorPanelUI();
+            }
+        };
+
+        // Disparo das 4 Áreas Especializadas em Paralelo
+        const consolidatedResult = await window.aiController.runAudit(workspaceState, onAreaProgress);
 
         // Mesclar alertas do linter local
         const localAlerts = runPreFlightLinter();
@@ -3612,20 +3832,52 @@ Retorne um JSON estrito sem wraps markdown no seguinte formato:
     showToast("✓ Revisão consolidada do Supervisor concluída com sucesso em todas as seções!", "success");
 }
 
+function buildCrossRefSummary(documentContent, currentAgentKey) {
+    if (!documentContent) return "Nenhuma outra seção redigida ainda.";
+    const entries = Object.entries(documentContent).filter(([k, v]) => k !== currentAgentKey && v && v.trim().length > 20);
+    if (entries.length === 0) return "Nenhuma outra seção redigida no editor.";
+    return entries.map(([k, v]) => {
+        const clean = v.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        const snippet = clean.length > 300 ? clean.substring(0, 300) + '...' : clean;
+        return `• [${k.toUpperCase()}]: ${snippet}`;
+    }).join('\n');
+}
+
 async function callGeminiForSubAgent(agentKey, localEvaluation = null, webSearchContext = "") {
     if (!workspaceState.editalProfile && workspaceState.editalRefText && typeof ensureEditalProfile === 'function') {
         await ensureEditalProfile();
     }
 
-    const meta = REVISORES_METADATA[agentKey];
-    const docContext = JSON.stringify(workspaceState.documentContent);
+    const meta = REVISORES_METADATA[agentKey] || { name: agentKey, prompt: "Avalie com rigor técnico e conformidade com o edital." };
+    const sectionContent = (workspaceState.documentContent && workspaceState.documentContent[agentKey]) || "SEÇÃO AINDA NÃO PREENCHIDA NO EDITOR.";
+    const crossRefSummary = buildCrossRefSummary(workspaceState.documentContent, agentKey);
     const editalContext = filterRelevantEditalText(workspaceState.editalRefText || "", agentKey);
     const editalProfileContext = getEditalProfilePromptContext();
+    const briefingContext = window.aiController && typeof window.aiController.buildProjectBriefing === 'function'
+        ? window.aiController.buildProjectBriefing(workspaceState)
+        : "";
 
     // Compilar anexos para dar contexto ao sub-agente de forma otimizada
     const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
         ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : 'Sem conteúdo.'}`).join('\n---\n')
         : "Nenhum anexo extra fornecido.";
+
+    // Se localEvaluation não for fornecido, calcular localmente usando o motor determinístico
+    if (!localEvaluation && window.offlineAuditor && typeof window.offlineAuditor.evaluateAgentLocal === 'function') {
+        try {
+            const fullCtx = `${(workspaceState.editalRefText || '').toLowerCase()}\n${JSON.stringify(workspaceState.documentContent || {}).toLowerCase()}`;
+            const bAnalysis = window.offlineAuditor.analyzeBudgetLocal(workspaceState.documentContent ? workspaceState.documentContent.orcamento : '', (workspaceState.cover && workspaceState.cover.budget) || 0);
+            const agentDef = {
+                id: agentKey,
+                title: meta.name,
+                text: (workspaceState.documentContent && workspaceState.documentContent[agentKey]) || "",
+                keywords: meta.desc ? meta.desc.toLowerCase().split(/\s+/) : []
+            };
+            localEvaluation = window.offlineAuditor.evaluateAgentLocal(agentDef, fullCtx, bAnalysis);
+        } catch (e) {
+            console.warn('[app.js] Falha ao pré-avaliar agente localmente:', e);
+        }
+    }
 
     let skillFeedback = "";
     if (localEvaluation) {
@@ -3635,7 +3887,7 @@ async function callGeminiForSubAgent(agentKey, localEvaluation = null, webSearch
         const warnings = Array.isArray(localEvaluation.warnings) ? localEvaluation.warnings : (Array.isArray(localEvaluation.recomendacoes) ? localEvaluation.recomendacoes : []);
 
         skillFeedback = `
-    [VALIDAÇÃO LOCAL DO MOTOR DE REGRAS]:
+    [VALIDAÇÃO LOCAL DO MOTOR DE REGRAS (LocalCrossEngine)]:
     Nota Sugerida Localmente: ${score}/100
     ${checklist.length > 0 ? `Checklist Validado:\n${checklist.map(c => `- ${c}`).join('\n')}` : ''}
     ${errors.length > 0 ? `Erros de Conformidade Encontrados:\n${errors.map(e => `- ${e}`).join('\n')}` : ''}
@@ -3651,15 +3903,20 @@ async function callGeminiForSubAgent(agentKey, localEvaluation = null, webSearch
     `;
     }
 
-    const prompt = `Você é o sub-agente de auditoria especialista em editais: ${meta.name}.
+    const prompt = `Você é o sub-agente especialista em auditoria de editais: ${meta.name}.
     ${meta.prompt}
+    
+    ${briefingContext}
     
     ${editalProfileContext}
 
-    [PROPOSTA DO PROJETO NO EDITOR]:
-    ${docContext}
+    [CONTEÚDO ESPECÍFICO DA SUA ÁREA NO PROJETO]:
+    ${sectionContent}
     
-    [EDITAL DE REFERÊNCIA VIGENTE]:
+    [RESUMO DAS DEMAIS SEÇÕES DO PROJETO (CONTEXTO CRUZADO E COERÊNCIA GLOBAL)]:
+    ${crossRefSummary}
+    
+    [EDITAL DE REFERÊNCIA VIGENTE (REGRAS ESPECÍFICAS)]:
     ${editalContext}
     
     [ANEXOS EXTRAS DO EDITAL]:
@@ -3667,20 +3924,42 @@ async function callGeminiForSubAgent(agentKey, localEvaluation = null, webSearch
     
     ${skillFeedback}
     
+    DIRETRIZ ZERO-ALUCINAÇÃO:
+    Para cada exigência ou inconformidade apontada, cite o trecho do edital entre colchetes [📌 EDITAL: '...'] ou explicite [⚠️ INFERÊNCIA CONTEXTUAL] se for derivada do bom senso e tipologia da atividade.
+
     Retorne uma resposta estrita no formato JSON abaixo (sem wraps markdown do tipo \`\`\`json):
     {
         "nota": 88,
+        "confianca": "ALTA",
         "parecer": "Aqui deve constar seu parecer técnico estruturado em subseções. Após o parecer técnico, adicione uma seção com título 'Sugestão Otimizada' contendo o texto aprimorado para as partes correspondentes, estruturado formalmente."
     }
     `;
 
-    const responseText = await callLLMGateway(prompt, null, 'light', subAgentSchema);
+    const subAgentSchema = {
+        type: "object",
+        properties: {
+            nota: { type: "number" },
+            confianca: { type: "string", enum: ["ALTA", "MEDIA", "BAIXA"] },
+            parecer: { type: "string" }
+        },
+        required: ["nota", "parecer"]
+    };
+
+    const responseText = await callLLMGateway(prompt, null, 'light', subAgentSchema, false);
     const parsed = safeParseJSON(responseText);
     if (parsed) {
         if (parsed.parecer) {
             let clean = parsed.parecer;
             clean = clean.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
             clean = clean.replace(/<\/?(html|head|body|title)[^>]*>/gi, '');
+            // Validação cruzada de citações no parecer individual
+            if (window.aiController && typeof window.aiController.validateCitations === 'function') {
+                const validation = window.aiController.validateCitations(clean, workspaceState.editalRefText || '');
+                clean = validation.text;
+                if (!parsed.confianca) {
+                    parsed.confianca = validation.unverifiedCount > 0 ? "MEDIA" : "ALTA";
+                }
+            }
             parsed.parecer = clean.trim();
         }
         if (typeof parsed.nota !== 'number') {
@@ -3690,6 +3969,7 @@ async function callGeminiForSubAgent(agentKey, localEvaluation = null, webSearch
     }
     return {
         nota: 70,
+        confianca: "MEDIA",
         parecer: "<p>Erro ao receber parecer estruturado da banca avaliadora. Tente reprocessar.</p>"
     };
 }
@@ -3697,66 +3977,128 @@ async function callGeminiForSubAgent(agentKey, localEvaluation = null, webSearch
 function getSimulatedSubAgentResponse(agentKey) {
     return new Promise(resolve => {
         setTimeout(() => {
+            const title = workspaceState.cover.title || "Projeto Cultural";
+            const city = workspaceState.cover.city || "Município de Execução";
+            const budget = workspaceState.cover.budget || 100000;
+            const profile = workspaceState.editalProfile || (typeof getOfflineEditalProfile === 'function' ? getOfflineEditalProfile(workspaceState.editalRefText, workspaceState.annexes) : {});
+
             let nota = 85;
             let parecer = "";
+            let confianca = "ALTA";
 
             switch (agentKey) {
                 case 'justificativa':
                     nota = 90;
                     parecer = `<h3>Parecer de Mérito & Relevância</h3>
-                    <p>Justificativa forte e bem fundamentada culturalmente. Sugere-se contextualizar um pouco melhor o histórico do grupo proponente para demonstrar ainda mais o mérito.</p>
+                    <p>A justificativa fundamenta a importância cultural e o impacto territorial de "${title}" em ${city}. Alinha-se às diretrizes de democratização e fruição pública.</p>
                     <h3>Sugestão Otimizada</h3>
-                    <p>O projeto se justifica pela urgente necessidade de descentralização cultural em ${workspaceState.cover.city || 'região de fomento'}, promovendo acessibilidade e inclusão através de ações de base comunitária bem delimitadas.</p>`;
+                    <p>O projeto se justifica pela urgente necessidade de descentralização cultural em ${city}, promovendo inclusão e fortalecimento da cadeia criativa comunitária.</p>`;
                     break;
                 case 'objetivos':
-                    nota = 85;
+                    nota = 88;
                     parecer = `<h3>Parecer de Objetivos & Metas</h3>
-                    <p>Os objetivos estão claros. Sugere-se quantificar detalhadamente o alcance esperado.</p>
+                    <p>Objetivos estabelecidos de forma clara e vinculados ao objeto do fomento.</p>
                     <h3>Sugestão Otimizada</h3>
-                    <p><strong>Objetivo Geral:</strong> Democratizar o acesso à cultura. <strong>Objetivos Específicos:</strong> Realizar apresentações gratuitas e oficinas formativas para estudantes públicos.</p>`;
+                    <p><strong>Objetivo Geral:</strong> Democratizar o acesso à cultura em ${city}. <strong>Metas Específicas:</strong> Realizar apresentações culturais abertas e oficinas formativas gratuitas.</p>`;
                     break;
                 case 'metodologia':
-                    nota = 95;
-                    parecer = `<h3>Parecer de Metodologia</h3>
-                    <p>Metodologia bem descrita nas três fases obrigatórias.</p>
+                    nota = 92;
+                    parecer = `<h3>Parecer de Metodologia & Operação</h3>
+                    <p>Divisão operacional clara nas três fases de Pré-produção, Execução e Pós-produção.</p>
                     <h3>Sugestão Otimizada</h3>
-                    <p>A metodologia proposta divide-se de forma estrita em planejamento contratual (Pré-produção, meses 1 e 2), circuito de apresentações físicas (Execução, meses 3 a 5) e fechamento fiscal de contas (Pós-produção, mês 6).</p>`;
+                    <p>Fase 1 (Pré-Produção): Contratações e licenças. Fase 2 (Execução): Realização dos eventos e oficinas. Fase 3 (Pós-Produção): Compilação de indicadores e prestação de contas.</p>`;
+                    break;
+                case 'cronograma':
+                    nota = 86;
+                    parecer = `<h3>Parecer de Cronograma & Prazos</h3>
+                    <p>Prazos dimensionados de forma compatível com o cronograma físico do edital.</p>
+                    <h3>Sugestão Otimizada</h3>
+                    <p>Atividades distribuídas de forma escalonada ao longo do período de vigência, garantindo margem para pós-produção e prestação de contas.</p>`;
+                    break;
+                case 'orcamento':
+                    nota = 87;
+                    parecer = `<h3>Parecer de Orçamento & Custos</h3>
+                    <p>Planilha com orçamento total de R$ ${budget.toLocaleString('pt-BR')} em consonância com as rubricas operacionais do edital.</p>
+                    <h3>Sugestão Otimizada</h3>
+                    <p>Garantir discriminação clara dos custos de produção, cachês artísticos e encargos fiscais em conformidade com as regras do edital.</p>`;
                     break;
                 case 'acessibilidade':
                     nota = 85;
-                    parecer = `<h3>Parecer de Acessibilidade</h3>
-                    <p>As cotas e Libras estão presentes. Sugere-se incluir audiodescrição para maior pontuação.</p>
+                    parecer = `<h3>Parecer de Acessibilidade & Inclusão</h3>
+                    <p>Contempla acessibilidade comunicacional (LIBRAS/Audiodescrição) e física.</p>
                     <h3>Sugestão Otimizada</h3>
-                    <p>Garante-se atendimento integral à acessibilidade PCD, prevendo audiodescrição em vídeos de divulgação, intérprete de Libras presencial em todos os eventos e banheiros de acesso universal.</p>`;
+                    <p>Garante-se presença de intérprete de LIBRAS em todas as sessões e audiodescrição em conteúdos digitais gravados.</p>`;
+                    break;
+                case 'publico':
+                    nota = 88;
+                    parecer = `<h3>Parecer de Público-Alvo & Perfil</h3>
+                    <p>Público prioritário bem delimitado geográfica e socialmente no território.</p>
+                    <h3>Sugestão Otimizada</h3>
+                    <p>Ações prioritárias voltadas a estudantes de escolas públicas, famílias em vulnerabilidade e comunidade local.</p>`;
                     break;
                 case 'contrapartida':
                     nota = 90;
-                    parecer = `<h3>Parecer de Contrapartida</h3>
-                    <p>Retorno social atende às regras de gratuidade e oficinas.</p>
+                    parecer = `<h3>Parecer de Contrapartida Social</h3>
+                    <p>Retorno social assegurado através de gratuidade integral e oficinas pedagógicas.</p>
                     <h3>Sugestão Otimizada</h3>
-                    <p>Em contrapartida ao apoio cultural recebido, serão oferecidas 3 oficinas de capacitação técnica inteiramente franqueadas ao público local, com vagas reservadas a minorias sociais.</p>`;
+                    <p>Oferecimento de oficinas gratuitas de formação cultural franqueadas à comunidade como contrapartida direta.</p>`;
                     break;
-                case 'direitos':
-                    nota = 80;
-                    parecer = `<h3>Parecer de Direitos</h3>
-                    <p>Atenção à necessidade de pagamento do ECAD ou cessão de uso de imagem dos artistas.</p>
-                    <h3>Sugestão Otimizada</h3>
-                    <p>Todas as autorizações autorais e licenças de imagem e som dos artistas serão registradas contratualmente antes da execução, assegurando o recolhimento das taxas legais devidas ao ECAD.</p>`;
-                    break;
-                case 'auditoria':
+                case 'comunicacao':
                     nota = 85;
-                    parecer = `<h3>Parecer de Auditoria</h3>
-                    <p>Mecanismos de aferição consistentes. Recomenda-se relatórios detalhados com assinatura física.</p>
+                    parecer = `<h3>Parecer de Comunicação & Mídia</h3>
+                    <p>Estratégia de divulgação abrangendo redes sociais, imprensa local e materiais impressos.</p>
                     <h3>Sugestão Otimizada</h3>
-                    <p>Como mecanismo de prestação de contas, serão fornecidos relatórios com listas de presença de assinatura física dos participantes, registros fotográficos datados e relatórios fiscais auditados.</p>`;
+                    <p>Plano de comunicação estruturado com assessoria de imprensa regional e produção de clipping para prestação de contas.</p>`;
                     break;
+                case 'ficha_tecnica':
+                    nota = 88;
+                    parecer = `<h3>Parecer de Ficha Técnica & Capacidade</h3>
+                    <p>Equipe qualificada com experiência prévia e capacidade técnica comprovada.</p>
+                    <h3>Sugestão Otimizada</h3>
+                    <p>Ficha técnica completa detalhando função, qualificação profissional e portfólio de cada integrante.</p>`;
+                    break;
+                case 'monitoramento':
+                    nota = 86;
+                    parecer = `<h3>Parecer de Monitoramento & Indicadores</h3>
+                    <p>Indicadores quantitativos e qualitativos alinhados com a matriz de verificação.</p>
+                    <h3>Sugestão Otimizada</h3>
+                    <p>Meios de comprovação estruturados através de listas de presença, registros fotográficos datados e relatórios de público.</p>`;
+                    break;
+                case 'compliance':
+                    nota = 88;
+                    parecer = `<h3>Parecer de Compliance & Marcos Legais</h3>
+                    <p>Conformidade documental, regularidade fiscal e adequação a direitos autorais (ECAD/SisGen).</p>
+                    <h3>Sugestão Otimizada</h3>
+                    <p>Manutenção das certidões negativas (CNDT, FGTS, CND) vigentes durante toda a execução do termo de fomento.</p>`;
+                    break;
+                case 'sustentabilidade':
+                    nota = 85;
+                    parecer = `<h3>Parecer de Sustentabilidade & ESG</h3>
+                    <p>Práticas de gestão de resíduos e redução de impacto ambiental previstas nas ações.</p>
+                    <h3>Sugestão Otimizada</h3>
+                    <p>Eliminação de descartáveis plásticos de uso único e destinação correta de resíduos recicláveis gerados nas atividades.</p>`;
+                    break;
+                case 'rider':
+                    nota = 86;
+                    parecer = `<h3>Parecer de Rider Técnico & Logística</h3>
+                    <p>Estrutura de som, iluminação cênica e transporte compatíveis com a tipologia da ação cultural.</p>
+                    <h3>Sugestão Otimizada</h3>
+                    <p>Dimensionamento seguro de rider de sonorização, iluminação e logística de montagem para garantir segurança e qualidade artística.</p>`;
+                    break;
+                default:
+                    nota = 80;
+                    parecer = `<h3>Parecer Técnico Especializado</h3>
+                    <p>Análise de conformidade executada com base no contexto geral do projeto e diretrizes aplicáveis.</p>
+                    <h3>Sugestão Otimizada</h3>
+                    <p>Alinhar os elementos descritivos da proposta às exigências de mérito e regularidade formal do edital.</p>`;
             }
 
             resolve({
                 nota: nota,
+                confianca: confianca,
                 parecer: parecer
             });
-        }, 800);
+        }, 600);
     });
 }
 
@@ -4156,8 +4498,30 @@ function getOfflineEditalProfile(editalRefText, annexes = []) {
 
     const budgetCap = budgetCapParts.join('. ') + '.';
 
-    const detectedSections = detectRequiredSectionsFromText(combinedText);
-    const detectedCategories = detectRelevantBudgetCategories(editalRefText, '');
+    // Detectar regras de acessibilidade do texto real
+    let acessibilidadeInfo = "";
+    if (/libras|audiodescrição|audiodescricao|braille|rampa|acessibilidade|deficiência|pcd/i.test(combinedText)) {
+        acessibilidadeInfo = "Obrigatória acessibilidade comunicacional e física conforme mencionado nas regras do edital.";
+    } else {
+        acessibilidadeInfo = "Nenhuma regra de acessibilidade explícita detectada no edital. Recomenda-se prever acessibilidade comunicacional/física com base na Lei 13.146/2015.";
+    }
+
+    // Detectar critérios de priorização reais
+    let prioridadesInfo = "";
+    if (/pontua[çc][ãa]o\s*extra|crit[ée]rio\s*de\s*desempate|prioriza|cotas|bonifica|a[çc][õo]es\s*afirmativas/i.test(combinedText)) {
+        prioridadesInfo = "Critérios de pontuação diferenciada e bonificação afirmativa identificados no edital/anexos.";
+    } else {
+        prioridadesInfo = "Critérios gerais de mérito artístico-cultural, viabilidade e exequibilidade técnica.";
+    }
+
+    // Detectar categorias orçamentárias e seções exigidas
+    const projectContent = (workspaceState && workspaceState.documentContent) ? Object.values(workspaceState.documentContent).join('\n') : '';
+    const detectedCategories = typeof detectRelevantBudgetCategories === 'function'
+        ? detectRelevantBudgetCategories(combinedText, projectContent)
+        : [];
+    const detectedSections = typeof detectRequiredSectionsFromText === 'function'
+        ? detectRequiredSectionsFromText(combinedText)
+        : ['justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento', 'acessibilidade'];
 
     return {
         fomento: "Chamada Pública de Fomento Cultural e Social (Análise Offline)",
@@ -4168,9 +4532,9 @@ function getOfflineEditalProfile(editalRefText, annexes = []) {
         faixaValor: faixaMin && faixaMax ? { min: faixaMin, max: faixaMax } : null,
         prazoExecucao: prazoExecMin && prazoExecMax ? { min: prazoExecMin, max: prazoExecMax } : null,
         despesasVedadas: despesasVedadas,
-        categoriasRelevantes: detectedCategories.map(c => c.name),
-        acessibilidade_e_cotas: "Obrigatória acessibilidade comunicacional (LIBRAS/Audiodescrição) e física. Ações afirmativas com reserva de vagas para grupos prioritários.",
-        prioridades_critérios: "Pontuação máxima de priorização para governança participativa, liderança vulnerabilizada, experiência no território e parcerias em rede.",
+        categoriasRelevantes: detectedCategories.map(c => c.name || c),
+        acessibilidade_e_cotas: acessibilidadeInfo,
+        prioridades_critérios: prioridadesInfo,
         anexos_analisados: annexesNames,
         secoes_exigidas: detectedSections
     };
@@ -4378,6 +4742,25 @@ function setupAuditor() {
     const btnAudit = document.getElementById('btn-run-audit');
     const btnPdf = document.getElementById('btn-download-audit-pdf');
     const btnSaveAnnex = document.getElementById('btn-save-audit-annex');
+    const btnGotoRevisor = document.getElementById('btn-goto-revisor');
+
+    if (btnGotoRevisor) {
+        btnGotoRevisor.addEventListener('click', () => {
+            switchTab('revisor');
+        });
+    }
+
+    if (btnPdf) {
+        btnPdf.addEventListener('click', async () => {
+            await downloadAuditPDF();
+        });
+    }
+
+    if (btnSaveAnnex) {
+        btnSaveAnnex.addEventListener('click', () => {
+            saveAuditReportToAnnex();
+        });
+    }
 
     if (btnAudit) {
         btnAudit.addEventListener('click', async () => {
@@ -4393,34 +4776,52 @@ function setupAuditor() {
 
             try {
                 let auditData = null;
+                const keyToUse = window.geminiKey || localStorage.getItem('gemini_api_key');
 
-                if (geminiKey) {
-                    showToast("Iniciando auditoria de compliance...", "info");
-                    const consolidatedResult = await callGeminiConsolidatedAudit();
+                // Executar sempre o LocalCrossEngine primeiro para diagnóstico determinístico
+                let offlineDiag = null;
+                if (window.LocalCrossEngine && typeof window.LocalCrossEngine.runFullDiagnostic === 'function') {
+                    offlineDiag = window.LocalCrossEngine.runFullDiagnostic(workspaceState);
+                    workspaceState.offlineDiagnostic = offlineDiag;
+                    console.log(`[setupAuditor] Diagnóstico offline calculado. Score: ${offlineDiag.score}/100`);
+                }
+
+                if (keyToUse && window.aiController && typeof window.aiController.runAudit === 'function') {
+                    showToast("🚀 Executando auditoria híbrida com IA (Gemini + LocalCrossEngine)...", "info");
+                    const consolidatedResult = await window.aiController.runAudit(workspaceState);
 
                     workspaceState.lastAuditData = consolidatedResult.auditoria || {};
                     saveWorkspaceState();
                     auditData = workspaceState.lastAuditData;
 
                 } else {
-                    showToast("Auditoria simulada localmente...", "info");
-                    auditData = await getSimulatedAuditorData();
+                    showToast("⚡ Executando Auditoria 100% Offline via LocalCrossEngine...", "info");
+                    if (window.offlineAuditor && typeof window.offlineAuditor.runLocalAudit === 'function') {
+                        const localRes = await window.offlineAuditor.runLocalAudit(workspaceState);
+                        if (window.aiController && typeof window.aiController._transformToAppFormat === 'function') {
+                            const transformed = window.aiController._transformToAppFormat(localRes, workspaceState, localRes);
+                            auditData = transformed.auditoria || transformed;
+                            if (transformed.revisorAgentsResults) {
+                                workspaceState.revisorAgentsResults = transformed.revisorAgentsResults;
+                            }
+                        } else {
+                            auditData = localRes.auditoria || localRes;
+                        }
+                    } else {
+                        auditData = await getSimulatedAuditorData();
+                    }
                     workspaceState.lastAuditData = auditData;
                     saveWorkspaceState();
                 }
 
                 renderAuditorResults(auditData);
-                if (btnPdf) btnPdf.style.display = 'block';
-                if (btnSaveAnnex) btnSaveAnnex.style.display = 'block';
+                if (btnPdf) btnPdf.style.display = 'inline-block';
+                if (btnSaveAnnex) btnSaveAnnex.style.display = 'inline-block';
+                if (btnGotoRevisor) btnGotoRevisor.style.display = 'block';
                 showToast("Auditoria concluída! Nota de compliance calculada.", "success");
 
-                // Automatic creation of annex from audit report
-                if (auditData) {
-                    let reportText = `RELATÓRIO DE AUDITORIA DE COMPLIANCE\n`;
-                    reportText += `Projeto: ${workspaceState.cover.title || 'Sem Nome'}\n`;
-                    reportText += `Nota Final: ${auditData.score || auditData.notaGeral || 0}/100\n`;
-                    reportText += `Data: ${new Date().toLocaleDateString()}\n\n`;
-                    reportText += `RESUMO:\n${auditData.summary || auditData.parecerGeral || ''}\n`;
+                if (typeof updateSupervisorIndicators === 'function') {
+                    updateSupervisorIndicators();
                 }
             } catch (err) {
                 console.error("Erro na auditoria:", err);
@@ -4432,6 +4833,290 @@ function setupAuditor() {
             }
         });
     }
+}
+
+function saveAuditReportToAnnex() {
+    const data = workspaceState.lastAuditData;
+    if (!data) {
+        showToast("Nenhum relatório de auditoria disponível para salvar.", "warning");
+        return;
+    }
+    const title = (workspaceState.cover && workspaceState.cover.title) || "Projeto Cultural";
+    const scoreVal = data.nota_final || data.score || 0;
+    const annexContent = `RELATÓRIO DE AUDITORIA E COMPLIANCE — ${title}\n` +
+        `Data de Emissão: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}\n` +
+        `Nota Técnica: ${data.nota_tecnica || scoreVal}/100 | Nota Priorização: ${data.nota_priorizacao || 0}/30 | Nota Final: ${scoreVal}/130\n\n` +
+        (data.relatorio_analitico || data.relatorio_geral || data.summary || data.parecerGeral || 'Laudo consolidado.');
+
+    if (!workspaceState.annexes) workspaceState.annexes = [];
+    workspaceState.annexes.push({
+        id: 'audit_report_' + Date.now(),
+        name: `Laudo_Auditoria_${title.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30)}.txt`,
+        content: annexContent,
+        type: 'text/plain',
+        size: annexContent.length
+    });
+    saveWorkspaceState();
+    if (typeof renderAnnexesList === 'function') {
+        renderAnnexesList();
+    }
+    showToast("✓ Laudo de auditoria salvo nos Anexos com sucesso!", "success");
+}
+
+// ==========================================
+// ABA 4: SUPERVISOR ESTRATÉGICO
+// ==========================================
+function setupSupervisor() {
+    const btnRunSupervisor = document.getElementById('btn-run-supervisor');
+    const btnToRedator = document.getElementById('btn-supervisor-to-redator');
+    const btnGotoRedator = document.getElementById('btn-goto-redator');
+    const btnPdf = document.getElementById('btn-download-supervisor-pdf');
+
+    if (btnRunSupervisor) {
+        btnRunSupervisor.addEventListener('click', async () => {
+            await runSupervisorAnalysis();
+        });
+    }
+
+    const handleToRedator = (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        switchTab('redator');
+        showToast("✍️ Diretrizes do Supervisor transmitidas para a Redação!", "info");
+    };
+
+    if (btnToRedator) btnToRedator.addEventListener('click', handleToRedator);
+    if (btnGotoRedator) btnGotoRedator.addEventListener('click', handleToRedator);
+
+    if (btnPdf) {
+        btnPdf.addEventListener('click', async () => {
+            await downloadSupervisorPDF();
+        });
+    }
+
+    // Inicializar visualização do Supervisor
+    renderSupervisorPanelUI();
+}
+
+async function runSupervisorAnalysis() {
+    if (_isProcessingAPI) {
+        showToast("Aguarde o processamento atual terminar.", "warning");
+        return;
+    }
+
+    _isProcessingAPI = true;
+    const btn = document.getElementById('btn-run-supervisor');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = "⏳ Cruzando Auditoria & Revisão...";
+    }
+
+    showToast("🧠 Supervisor Estratégico sintetizando diretrizes de redação...", "info");
+
+    try {
+        const decisions = await window.aiController.runSupervisorSynthesis(workspaceState);
+        workspaceState.supervisorDecisions = decisions;
+        saveWorkspaceState();
+
+        renderSupervisorPanelUI();
+        showToast("✓ Supervisão Estratégica concluída com sucesso!", "success");
+    } catch (err) {
+        console.error("Erro na supervisão estratégica:", err);
+        showToast("Falha na supervisão: " + err.message, "error");
+    } finally {
+        _isProcessingAPI = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = "🧠 Executar Supervisão Estratégica";
+        }
+    }
+}
+
+function updateSupervisorIndicators() {
+    const indAudit = document.getElementById('indicator-audit');
+    const indRevisor = document.getElementById('indicator-revisor');
+
+    if (indAudit) {
+        const hasAudit = workspaceState.lastAuditData && (workspaceState.lastAuditData.nota_final || workspaceState.lastAuditData.score);
+        indAudit.innerHTML = hasAudit
+            ? `<span style="color:var(--color-success); font-weight:600;">Auditoria: ✓ Concluída (${workspaceState.lastAuditData.nota_final || workspaceState.lastAuditData.score}/130)</span>`
+            : `<span>Auditoria: ⏳ Pendente</span>`;
+    }
+
+    if (indRevisor) {
+        const hasRevisor = workspaceState.revisorAgentsResults && Object.keys(workspaceState.revisorAgentsResults).length > 0;
+        indRevisor.innerHTML = hasRevisor
+            ? `<span style="color:var(--color-success); font-weight:600;">Revisão: ✓ Concluída (${Object.keys(workspaceState.revisorAgentsResults).length} pareceres)</span>`
+            : `<span>Revisão: ⏳ Pendente</span>`;
+    }
+}
+
+function renderSupervisorPanelUI() {
+    updateSupervisorIndicators();
+
+    const tbody = document.getElementById('supervisor-decision-tbody');
+    const listContainer = document.getElementById('supervisor-directives-list');
+    const btnPdf = document.getElementById('btn-download-supervisor-pdf');
+    const decisions = workspaceState.supervisorDecisions;
+
+    if (!decisions || !Array.isArray(decisions.decisoes_secoes) || decisions.decisoes_secoes.length === 0) {
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                Nenhuma diretriz executada ainda. Execute a <strong>Auditoria</strong> e a <strong>Revisão</strong> e clique em <em>"🧠 Executar Supervisão Estratégica"</em>.
+            </td></tr>`;
+        }
+        if (listContainer) {
+            listContainer.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem; font-style: italic;">Aguardando execução do Supervisor.</p>`;
+        }
+        if (btnPdf) btnPdf.style.display = 'none';
+        return;
+    }
+
+    if (btnPdf) btnPdf.style.display = 'inline-block';
+
+    const lastAudit = workspaceState.lastAuditData || {};
+    const revisorResults = workspaceState.revisorAgentsResults || {};
+
+    // Renderizar tabela de decisões
+    if (tbody) {
+        tbody.innerHTML = decisions.decisoes_secoes.map(item => {
+            const secKey = item.secao;
+            const meta = REVISORES_METADATA[secKey] || { name: secKey };
+            const rev = revisorResults[secKey];
+            const audCrit = (lastAudit.criterios || []).find(c => c.id === secKey) || (lastAudit.agentes || []).find(a => a.id === secKey);
+
+            const notaAudStr = audCrit && typeof audCrit.nota === 'number' ? `${audCrit.nota}/100` : '--';
+            const notaRevStr = rev && typeof rev.nota === 'number' ? `${rev.nota}/100` : '--';
+
+            let statusBadge = `<span class="badge-decision-approved">🟢 Aprovado</span>`;
+            if (item.status === 'INCONFORMIDADE_CRITICA') {
+                statusBadge = `<span class="badge-decision-critical">🔴 Inconformidade Crítica</span>`;
+            } else if (item.status === 'AJUSTE_RECOMENDADO') {
+                statusBadge = `<span class="badge-decision-adjustment">🟡 Ajuste Recomendado</span>`;
+            }
+
+            return `<tr>
+                <td><strong>${meta.name || secKey.toUpperCase()}</strong></td>
+                <td style="text-align: center; font-weight: 600;">${notaAudStr}</td>
+                <td style="text-align: center; font-weight: 600;">${notaRevStr}</td>
+                <td style="text-align: center;">${statusBadge}</td>
+                <td style="font-size: 0.82rem; line-height: 1.4;">${item.diretriz_redacao || item.diagnostico}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    // Renderizar lista de cards com plano diretor
+    if (listContainer) {
+        listContainer.innerHTML = decisions.decisoes_secoes.map(item => {
+            const secKey = item.secao;
+            const meta = REVISORES_METADATA[secKey] || { name: secKey };
+            let cardClass = "directive-approved";
+            let badgeHtml = `<span class="badge-decision-approved">🟢 Aprovado</span>`;
+
+            if (item.status === 'INCONFORMIDADE_CRITICA') {
+                cardClass = "directive-critical";
+                badgeHtml = `<span class="badge-decision-critical">🔴 Inconformidade Crítica</span>`;
+            } else if (item.status === 'AJUSTE_RECOMENDADO') {
+                cardClass = "directive-adjustment";
+                badgeHtml = `<span class="badge-decision-adjustment">🟡 Ajuste Recomendado</span>`;
+            }
+
+            const pontosList = (item.pontos_criticos && item.pontos_criticos.length > 0)
+                ? `<ul style="margin: 0.5rem 0 0 1.25rem; font-size: 0.82rem; color: var(--text-secondary);">${item.pontos_criticos.map(p => `<li>${p}</li>`).join('')}</ul>`
+                : '';
+
+            return `<div class="supervisor-directive-card ${cardClass}">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <h4 style="margin: 0; color: var(--text-primary); font-size: 0.95rem;">${meta.name || secKey.toUpperCase()}</h4>
+                    ${badgeHtml}
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-primary); margin: 0 0 0.4rem 0;"><strong>Diagnóstico:</strong> ${item.diagnostico}</p>
+                <p style="font-size: 0.85rem; color: var(--color-primary); margin: 0; background: var(--bg-panel, #f8fafc); padding: 0.5rem 0.75rem; border-radius: 6px; border-left: 3px solid var(--color-primary);">
+                    <strong>🎯 Diretriz de Redação:</strong> ${item.diretriz_redacao}
+                </p>
+                ${pontosList}
+            </div>`;
+        }).join('');
+    }
+}
+
+function updateRedatorSupervisorCapsule() {
+    const selectSec = document.getElementById('redator-section-select');
+    const capsule = document.getElementById('redator-supervisor-directive-capsule');
+    const statusEl = document.getElementById('redator-supervisor-directive-status');
+    const textEl = document.getElementById('redator-supervisor-directive-text');
+
+    if (!capsule || !selectSec) return;
+
+    const currentSection = selectSec.value;
+    const decisions = workspaceState.supervisorDecisions;
+
+    if (!decisions || !Array.isArray(decisions.decisoes_secoes)) {
+        capsule.style.display = 'none';
+        return;
+    }
+
+    const item = decisions.decisoes_secoes.find(d => d.secao === currentSection);
+    if (!item) {
+        capsule.style.display = 'none';
+        return;
+    }
+
+    capsule.style.display = 'block';
+    if (textEl) {
+        textEl.innerHTML = `<strong>${item.diagnostico}</strong><br><span style="color:var(--color-primary); font-weight:600;">Diretriz: ${item.diretriz_redacao}</span>`;
+    }
+
+    if (statusEl) {
+        if (item.status === 'INCONFORMIDADE_CRITICA') {
+            statusEl.className = "badge-decision-critical";
+            statusEl.textContent = "🔴 Inconformidade Crítica";
+        } else if (item.status === 'AJUSTE_RECOMENDADO') {
+            statusEl.className = "badge-decision-adjustment";
+            statusEl.textContent = "🟡 Ajuste Recomendado";
+        } else {
+            statusEl.className = "badge-decision-approved";
+            statusEl.textContent = "🟢 Aprovado";
+        }
+    }
+}
+
+async function downloadSupervisorPDF() {
+    const decisions = workspaceState.supervisorDecisions;
+    if (!decisions || !Array.isArray(decisions.decisoes_secoes)) {
+        showToast("Nenhuma diretriz de supervisão para exportar.", "warning");
+        return;
+    }
+
+    const title = (workspaceState.cover && workspaceState.cover.title) || "Projeto Cultural";
+    let html = `<h2>Plano Diretor e Parecer do Supervisor Estratégico — ${title}</h2>
+    <p><strong>Sumário Executivo:</strong> ${decisions.sumario_executivo || 'Consolidação geral do projeto.'}</p>
+    <p><strong>Grau de Maturidade:</strong> ${decisions.grau_maturidade_global || 'Maturidade Competitiva'}</p>
+    <hr/>
+    <h3>Decisões Seção a Seção (Seções Exigidas no Edital)</h3>
+    <table style="width:100%; border-collapse:collapse; margin-top:10px;">
+        <thead>
+            <tr style="background:#f1f5f9;">
+                <th style="border:1px solid #cbd5e1; padding:8px;">Seção</th>
+                <th style="border:1px solid #cbd5e1; padding:8px;">Status</th>
+                <th style="border:1px solid #cbd5e1; padding:8px;">Diagnóstico</th>
+                <th style="border:1px solid #cbd5e1; padding:8px;">Diretriz de Redação</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${decisions.decisoes_secoes.map(d => `
+                <tr>
+                    <td style="border:1px solid #cbd5e1; padding:8px; font-weight:bold;">${d.secao.toUpperCase()}</td>
+                    <td style="border:1px solid #cbd5e1; padding:8px;">${d.status}</td>
+                    <td style="border:1px solid #cbd5e1; padding:8px;">${d.diagnostico}</td>
+                    <td style="border:1px solid #cbd5e1; padding:8px;">${d.diretriz_redacao}</td>
+                </tr>
+            `).join('')}
+        </tbody>
+    </table>
+    `;
+
+    printOrSaveHtml("Parecer do Supervisor Estratégico", html);
+    showToast("✓ Parecer do Supervisor aberto para impressão/download!", "success");
 }
 
 async function callGeminiForAuditoria() {
@@ -4818,14 +5503,17 @@ function getSimulatedAuditorData() {
     });
 }
 
-function renderAuditorResults(data) {
-    document.getElementById('score-value').textContent = data.nota_final;
+function renderAuditorResults(rawAuditData) {
+    if (!rawAuditData) return;
+    const data = rawAuditData.auditoria ? rawAuditData.auditoria : rawAuditData;
+
+    document.getElementById('score-value').textContent = data.nota_final !== undefined ? data.nota_final : 0;
     const scoreClass = document.getElementById('score-class');
 
-    if (data.nota_final >= 115) {
+    if ((data.nota_final || 0) >= 115) {
         scoreClass.textContent = "Conformidade Excelente";
         scoreClass.style.color = "var(--color-success)";
-    } else if (data.nota_final >= 85) {
+    } else if ((data.nota_final || 0) >= 85) {
         scoreClass.textContent = "Ajustes Necessários";
         scoreClass.style.color = "var(--color-warning)";
     } else {
@@ -4864,8 +5552,22 @@ function renderAuditorResults(data) {
         }
     }
 
+    // Normalizar critérios
+    let criterios = Array.isArray(data.criterios) ? data.criterios : [];
+    if (criterios.length === 0 && Array.isArray(data.agentes)) {
+        criterios = data.agentes.map(ag => {
+            const meta = (typeof REVISORES_METADATA !== 'undefined' && REVISORES_METADATA[ag.id]) || { name: ag.id, criterio: ag.id, nota_maxima: 100 };
+            return {
+                criterio: meta.name || ag.id,
+                nota_maxima: 100,
+                nota_atribuida: ag.nota !== undefined ? ag.nota : 75,
+                justificativa: (ag.erros && ag.erros[0]) || (ag.recomendacoes && ag.recomendacoes[0]) || "Avaliação de conformidade pelo motor determinístico."
+            };
+        });
+    }
+
     // Dimensions
-    data.criterios.forEach((c, idx) => {
+    criterios.forEach((c, idx) => {
         const i = idx + 1;
         const scoreEl = document.getElementById(`score-dim-${i}`);
         const fillEl = document.getElementById(`fill-dim-${i}`);
@@ -4883,11 +5585,11 @@ function renderAuditorResults(data) {
     const areasDetail = document.getElementById('audit-areas-detail');
     if (areasDetail) {
         areasDetail.innerHTML = '';
-        const areaIcons = ['📄', '♿', '🤝', '💰', '📊', '🛠️', '👥', '🌱'];
-        const areaColors = ['#6366f1', '#f59e0b', '#10b981', '#8b5cf6', '#3b82f6', '#ec4899', '#14b8a6', '#f43f5e'];
+        const areaIcons = ['📄', '♿', '🤝', '💰', '📊', '🛠️', '👥', '🌱', '📜', '🏛️', '🌿', '🎵', '🌳', '🔍'];
+        const areaColors = ['#6366f1', '#f59e0b', '#10b981', '#8b5cf6', '#3b82f6', '#ec4899', '#14b8a6', '#f43f5e', '#6366f1', '#f59e0b', '#10b981', '#8b5cf6', '#3b82f6', '#ec4899'];
 
-        data.criterios.forEach((c, idx) => {
-            const ratio = c.nota_atribuida / c.nota_maxima;
+        criterios.forEach((c, idx) => {
+            const ratio = (c.nota_maxima > 0) ? (c.nota_atribuida / c.nota_maxima) : 0;
             const statusLabel = ratio >= 0.8 ? 'Aprovado' : ratio >= 0.5 ? 'Revisão Necessária' : 'Reprovado';
             const statusColor = ratio >= 0.8 ? 'var(--color-success)' : ratio >= 0.5 ? 'var(--color-warning)' : 'var(--color-error)';
 
@@ -4899,7 +5601,7 @@ function renderAuditorResults(data) {
             card.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
                     <span style="font-weight:700; font-size:0.85rem;">${icon} ${c.criterio}</span>
-                    <span style="font-size:1.2rem; font-weight:800; color:${color};">${c.nota_atribuida}/${c.nota_maxima}</span>
+                    <span style="font-size:1.2rem; font-weight:800; color:${color};">${c.nota_atribuida !== null ? c.nota_atribuida : 'N/A'}/${c.nota_maxima}</span>
                 </div>
                 <div style="background: var(--bg-input); border-radius: 4px; height: 8px; margin-bottom: 0.5rem;">
                     <div style="background: ${statusColor}; height: 100%; border-radius: 4px; width: ${ratio * 100}%; transition: width 0.5s;"></div>
@@ -4908,7 +5610,7 @@ function renderAuditorResults(data) {
                     <span style="font-size:0.7rem; color: ${statusColor}; font-weight:600;">${statusLabel}</span>
                     <span style="font-size:0.7rem; color:var(--text-muted);">${(ratio * 100).toFixed(0)}%</span>
                 </div>
-                <p style="font-size:0.75rem; color:var(--text-secondary); line-height:1.4; margin:0;">${c.justificativa}</p>
+                <p style="font-size:0.75rem; color:var(--text-secondary); line-height:1.4; margin:0;">${c.justificativa || ''}</p>
             `;
             areasDetail.appendChild(card);
         });
@@ -4916,38 +5618,45 @@ function renderAuditorResults(data) {
 
     // Adjusts
     const tbl = document.querySelector('#table-adjusts tbody');
-    tbl.innerHTML = '';
-    data.ajustes.forEach(adj => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td><b>${adj.alteracao}</b></td>
-            <td><code>${adj.fator}</code></td>
-        `;
-        tbl.appendChild(tr);
-    });
+    if (tbl) {
+        tbl.innerHTML = '';
+        const ajustes = Array.isArray(data.ajustes) ? data.ajustes : [];
+        ajustes.forEach(adj => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><b>${adj.alteracao || ''}</b></td>
+                <td><code>${adj.fator || ''}</code></td>
+            `;
+            tbl.appendChild(tr);
+        });
+    }
 
     // Alerts
     const list = document.getElementById('alerts-list');
-    list.innerHTML = '';
-    data.alertas.forEach(a => {
-        const div = document.createElement('div');
-        div.className = `alert-item ${a.nivel.toLowerCase()}`;
-        div.style.borderLeft = `4px solid ${a.nivel === 'ALTA' ? 'var(--color-error)' : 'var(--color-warning)'}`;
-        div.style.background = 'var(--bg-input)';
-        div.style.padding = '0.75rem';
-        div.style.borderRadius = 'var(--radius-sm)';
-        div.style.marginBottom = '0.5rem';
+    if (list) {
+        list.innerHTML = '';
+        const alertas = Array.isArray(data.alertas) ? data.alertas : [];
+        alertas.forEach(a => {
+            const div = document.createElement('div');
+            const nivelClass = (a.nivel || 'MEDIA').toLowerCase();
+            div.className = `alert-item ${nivelClass}`;
+            div.style.borderLeft = `4px solid ${a.nivel === 'ALTA' || a.nivel === 'CRÍTICO' ? 'var(--color-error)' : 'var(--color-warning)'}`;
+            div.style.background = 'var(--bg-input)';
+            div.style.padding = '0.75rem';
+            div.style.borderRadius = 'var(--radius-sm)';
+            div.style.marginBottom = '0.5rem';
 
-        div.innerHTML = `
-            <div style="font-weight:700; font-size:0.8rem; display:flex; justify-content:space-between; align-items:center;">
-                <span>⚡ [${a.tipo}]</span>
-                <span class="urgency-badge ${a.nivel.toLowerCase()}" style="font-size:0.6rem; padding:2px 6px;">${a.nivel}</span>
-            </div>
-            <p style="font-size:0.75rem; margin-top:0.25rem;">${a.descricao}</p>
-            <p style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.15rem;"><b>Recomendação:</b> ${a.sugestao}</p>
-        `;
-        list.appendChild(div);
-    });
+            div.innerHTML = `
+                <div style="font-weight:700; font-size:0.8rem; display:flex; justify-content:space-between; align-items:center;">
+                    <span>⚡ [${a.tipo || 'Alerta'}]</span>
+                    <span class="urgency-badge ${nivelClass}" style="font-size:0.6rem; padding:2px 6px;">${a.nivel || 'MÉDIA'}</span>
+                </div>
+                <p style="font-size:0.75rem; margin-top:0.25rem;">${a.descricao || ''}</p>
+                <p style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.15rem;"><b>Recomendação:</b> ${a.sugestao || ''}</p>
+            `;
+            list.appendChild(div);
+        });
+    }
 
     // Relatório Analítico Descritivo
     const analyticCard = document.getElementById('audit-analytic-report-card');
@@ -4966,25 +5675,39 @@ function renderAuditorResults(data) {
 }
 
 async function downloadAuditPDF() {
-    const data = workspaceState.lastAuditData;
+    let data = workspaceState.lastAuditData;
+    if (!data || Object.keys(data).length === 0) {
+        showToast("🤖 Executando auditoria completa com IA antes de gerar o PDF...", "info");
+        const consolidatedResult = await window.aiController.runAudit(workspaceState);
+        workspaceState.lastAuditData = consolidatedResult.auditoria || {};
+        saveWorkspaceState();
+        data = workspaceState.lastAuditData;
+    }
+
     if (!data) {
         showToast("Nenhuma auditoria realizada ainda.", "warning");
         return;
     }
 
-    showToast("Gerando PDF oficial no servidor...", "info");
+    showToast("📄 Gerando Laudo Oficial de Auditoria em PDF no servidor...", "info");
 
     try {
         const payload = {
-            project_title: workspaceState.cover.title || 'Projeto Cultural',
-            institution: workspaceState.cover.institution || 'Não Especificada',
-            proponent: workspaceState.cover.proponent || 'Não Especificado',
-            budget: workspaceState.cover.budget || '0',
-            score: data.nota_final || '0',
+            project_title: (workspaceState.cover && workspaceState.cover.title) || 'Projeto Cultural',
+            institution: (workspaceState.cover && workspaceState.cover.institution) || 'Não Especificada',
+            proponent: (workspaceState.cover && workspaceState.cover.proponent) || 'Não Especificado',
+            budget: (workspaceState.cover && workspaceState.cover.budget) || '0',
+            score: data.nota_final || data.score || '0',
             nota_tecnica: data.nota_tecnica || '0',
             nota_priorizacao: data.nota_priorizacao || '0',
-            relatorio_analitico: data.relatorio_analitico || '',
-            criterios: data.criterios || [],
+            relatorio_analitico: data.relatorio_analitico || data.relatorio_geral || data.summary || '',
+            criterios: (data.criterios && data.criterios.length > 0) ? data.criterios : (data.agentes || []).map(ag => ({
+                id: ag.id,
+                nome: ag.nome || (REVISORES_METADATA[ag.id] ? REVISORES_METADATA[ag.id].name : ag.id),
+                nota: ag.nota,
+                status: ag.nota >= 80 ? 'CONFORME' : (ag.nota >= 60 ? 'RESSALVA' : 'CRÍTICO'),
+                parecer: ag.parecer || ''
+            })),
             ajustes: data.ajustes || [],
             alertas: data.alertas || []
         };
@@ -4995,7 +5718,7 @@ async function downloadAuditPDF() {
             body: JSON.stringify(payload)
         });
 
-        if (!response.ok) throw new Error("Falha ao gerar PDF.");
+        if (!response.ok) throw new Error("Falha ao gerar PDF no servidor.");
 
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
@@ -5006,9 +5729,12 @@ async function downloadAuditPDF() {
         a.click();
         a.remove();
         URL.revokeObjectURL(url);
-        showToast("✓ Relatório PDF baixado com sucesso!", "success");
+        showToast("✓ Laudo Oficial de Auditoria em PDF baixado com sucesso!", "success");
     } catch (err) {
-        showToast("Erro ao baixar PDF da auditoria: " + err.message, "error");
+        console.warn("Servidor PDF indisponível. Abrindo modo de impressão cliente:", err);
+        const auditHtml = data.relatorio_analitico || data.relatorio_geral || `<p>Nota Final: ${data.nota_final || 0}/130</p>`;
+        printOrSaveHtml("Laudo Técnico de Auditoria", auditHtml);
+        showToast("⚡ Laudo aberto na janela de impressão/download local!", "success");
     }
 }
 
@@ -5167,12 +5893,39 @@ function runPreFlightLinter() {
     const alerts = [];
     const doc = workspaceState.documentContent || {};
 
+    // Se o LocalCrossEngine estiver ativo, usa seus alertas ricos
+    if (window.LocalCrossEngine && typeof window.LocalCrossEngine.runFullDiagnostic === 'function') {
+        try {
+            const diag = window.LocalCrossEngine.runFullDiagnostic(workspaceState);
+            (diag.redAlerts || []).forEach(a => {
+                alerts.push({
+                    tipo: `${a.source || 'LocalCrossEngine'} (Crítico)`,
+                    descricao: a.msg,
+                    sugestao: a.action,
+                    nivel: "ALTA"
+                });
+            });
+            (diag.yellowAlerts || []).slice(0, 5).forEach(a => {
+                alerts.push({
+                    tipo: `${a.source || 'LocalCrossEngine'} (Recomendação)`,
+                    descricao: a.msg,
+                    sugestao: a.action,
+                    nivel: a.impact === 'risco_alto' ? 'ALTA' : 'MEDIA'
+                });
+            });
+            if (alerts.length > 0) return alerts;
+        } catch (err) {
+            console.warn('[runPreFlightLinter] Falha no LocalCrossEngine, usando checagens básicas:', err);
+        }
+    }
+
     // Check total budget
     const budget = workspaceState.cover.budget || 0;
-    if (budget > 220000) {
+    const maxBudget = (workspaceState.editalProfile && workspaceState.editalProfile.faixaValor) ? workspaceState.editalProfile.faixaValor.max : 220000;
+    if (budget > maxBudget) {
         alerts.push({
             tipo: "Orçamento Excedido (Linter Local)",
-            descricao: `O orçamento declarado do projeto é de R$ ${budget.toLocaleString('pt-BR')}, o que excede o limite regulamentar do edital de R$ 220.000,00.`,
+            descricao: `O orçamento declarado do projeto é de R$ ${budget.toLocaleString('pt-BR')}, o que excede o limite regulamentar do edital de R$ ${maxBudget.toLocaleString('pt-BR')}.`,
             sugestao: "Reduza os custos na aba de orçamento para respeitar o teto limite do edital.",
             nivel: "ALTA"
         });
@@ -6937,52 +7690,74 @@ function getOfflineRevisorReport() {
 }
 
 async function generateRevisorReport() {
+    syncDOMContentToState();
     const results = workspaceState.revisorAgentsResults;
     if (!results || Object.keys(results).length === 0) {
-        showToast("Nenhum parecer de agente encontrado. Por favor, rode os agentes revisores primeiro.", "warning");
-        return;
+        showToast("Nenhum parecer de agente encontrado. Executando os revisores primeiro...", "info");
+        await runAllAgents();
     }
 
     const btn = document.getElementById('btn-generate-revisor-report');
-    if (btn) btn.disabled = true;
+    const btnFinalGen = document.getElementById('btn-final-revisor-report-gen');
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Gerando Relatório via IA..."; }
+    if (btnFinalGen) { btnFinalGen.disabled = true; btnFinalGen.textContent = "⏳ Gerando Relatório via IA..."; }
 
-    showToast("📋 Gerando Relatório Detalhado de Revisão...", "info");
+    showToast("📋 Gerando Relatório Detalhado de Revisão via API...", "info");
 
     let reportHtml = "";
     let generatedViaAPI = false;
 
-    if (isApiActive()) {
+    const keyToUse = window.geminiKey || localStorage.getItem('gemini_api_key');
+    if (keyToUse) {
         let consolidatedFeedback = "";
         for (const [key, meta] of Object.entries(REVISORES_METADATA)) {
-            const res = results[key];
+            const res = (workspaceState.revisorAgentsResults || {})[key];
             if (res && res.parecer) {
-                consolidatedFeedback += `### AGENTE: ${meta.name} (Nota: ${res.nota}/100)\n${res.parecer}\n\n`;
+                consolidatedFeedback += `### AGENTE ESPECIALISTA: ${meta.name.toUpperCase()} (Nota: ${res.nota}/100 - Confiança: ${res.confianca || 'ALTA'})\n${res.parecer}\n\n`;
             }
         }
 
-        if (consolidatedFeedback) {
-            const prompt = `Você é o Arquiteto de Software Sênior e Especialista em Performance e Auditoria de Editais Culturais.
-            Sua missão é consolidar os pareceres dos 14 agentes especialistas e gerar um Relatório Detalhado de Revisão em HTML.
-            
-            ESTRUTURA OBRIGATÓRIA:
-            1. Sumário Executivo, 2. Diagnóstico por Agente, 3. Processos a Melhorar, 4. Plano de Ação, 5. Checklist.
-            
-            [PARECERES]:
-            ${consolidatedFeedback}
-            `;
+        const projectTitle = (workspaceState.cover && workspaceState.cover.title) || 'Projeto Cultural';
+        const proponent = (workspaceState.cover && workspaceState.cover.proponent) || 'Proponente';
+        const institution = (workspaceState.cover && workspaceState.cover.institution) || 'Edital de Fomento';
+        const budget = (workspaceState.cover && workspaceState.cover.budget) || 0;
 
-            try {
-                let rawApiResult = await callLLMGateway(prompt, "Você é um auditor sênior de projetos culturais. Responda estritamente em HTML.", 'heavy', null, false);
+        const prompt = `Você é o Arquiteto-Chefe e Auditor Geral de Projetos de Fomento Público.
+Sua missão é sintetizar os pareceres dos 14 agentes especialistas em um RELATÓRIO EXECUTIVO E ANALÍTICO DE REVISÃO completo, estruturado formalmente em HTML limpo (sem tags <html>, <head>, <body>).
+
+DADOS DO PROJETO:
+- Título: "${projectTitle}" | Proponente: "${proponent}"
+- Órgão/Edital: "${institution}" | Valor Total: R$ ${Number(budget).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+
+ESTRUTURA MANDATÓRIA DO RELATÓRIO (HTML):
+1. <div class="report-section"><h2>1. Sumário Executivo & Diagnóstico Global de Maturidade</h2>...</div>
+2. <div class="report-section"><h2>2. Avaliação Setorial dos 14 Agentes Especialistas</h2> (Tabela comparativa com Agente, Nota, Status de Conformidade e Resumo do Parecer) ...</div>
+3. <div class="report-section"><h2>3. Matriz de Riscos de Inabilitação & Fragilidades Identificadas</h2> (Classificar em Risco Alto, Médio e Baixo com respectivas ações corretivas) ...</div>
+4. <div class="report-section"><h2>4. Oportunidades de Bonificação e Vantagem Competitiva</h2> (Ações para maximizar a nota de classificação da proposta) ...</div>
+5. <div class="report-section"><h2>5. Plano de Ação Estratégico & Checklist Pré-Submissão</h2> (Passo a passo ordenado para submissão final com risco zero) ...</div>
+
+DIRETRIZES DE ESTILO:
+- Use tags semânticas: <h2>, <h3>, <p>, <ul>, <li>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <strong>, <em>, <span> com cores inline discretas.
+- Destaque citações do edital com [📌 EDITAL: '...'] e sugestões com marcas visuais.
+- Seja minucioso, profundo e técnico.
+
+[PARECERES DOS AGENTES ESPECIALISTAS]:
+${consolidatedFeedback || "Nenhum parecer anterior disponível. Realize a análise técnica a partir dos dados do projeto."}
+`;
+
+        try {
+            let rawApiResult = await callLLMGateway(prompt, "Você é um auditor sênior de projetos de fomento público. Responda estritamente em HTML sem blocos de código markdown.", 'heavy', null, false);
+            if (rawApiResult) {
                 rawApiResult = rawApiResult.replace(/^\s*```[a-zA-Z]*\s*\r?\n/gm, '').replace(/\r?\n\s*```\s*$/gm, '').trim();
                 rawApiResult = rawApiResult.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
                 rawApiResult = rawApiResult.replace(/<\/?(html|head|body|title)[^>]*>/gi, '').trim();
-                if (rawApiResult.length > 50) {
+                if (rawApiResult.length > 100) {
                     reportHtml = rawApiResult;
                     generatedViaAPI = true;
                 }
-            } catch (errApi) {
-                console.warn("[REVISOR] Erro ao chamar API Gemini. Ativando gerador offline:", errApi);
             }
+        } catch (errApi) {
+            console.warn("[REVISOR] Falha na API ao gerar relatório consolidado:", errApi);
         }
     }
 
@@ -7001,41 +7776,13 @@ async function generateRevisorReport() {
 
     const btnPdf = document.getElementById('btn-download-revisor-pdf');
     if (btnPdf) btnPdf.style.display = 'inline-block';
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>${title}</title>
-                <meta charset="utf-8">
-                <style>
-                    body { font-family: Arial, sans-serif; margin: 30px; line-height: 1.6; color: #1e293b; }
-                    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-                    th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; }
-                    th { background-color: #f1f5f9; font-weight: bold; }
-                    tfoot { font-weight: bold; background-color: #e2e8f0; }
-                    @media print { body { margin: 0; } }
-                </style>
-            </head>
-            <body>
-                ${htmlContent}
-                <script>window.onload = function() { window.print(); }</script>
-            </body>
-            </html>
-        `);
-        printWindow.document.close();
-    } else {
-        const blob = new Blob(["\uFEFF", htmlContent], { type: 'text/html;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = getFormattedDownloadFilename(title, 'html');
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-    }
+    const btnFinalPdf = document.getElementById('btn-final-revisor-pdf');
+    if (btnFinalPdf) btnFinalPdf.style.display = 'inline-block';
+
+    if (btn) { btn.disabled = false; btn.textContent = "📋 Gerar Relatório Detalhado"; }
+    if (btnFinalGen) { btnFinalGen.disabled = false; btnFinalGen.textContent = "📋 Gerar / Atualizar Relatório"; }
+
+    showToast("✓ Relatório Detalhado de Revisão gerado com sucesso!", "success");
 }
 
 function printOrSaveHtml(title, htmlContent) {
@@ -7080,13 +7827,18 @@ function printOrSaveHtml(title, htmlContent) {
 }
 
 async function downloadRevisorReportPDF() {
-    const reportHtml = workspaceState.lastRevisorReport;
+    let reportHtml = workspaceState.lastRevisorReport;
     if (!reportHtml) {
-        showToast("Por favor, gere o relatório detalhado primeiro.", "warning");
-        return;
+        showToast("🤖 Gerando Relatório Detalhado de Revisão via IA antes do download...", "info");
+        await generateRevisorReport();
+        reportHtml = workspaceState.lastRevisorReport;
     }
 
-    showToast("Gerando PDF do Relatório...", "info");
+    if (!reportHtml) {
+        reportHtml = getOfflineRevisorReport();
+    }
+
+    showToast("📄 Gerando PDF Oficial de Revisão no servidor...", "info");
 
     try {
         const payload = {

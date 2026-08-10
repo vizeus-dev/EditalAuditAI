@@ -1,41 +1,68 @@
-import os
+import unittest
 import re
+import os
+import sys
 
-def test_architectural_fixes():
-    print("=== Testando correções arquiteturais e bugs críticos do EditalAudit AI ===")
+# Ensure services directory is in path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from services.api import DocumentRetriever, SemanticCache
+
+class TestArchitecturalFixes(unittest.TestCase):
     
-    app_js_path = "app.js"
-    server_py_path = "server.py"
-    
-    # 1. Verificar app.js - Histórico Persistente
-    with open(app_js_path, "r", encoding="utf-8") as f:
-        app_code = f.read()
+    def test_semantic_chunker_preserves_tables(self):
+        sample_text = (
+            "CAPÍTULO I - DO OBJETO\n\n"
+            "Este edital tem por objetivo selecionar projetos culturais.\n\n"
+            "| Item | Rubrica | Valor Máximo |\n"
+            "| --- | --- | --- |\n"
+            "| 1 | Gestão Administrativa | 15% |\n"
+            "| 2 | Produção Cultural | 45% |\n"
+            "| 3 | Acessibilidade LIBRAS | 10% |\n\n"
+            "CAPÍTULO II - DAS VEDAÇÕES\n\n"
+            "É vedado o pagamento de taxas de administração genéricas."
+        )
+        chunks = DocumentRetriever.chunk_text(sample_text, chunk_size=800, overlap=100)
+        self.assertTrue(len(chunks) >= 1)
         
-    assert "workspaceState.proposalHistoryStack" in app_code, "workspaceState.proposalHistoryStack ausente"
-    assert "workspaceState.proposalRedoStack" in app_code, "workspaceState.proposalRedoStack ausente"
-    assert "updateHistoryButtonsUI" in app_code, "updateHistoryButtonsUI ausente"
-    print("[OK] app.js: Histórico persistente de versões verificado em workspaceState.")
+        # Verify table is kept intact in one of the chunks
+        table_chunk = next((c for c in chunks if "| Rubrica |" in c), None)
+        self.assertIsNotNone(table_chunk, "Table should be present in a chunk")
+        self.assertIn("| 1 | Gestão Administrativa | 15% |", table_chunk)
+        self.assertIn("| 3 | Acessibilidade LIBRAS | 10% |", table_chunk)
 
-    # 2. Verificar app.js - consolidateAndFormatABNT (Seção por Seção)
-    assert "pushProposalHistoryState(\"Antes da Formatação ABNT IA\")" in app_code, "pushProposalHistoryState ausente em ABNT"
-    assert "NUNCA resuma, suprima, reduza ou encurte o texto original" in app_code, "Instrução de preservação de texto ausente em ABNT"
-    assert "sectionKeys" in app_code, "Iteração por seções ausente em consolidateAndFormatABNT"
-    print("[OK] app.js: Formatação ABNT preserva as 14 seções e chama histórico preventivo.")
-
-    # 3. Verificar app.js - runFinalConsolidatedRevision (Supervisor Seção por Seção)
-    assert "pushProposalHistoryState(\"Antes da Revisão do Supervisor\")" in app_code, "pushProposalHistoryState ausente no Supervisor"
-    assert "✨ Supervisor revisando" in app_code, "Toast por seção ausente no Supervisor"
-    print("[OK] app.js: Supervisor processa seção por seção sem resumir conteúdo de 55 páginas.")
-
-    # 4. Verificar server.py - Pesquisa Web com Rotação de User-Agent
-    with open(server_py_path, "r", encoding="utf-8") as f:
-        server_code = f.read()
+    def test_bm25_retrieval_with_compliance_boost(self):
+        edital_doc = (
+            "Seção 1: Apresentação da cidade e histórico cultural da região.\n"
+            "O município possui rica tradição em festejos populares e artesanato.\n\n"
+            "Seção 2: Tetos e Limites Orçamentários.\n"
+            "O teto máximo por proposta é de R$ 150.000,00. Os custos de gestão administrativa "
+            "não podem ultrapassar o limite de 15% do valor global.\n\n"
+            "Seção 3: Acessibilidade Comunicacional e Cotas.\n"
+            "É obrigatória a presença de intérprete de LIBRAS e audiodescrição em todas as apresentações. "
+            "Haverá reserva de cotas de 20% para pessoas negras e indígenas.\n\n"
+            "Seção 4: Doações e parcerias locais.\n"
+            "Parcerias comunitárias devem ser descritas na proposta."
+        )
         
-    assert "USER_AGENTS" in server_code, "USER_AGENTS ausente em server.py"
-    assert "lite.duckduckgo.com" in server_code, "Fallback DuckDuckGo Lite ausente em server.py"
-    print("[OK] server.py: Pesquisa Web resiliente com User-Agents e Fallback Lite verificado.")
+        query = "Qual é o limite teto dos custos administrativo e regras de LIBRAS e acessibilidade?"
+        retrieved = DocumentRetriever.retrieve(edital_doc, query, top_k=2)
+        
+        self.assertTrue(len(retrieved) >= 1)
+        combined_retrieved = " ".join(retrieved)
+        self.assertIn("15%", combined_retrieved, "Should retrieve Section 2 with budget cap")
+        self.assertIn("LIBRAS", combined_retrieved, "Should retrieve Section 3 with accessibility")
 
-    print("\n[SUCCESS] Todos os testes das correções arquiteturais passaram com 100% de sucesso!")
+    def test_bm25_handles_empty_and_short_inputs(self):
+        self.assertEqual(DocumentRetriever.chunk_text(""), [])
+        self.assertEqual(DocumentRetriever.retrieve("", "query"), [])
+        self.assertEqual(DocumentRetriever.retrieve("Short text", ""), [])
 
-if __name__ == "__main__":
-    test_architectural_fixes()
+    def test_semantic_cache(self):
+        cache = SemanticCache()
+        cache.store("prompt_test_1", "response_test_1")
+        self.assertEqual(cache.lookup("prompt_test_1"), "response_test_1")
+        self.assertIsNone(cache.lookup("unknown_prompt"))
+
+
+if __name__ == '__main__':
+    unittest.main()

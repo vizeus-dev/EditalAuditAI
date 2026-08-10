@@ -2096,14 +2096,25 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos
                     retrieval_query = f"{prompt}\n{compliance_keywords}"
                     
                     if edital_text:
-                        if len(edital_text) <= 120000:
-                            # Keep 100% of the edital if it's within 120k chars (~30-40 pages)
+                        if len(edital_text) <= 150000:
+                            # Keep 100% of the edital if it's within 150k chars (~35-50 pages)
                             retrieved_context.append("=== CONTEÚDO DO EDITAL DE REFERÊNCIA ===\n" + edital_text)
                         else:
-                            # Use generous RAG for larger editais
-                            edital_chunks = DocumentRetriever.retrieve(edital_text, retrieval_query, top_k=15)
+                            # Use generous BM25 RAG for large editais (200+ pages)
+                            all_chunks = DocumentRetriever.chunk_text(edital_text)
+                            edital_chunks = DocumentRetriever.retrieve(edital_text, retrieval_query, top_k=25)
+                            
+                            # Guarantee inclusion of first chunk (header/object) and last chunk (disposições finais/prazos)
+                            if all_chunks:
+                                first_chunk = all_chunks[0]
+                                last_chunk = all_chunks[-1]
+                                if first_chunk not in edital_chunks:
+                                    edital_chunks.insert(0, first_chunk)
+                                if last_chunk not in edital_chunks and len(all_chunks) > 1:
+                                    edital_chunks.append(last_chunk)
+                                    
                             if edital_chunks:
-                                retrieved_context.append("=== TRECHOS RELEVANTES DO EDITAL ===\n" + "\n---\n".join(edital_chunks))
+                                retrieved_context.append("=== TRECHOS RELEVANTES DO EDITAL (RECUPERAÇÃO SEMÂNTICA BM25) ===\n" + "\n---\n".join(edital_chunks))
                                 
                     if annexes:
                         annex_chunks_list = []
@@ -2112,12 +2123,12 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos
                             a_content = a.get('content', '')
                             if not a_content:
                                 continue
-                            if len(a_content) <= 4000:
-                                # Keep small annexes fully
+                            if len(a_content) <= 8000:
+                                # Keep small and medium annexes fully
                                 annex_chunks_list.append(f"Anexo: {a_name}\n{a_content}")
                             else:
                                 # Use RAG for larger annexes
-                                chunks = DocumentRetriever.retrieve(a_content, retrieval_query, top_k=3)
+                                chunks = DocumentRetriever.retrieve(a_content, retrieval_query, top_k=5)
                                 if chunks:
                                     annex_chunks_list.append(f"Anexo: {a_name}\n" + "\n---\n".join(chunks))
                         if annex_chunks_list:

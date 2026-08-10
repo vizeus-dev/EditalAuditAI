@@ -15,6 +15,19 @@ window.offlineAuditor = {
     runLocalAudit: async function (workspaceState) {
         console.log('[OfflineAuditor] Iniciando pré-auditoria offline com motor de regras nativo...');
 
+        // --- 0. EXECUTAR LOCALCROSSENGINE (Motor de Cruzamento Determinístico v2.0) ---
+        let offlineDiagnostic = null;
+        if (window.LocalCrossEngine && typeof window.LocalCrossEngine.runFullDiagnostic === 'function') {
+            try {
+                offlineDiagnostic = window.LocalCrossEngine.runFullDiagnostic(workspaceState);
+                // Armazenar no workspaceState para uso pelo handoff da API
+                workspaceState.offlineDiagnostic = offlineDiagnostic;
+                console.log(`[OfflineAuditor] LocalCrossEngine executado. Score: ${offlineDiagnostic.score}/100`);
+            } catch (err) {
+                console.warn('[OfflineAuditor] Erro no LocalCrossEngine, prosseguindo com motor legado:', err);
+            }
+        }
+
         const doc = workspaceState.documentContent || {};
         const cover = workspaceState.cover || {};
         const editalText = (workspaceState.editalRefText || "").toLowerCase();
@@ -33,8 +46,10 @@ window.offlineAuditor = {
             }
         }
 
-        // --- 1. ANÁLISE ORÇAMENTÁRIA LOCAL ---
-        const budgetAnalysis = this.analyzeBudgetLocal(doc.orcamento || "", cover.budget || 0);
+        // --- 1. ANÁLISE ORÇAMENTÁRIA LOCAL (delegando ao LocalCrossEngine quando disponível) ---
+        const budgetAnalysis = offlineDiagnostic
+            ? { ...this.analyzeBudgetLocal(doc.orcamento || "", cover.budget || 0), ...offlineDiagnostic.budgetSummary }
+            : this.analyzeBudgetLocal(doc.orcamento || "", cover.budget || 0);
 
         // --- 2. ANÁLISE DOS QUESITOS DE COMPLIANCE POR EIXO ---
         const axis = workspaceState.activeAxis || "cultural";
@@ -123,7 +138,23 @@ window.offlineAuditor = {
             });
         }
 
-        // --- 5. GERAÇÃO DO RELATÓRIO GERAL EM HTML ESTRUTURADO ---
+        // --- 5. INJETAR ALERTAS DO LOCALCROSSENGINE ---
+        if (offlineDiagnostic) {
+            // Mesclar alertas do LocalCrossEngine (vermelhos e amarelos) sem duplicar
+            const existingMsgs = new Set(alertasLocais.map(a => a.descricao));
+            (offlineDiagnostic.redAlerts || []).forEach(a => {
+                if (!existingMsgs.has(a.msg)) {
+                    alertasLocais.unshift({ tipo: a.source || 'LocalCrossEngine', descricao: a.msg, sugestao: a.action, nivel: 'CRÍTICO' });
+                }
+            });
+            (offlineDiagnostic.yellowAlerts || []).forEach(a => {
+                if (!existingMsgs.has(a.msg)) {
+                    alertasLocais.push({ tipo: a.source || 'LocalCrossEngine', descricao: a.msg, sugestao: a.action, nivel: a.impact === 'risco_alto' ? 'ALTA' : 'MÉDIA' });
+                }
+            });
+        }
+
+        // --- 6. GERAÇÃO DO RELATÓRIO GERAL EM HTML ESTRUTURADO ---
         const relatorioHTML = this.buildOfflineHTMLReport(cover, notaFinalCalculada, notaTecnicaFinal, notaPriorizacaoLocal, budgetAnalysis, agentesResults, alertasLocais);
 
         const auditResponseObj = {
@@ -131,12 +162,13 @@ window.offlineAuditor = {
             nota_final: notaFinalCalculada,
             nota_tecnica: notaTecnicaFinal,
             nota_priorizacao: Math.round(notaPriorizacaoLocal * 10) / 10,
-            total_orcamento: budgetAnalysis.totalValue,
+            total_orcamento: budgetAnalysis.totalValue || budgetAnalysis.totalProjeto,
             custos_administrativos_percentual: Math.round(budgetAnalysis.adminPercent * 10) / 10,
             agentes: agentesResults,
             alertas: alertasLocais,
             ajustes: this._generateDynamicAdjustments(agentesResults, budgetAnalysis, workspaceState),
-            isOfflineResult: true
+            isOfflineResult: true,
+            offlineDiagnostic: offlineDiagnostic || null  // Objeto completo para handoff à API
         };
 
         // Salvar no banco de dados local se disponível
@@ -159,55 +191,61 @@ window.offlineAuditor = {
         const length = cleanText.length;
 
         let score = 0;
+        let confianca = "ALTA";
         const erros = [];
         const recomendacoes = [];
 
         if (length === 0) {
-            score = 30; // Inconformidade grave
+            score = 30; // Inconformidade
+            confianca = "BAIXA";
             erros.push(`A seção "${agent.title}" não foi preenchida no editor.`);
-            recomendacoes.push(`Preencha o campo "${agent.title}" utilizando as minutas do banco local.`);
+            recomendacoes.push(`Preencha o campo "${agent.title}" ou use a geração do Ingestor/Redator para compor a minuta.`);
         } else if (length < 150) {
             score = 60;
+            confianca = "MEDIA";
             erros.push(`A seção "${agent.title}" está muito sucinta (${length} caracteres).`);
-            recomendacoes.push(`Expanda a descrição para ao menos 400 caracteres com dados quantitativos.`);
+            recomendacoes.push(`Expanda a descrição para ao menos 400 caracteres com dados quantitativos e operacionais.`);
         } else {
             score = 85;
             // Verificar palavras-chave no texto da seção
             const textLower = cleanText.toLowerCase();
             let matched = 0;
-            agent.keywords.forEach(kw => {
+            const kwList = agent.keywords || [];
+            kwList.forEach(kw => {
                 if (textLower.includes(kw) || fullContext.includes(kw)) matched++;
             });
 
             if (matched >= 2) {
                 score = 95;
+                confianca = "ALTA";
             } else {
-                erros.push(`Falta citação explícita de termos essenciais (${agent.keywords.slice(0, 3).join(', ')}).`);
-                recomendacoes.push(`Inclua referências formais a ${agent.keywords.slice(0, 3).join(', ')}.`);
+                confianca = "MEDIA";
+                erros.push(`A seção pode ser enriquecida com termos técnicos específicos (${kwList.slice(0, 3).join(', ')}).`);
+                recomendacoes.push(`Inclua detalhamento específico sobre ${kwList.slice(0, 3).join(', ')}.`);
             }
         }
 
         // Regras específicas adicionais — teto dinâmico extraído do edital
         if (agent.id === 'orcamento') {
             const adminCeiling = (agent._adminCeiling !== undefined) ? agent._adminCeiling : 15;
-            if (budgetAnalysis.adminPercent > adminCeiling) {
+            if (budgetAnalysis && budgetAnalysis.hasData && budgetAnalysis.adminPercent > adminCeiling) {
                 score = Math.min(score, 55);
                 erros.push(`Custos administrativos em ${budgetAnalysis.adminPercent.toFixed(1)}% (teto do edital: ${adminCeiling}%).`);
                 recomendacoes.push(`Reorganize a planilha orçamentária para ficar abaixo de ${adminCeiling}% em rubricas administrativas.`);
             }
         }
 
-        if (agent.id === 'acessibilidade' && !/libras|audiodescrição|rampa|braille/i.test(cleanText)) {
-            score = Math.min(score, 65);
-            erros.push("Ausência de menção clara a LIBRAS ou Audiodescrição.");
-            recomendacoes.push("Adicione parágrafo especificando intérprete de LIBRAS em todas as apresentações.");
+        if (agent.id === 'acessibilidade' && !/libras|audiodescrição|rampa|braille|pcd/i.test(cleanText)) {
+            score = Math.min(score, 70);
+            erros.push("Ausência de menção explícita a medidas de acessibilidade sensorial (LIBRAS/Audiodescrição) ou física.");
+            recomendacoes.push("Adicione previsão de intérprete de LIBRAS ou audiodescrição em conformidade com as diretrizes do edital.");
         }
 
         let parecerHTML = `<p><strong>Diagnóstico Local:</strong> A área de <em>${agent.title}</em> atingiu pontuação <strong>${score}/100</strong>.</p>`;
         if (erros.length > 0) {
             parecerHTML += `<p><strong>Pendências Identificadas:</strong></p><ul>${erros.map(e => `<li>${e}</li>`).join('')}</ul>`;
         } else {
-            parecerHTML += `<p><strong>Conformidade:</strong> O texto atende satisfatoriamente às diretrizes básicas de fomento cultural.</p>`;
+            parecerHTML += `<p><strong>Conformidade:</strong> O texto atende satisfatoriamente às diretrizes básicas do projeto.</p>`;
         }
         if (recomendacoes.length > 0) {
             parecerHTML += `<p><strong>Sugestão Otimizada:</strong> ${recomendacoes[0]}</p>`;
@@ -216,6 +254,7 @@ window.offlineAuditor = {
         return {
             id: agent.id,
             nota: score,
+            confianca: confianca,
             parecer: parecerHTML,
             erros: erros,
             recomendacoes: recomendacoes
@@ -223,11 +262,12 @@ window.offlineAuditor = {
     },
 
     /**
-     * Analisa custos e percentuais da planilha local
+     * Analisa custos e percentuais da planilha local sem inventar dados fictícios
      */
     analyzeBudgetLocal: function (orcamentoText, coverBudget) {
         let totalValue = coverBudget || 0;
         let adminCosts = 0;
+        let foundNumbers = false;
 
         // Tentar extrair números da planilha se for texto formatado
         const lines = (orcamentoText || "").split('\n');
@@ -237,6 +277,7 @@ window.offlineAuditor = {
                 const numStr = matchVal[1].replace(/\./g, '').replace(',', '.');
                 const val = parseFloat(numStr);
                 if (!isNaN(val) && val > 0) {
+                    foundNumbers = true;
                     if (totalValue === 0) totalValue += val;
                     if (/coordena|direção|gestão|administra/i.test(line)) {
                         adminCosts += val;
@@ -245,15 +286,15 @@ window.offlineAuditor = {
             }
         }
 
-        if (totalValue === 0) totalValue = 100000; // Valor base fallback
-        if (adminCosts === 0) adminCosts = totalValue * 0.12; // 12% estipulado
-
-        const adminPercent = (adminCosts / totalValue) * 100;
+        const hasData = Boolean(foundNumbers || coverBudget > 0);
+        const adminPercent = (totalValue > 0) ? (adminCosts / totalValue) * 100 : 0;
 
         return {
             totalValue: totalValue,
             adminCosts: adminCosts,
-            adminPercent: adminPercent
+            adminPercent: adminPercent,
+            hasData: hasData,
+            confidence: hasData ? "ALTA" : "BAIXA"
         };
     },
 

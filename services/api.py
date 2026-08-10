@@ -35,45 +35,219 @@ class SemanticCache:
 
 
 # ----------------------------------------------------
-# 2. Document Chunking & BM25-lite Retrieval (RAG)
+# 2. Document Chunking & BM25-Weighted Retrieval (RAG)
 # ----------------------------------------------------
 class DocumentRetriever:
-    @staticmethod
-    def chunk_text(text, chunk_size=1200, overlap=200):
-        if not text:
+    SECTION_HEADER_PATTERN = re.compile(
+        r'^(?:(?:CAP[ÍI]TULO|SE[ÇC][ÃA]O|T[ÍI]TULO|ANEXO|CL[ÁA]USULA|ITEM|ARTIGO|Art\.|§)\s*[\d\.\w\-]+|#{1,4}\s+.+|[A-Z0-9\s\-]{4,50}:)',
+        re.MULTILINE | re.IGNORECASE
+    )
+
+    COMPLIANCE_BOOST_TERMS = {
+        "r$", "orcamento", "orçamento", "limite", "teto", "custos", "administrativo",
+        "gestao", "gestão", "coordenacao", "coordenação", "acessibilidade", "libras",
+        "audiodescricao", "audiodescrição", "cotas", "afirmativa", "certidao", "certidão",
+        "cnd", "cndt", "fgts", "ecad", "sisgen", "contrapartida", "cronograma", "prazo",
+        "penalidade", "glosa", "habilitacao", "habilitação", "desclassificacao", "desclassificação",
+        "vedado", "vedada", "vedacao", "vedação", "inelegivel", "inelegível", "priorizacao",
+        "priorização", "criterio", "critério", "barema", "pontuacao", "pontuação"
+    }
+
+    _CHUNK_CACHE = {}  # In-memory LRU-style cache for semantic chunks
+
+    @classmethod
+    def chunk_text(cls, text, chunk_size=1400, overlap=200):
+        """
+        Semantic chunker with instant in-memory memoization that:
+        1. Preserves table blocks (Markdown & HTML) without splitting them mid-row
+        2. Respects section headers and natural paragraph boundaries
+        3. Maintains an overlap across chunk boundaries
+        """
+        if not text or not text.strip():
             return []
+
+        # Check cache
+        cache_key = hashlib.md5(f"{len(text)}:{chunk_size}:{overlap}:{text[:200]}".encode('utf-8')).hexdigest()
+        if cache_key in cls._CHUNK_CACHE:
+            return cls._CHUNK_CACHE[cache_key]
+
+        # Split text into logical semantic blocks (tables, paragraphs, sections)
+        raw_paragraphs = re.split(r'\n\s*\n', text)
+        blocks = []
+        current_section = "Introdução / Disposições Iniciais"
+        
+        in_html_table = False
+        table_buffer = []
+
+        for para in raw_paragraphs:
+            p = para.strip()
+            if not p:
+                continue
+
+            # Detect section header
+            first_line = p.split('\n')[0].strip()
+            if cls.SECTION_HEADER_PATTERN.match(first_line):
+                current_section = first_line[:80]
+
+            # Detect HTML tables
+            if "<table" in p.lower():
+                in_html_table = True
+            
+            if in_html_table:
+                table_buffer.append(p)
+                if "</table>" in p.lower():
+                    in_html_table = False
+                    blocks.append({
+                        "text": "\n\n".join(table_buffer),
+                        "section": current_section,
+                        "is_table": True
+                    })
+                    table_buffer = []
+                continue
+
+            # Detect Markdown tables
+            is_md_table = sum(1 for line in p.split('\n') if '|' in line) >= 2
+            if is_md_table:
+                blocks.append({
+                    "text": p,
+                    "section": current_section,
+                    "is_table": True
+                })
+                continue
+
+            blocks.append({
+                "text": p,
+                "section": current_section,
+                "is_table": False
+            })
+
+        if table_buffer:
+            blocks.append({
+                "text": "\n\n".join(table_buffer),
+                "section": current_section,
+                "is_table": True
+            })
+
+        # Assemble chunks with size constraints and overlap
         chunks = []
-        start = 0
-        while start < len(text):
-            end = start + chunk_size
-            chunks.append(text[start:end])
-            start += chunk_size - overlap
-            if start >= len(text) or chunk_size - overlap <= 0:
-                break
+        current_chunk_blocks = []
+        current_chunk_len = 0
+        current_chunk_section = current_section
+
+        for block in blocks:
+            b_text = block["text"]
+            b_len = len(b_text)
+
+            # If a single table/block is very large, keep it intact or cleanly split
+            if b_len > chunk_size and not current_chunk_blocks:
+                chunks.append(f"[{block['section']}]\n{b_text}")
+                continue
+
+            if current_chunk_len + b_len > chunk_size and current_chunk_blocks:
+                chunk_str = f"[{current_chunk_section}]\n" + "\n\n".join(current_chunk_blocks)
+                chunks.append(chunk_str)
+
+                # Keep the last block for overlap if small enough
+                last_block = current_chunk_blocks[-1]
+                if len(last_block) <= overlap:
+                    current_chunk_blocks = [last_block, b_text]
+                    current_chunk_len = len(last_block) + b_len
+                else:
+                    current_chunk_blocks = [b_text]
+                    current_chunk_len = b_len
+                current_chunk_section = block["section"]
+            else:
+                if not current_chunk_blocks:
+                    current_chunk_section = block["section"]
+                current_chunk_blocks.append(b_text)
+                current_chunk_len += b_len
+
+        if current_chunk_blocks:
+            chunk_str = f"[{current_chunk_section}]\n" + "\n\n".join(current_chunk_blocks)
+            chunks.append(chunk_str)
+
+        # Store in LRU cache (limit size to 50 items)
+        if len(cls._CHUNK_CACHE) > 50:
+            cls._CHUNK_CACHE.clear()
+        cls._CHUNK_CACHE[cache_key] = chunks
+
         return chunks
 
     @classmethod
-    def retrieve(cls, document_text, query_text, top_k=3):
+    def retrieve(cls, document_text, query_text, top_k=15):
+        """
+        BM25-weighted retriever with query expansion and domain-specific boosting
+        for regulatory compliance keywords.
+        """
         if not document_text or not query_text:
             return []
+
         chunks = cls.chunk_text(document_text)
         if not chunks:
             return []
         
-        # Simple TF-IDF/Jaccard scoring for retrieval
-        query_words = set(re.findall(r'\w+', query_text.lower()))
-        scored_chunks = []
+        if len(chunks) <= top_k:
+            return chunks
+
+        # Tokenize query and chunks
+        import math
+        tokenize = lambda t: re.findall(r'[a-zA-Z0-9áàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ$%\.]+', t.lower())
         
-        for chunk in chunks:
-            chunk_words = set(re.findall(r'\w+', chunk.lower()))
-            overlap = query_words.intersection(chunk_words)
-            # Score is word overlap normalized by chunk word count (prioritizing density)
-            score = len(overlap) / (len(chunk_words) or 1)
-            scored_chunks.append((score, chunk))
-            
+        query_tokens = tokenize(query_text)
+        if not query_tokens:
+            return chunks[:top_k]
+
+        doc_tokens_list = [tokenize(c) for c in chunks]
+        N = len(chunks)
+        avgdl = sum(len(dt) for dt in doc_tokens_list) / (N or 1)
+
+        # Compute document frequencies
+        df = {}
+        for dt in doc_tokens_list:
+            seen = set(dt)
+            for token in seen:
+                df[token] = df.get(token, 0) + 1
+
+        # Calculate BM25 score for each chunk
+        k1 = 1.5
+        b = 0.75
+        scored_chunks = []
+
+        for idx, (chunk, doc_tokens) in enumerate(zip(chunks, doc_tokens_list)):
+            doc_len = len(doc_tokens)
+            doc_tf = {}
+            for t in doc_tokens:
+                doc_tf[t] = doc_tf.get(t, 0) + 1
+
+            score = 0.0
+            for qt in query_tokens:
+                if qt in doc_tf:
+                    freq = doc_tf[qt]
+                    # IDF
+                    doc_freq = df.get(qt, 0)
+                    idf = math.log(1 + (N - doc_freq + 0.5) / (doc_freq + 0.5))
+                    
+                    # Boost critical compliance terms
+                    boost = 2.5 if qt in cls.COMPLIANCE_BOOST_TERMS else 1.0
+                    
+                    # BM25 term score
+                    num = freq * (k1 + 1)
+                    denom = freq + k1 * (1 - b + b * (doc_len / (avgdl or 1)))
+                    score += idf * (num / (denom or 1)) * boost
+
+            # Boost chunks containing tables or percentage limits
+            if "%" in chunk or "R$" in chunk:
+                score += 1.5
+
+            scored_chunks.append((score, idx, chunk))
+
         scored_chunks.sort(key=lambda x: x[0], reverse=True)
-        # Return top K chunks
-        return [chunk for score, chunk in scored_chunks[:top_k]]
+        
+        # Return the top K unique chunks, maintaining natural reading order for top hits
+        top_entries = scored_chunks[:top_k]
+        top_entries.sort(key=lambda x: x[1]) # re-sort by document order for coherence
+        
+        return [chunk for _, _, chunk in top_entries]
 
 
 # ----------------------------------------------------
@@ -85,7 +259,7 @@ class LLMProvider:
 
 class GeminiProvider(LLMProvider):
     MAX_PROMPT_CHARS = 300000  # ~75k tokens safety limit
-    API_TIMEOUT = 120  # seconds — increased to handle large structured JSON output
+    API_TIMEOUT = 180  # seconds — generous window for complex financial and regulatory calculations
     def generate(self, prompt, model, api_key, system_instruction=None, ollama_url=None, response_schema=None):
         # Default to gemini-3.5-flash if model not supplied or using deprecated/legacy model strings
         deprecated_models = {"gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-2.5-flash"}

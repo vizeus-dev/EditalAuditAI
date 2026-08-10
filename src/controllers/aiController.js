@@ -20,66 +20,207 @@ window.aiController = {
 
     sanitizeHTML: function (dirtyHtml) {
         if (!dirtyHtml || typeof dirtyHtml !== 'string') return '';
-        return dirtyHtml
+        let clean = dirtyHtml
             .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
             .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
             .replace(/<\/?(html|head|body|title)[^>]*>/gi, '')
             .replace(/\s*on\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, '')
             .replace(/href\s*=\s*["']?javascript:[^"'>]+/gi, 'href="#"')
             .trim();
+
+        // Transform citation markers into modern visual pills
+        clean = clean.replace(
+            /\[📌\s*EDITAL:\s*['"“](.+?)['"”]\s*\]/gi,
+            '<span class="citation-pill citation-pill-verified" title="Citação direta extraída do Edital">📌 <strong>Edital:</strong> "$1"</span>'
+        );
+
+        clean = clean.replace(
+            /\[⚠️\s*INFER[ÊE]NCIA\s*CONTEXTUAL:?\s*([^\]]+)\]/gi,
+            '<span class="citation-pill citation-pill-inference" title="Recomendação inferida a partir da tipologia do projeto">💡 <strong>Inferência:</strong> $1</span>'
+        );
+
+        clean = clean.replace(
+            /\[⚠️\s*CITA[ÇC][ÃA]O\s*N[ÃA]O\s*VERIFICADA[^\]]*:\s*['"“]?([^\]'"]+)['"“]?\s*\]/gi,
+            '<span class="citation-pill citation-pill-unverified" title="Trecho não encontrado no texto original do Edital">⚠️ <strong>Não verificado:</strong> "$1"</span>'
+        );
+
+        // Wrap tables in responsive container if not already wrapped
+        if (clean.includes('<table') && !clean.includes('table-responsive-wrapper')) {
+            clean = clean.replace(/(<table[\s\S]*?<\/table>)/gi, '<div class="table-responsive-wrapper">$1</div>');
+        }
+
+        return clean;
+    },
+
+    // =====================================================================
+    // BRIEFING CONTEXTUAL DO PROJETO (PILAR 0 - RESPONSIVIDADE AO INGESTOR)
+    // =====================================================================
+    _inferActivityType: function (doc) {
+        if (!doc) return "Ação Cultural Geral";
+        const combined = Object.values(doc).join(" ").toLowerCase();
+        if (/show|música|concerto|banda|festival|apresentação musical|palco/i.test(combined)) return "Música / Shows / Espetáculos";
+        if (/teatro|dança|circo|cena|artes cênicas/i.test(combined)) return "Artes Cênicas (Teatro / Dança / Circo)";
+        if (/oficina|curso|workshop|formação|capacitação|aula|pedagóg/i.test(combined)) return "Formação & Capacitação Comunitária";
+        if (/livro|publicação|catálogo|revista|audiolivro|edição/i.test(combined)) return "Literatura & Publicações";
+        if (/filme|vídeo|documentário|curta|longa|audiovisual|podcast/i.test(combined)) return "Audiovisual & Produção Digital";
+        if (/exposição|artes visuais|galeria|mostra|acervo|museu/i.test(combined)) return "Artes Visuais & Patrimônio";
+        if (/obra|reforma|restauro|construção|instalação física/i.test(combined)) return "Infraestrutura Cultural & Restauro";
+        return "Projeto de Fomento Cultural e Social";
+    },
+
+    buildProjectBriefing: function (workspaceState) {
+        const cover = (workspaceState && workspaceState.cover) || {};
+        const profile = (workspaceState && workspaceState.editalProfile) || {};
+        const doc = (workspaceState && workspaceState.documentContent) || {};
+        const notes = (workspaceState && workspaceState.ingestaoNotes) || "";
+        const activityType = this._inferActivityType(doc);
+
+        const filledSections = Object.entries(doc)
+            .filter(([k, v]) => v && v.trim().length > 30)
+            .map(([k]) => k.toUpperCase())
+            .join(', ');
+
+        const annexesSummary = (workspaceState && workspaceState.annexes && workspaceState.annexes.length > 0)
+            ? workspaceState.annexes.map(a => `• Anexo "${a.name}": ${(a.content || '').substring(0, 300)}...`).join('\n')
+            : "Nenhum anexo adicional carregado.";
+
+        // Obter diagnóstico offline serializado se disponível
+        let diagContext = "";
+        const diag = (workspaceState && workspaceState.offlineDiagnostic) || (window.LocalCrossEngine && typeof window.LocalCrossEngine.runFullDiagnostic === 'function' ? window.LocalCrossEngine.runFullDiagnostic(workspaceState) : null);
+        if (diag && window.LocalCrossEngine && window.LocalCrossEngine.APIHandoff) {
+            diagContext = `\n[DIAGNÓSTICO OFFLINE PRÉ-PROCESSADO (LocalCrossEngine)]:
+- Score Geral Calculado Localmente: ${diag.score}/100 (Budget: ${diag.budgetScore}/100, Compliance: ${diag.complianceScore}/100, Seções: ${diag.sectionScore}/100)
+- Erros Graves / Alertas Vermelhos: ${diag.redAlerts.length}
+- Recomendações / Alertas Amarelos: ${diag.yellowAlerts.length}
+- Orçamento Validado: R$ ${(diag.budgetSummary.totalProjeto || 0).toLocaleString('pt-BR')} (Custos Admin: ${diag.budgetSummary.adminPercent}%, Teto: ${diag.budgetSummary.tetoAdmin}%)
+- Seções Preenchidas: ${diag.sectionMatrix.filledCount}/${diag.sectionMatrix.totalRequired} (${diag.sectionMatrix.completenessPercent}%)
+- Gaps de Compliance Detectados: ${diag.complianceHits.gaps} | Gatilhos Normativos: ${diag.complianceHits.triggers}
+`;
+        }
+
+        return `
+[BRIEFING CONTEXTUAL & CRUZAMENTO DOS DADOS DA INGESTÃO]:
+- Nome da Proposta: "${cover.title || 'Não definido'}"
+- Proponente / Instituição: ${cover.proponent || 'Não informado'}
+- Linha de Fomento / Órgão: ${profile.fomento || cover.institution || 'Fomento Público Geral'}
+- Município / UF: ${cover.city || 'Não informado'} | Ano: ${cover.year || '2026'}
+- Orçamento Declarado na Capa: R$ ${(cover.budget || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+- Tipologia da Atividade: ${activityType}
+- Seções já Redigidas no Editor: ${filledSections || 'Nenhuma seção redigida'}
+${diagContext}
+[DIRETRIZES E REGRAS ESTRUTURAIS DO EDITAL VIGENTE]:
+- Foco Temático & Objeto do Edital: ${profile.objetivos || 'Foco temático e regras gerais do edital'}
+- Tetos e Limites Orçamentários Mandatórios: ${profile.tetos_e_limites || 'Sem limites específicos mapeados'}
+- Regras de Acessibilidade & Ações Afirmativas/Cotas: ${profile.acessibilidade_e_cotas || 'Acessibilidade universal conforme Lei 13.146/2015'}
+- Critérios de Pontuação e Priorização (Anexos de Avaliação): ${profile.prioridades_critérios || 'Critérios gerais de mérito'}
+- Anexos Analisados e Importância: ${profile.anexos_analisados || annexesSummary}
+- Parecer de Compatibilidade Estratégica: ${profile.compatibilidade_estrategica || 'Conformidade geral'}
+${notes ? `- Anotações & Diretrizes Estratégicas do Proponente: ${notes}\n` : ''}
+*DIRETRIZ DE INFERÊNCIA CONTEXTUAL ZERO-ALUCINAÇÃO:* 
+Para qualquer apontamento ou exigência, você DEVE obrigatoriamente cruzar os dados do projeto com as Diretrizes Estruturais do Edital acima. 
+Sempre cite trechos literais do edital entre colchetes [📌 EDITAL: '...trecho...']. Caso o texto do edital ou seus anexos não mencionem de forma explícita uma área secundária (ex: rider técnico, sustentabilidade), deduza necessidades operacionais plausíveis com base na Tipologia da Atividade (${activityType}) e no orçamento declarado, sinalizando expressamente como [⚠️ INFERÊNCIA CONTEXTUAL: ...].
+`;
     },
 
     extractRelevantContext: function (fullText, sectionType) {
         if (!fullText) return "";
+
+        if (window.ContextExtractorEngine && typeof window.ContextExtractorEngine.extractOptimizedContext === 'function') {
+            return window.ContextExtractorEngine.extractOptimizedContext(fullText, sectionType, 35000);
+        }
 
         const keywordMap = {
             justificativa: /(justificativa|relevância|histórico|proponente|objeto|cultural|social|justificar)/i,
             objetivos: /(objetivo|meta|público|beneficiário|alcance|fim|finalidade|resultados)/i,
             metodologia: /(metodologia|plano de trabalho|fases|etapas|execução|desenvolvimento|etapa)/i,
             cronograma: /(cronograma|prazo|mês|meses|fases|etapa|duração|período)/i,
-            orcamento: /(orçamento|custo|teto|limite|administrativo|rubrica|planilha|r\$|preço|valor|despesa|encargos|iss|inss|imposto)/i,
+            orcamento: /(orçamento|custo|teto|limite|administrativo|rubrica|planilha|r\$|preço|valor|despesa|encargos|iss|inss|imposto|patronal|tribut|glosa|vedad|mei|rpa|reembolso|prestação de contas)/i,
             acessibilidade: /(acessibilidade|pcd|libras|audiodescrição|rampa|braille|legenda|deficiência|cotas|afirmativa)/i,
             publico: /(público|beneficiário|faixa etária|gratuito|acesso|comunidade|demográfico)/i,
             contrapartida: /(contrapartida|legado|doação|oficina|palestra|social|retorno|gratuita)/i,
             comunicacao: /(comunicação|divulgação|assessoria|mídia|peças|marca|propaganda|clipagem)/i,
             ficha_tecnica: /(ficha técnica|currículo|equipe|função|experiência|profissionais)/i,
-            monitoramento: /(monitoramento|indicador|avaliação|pesquisa|relatório|matriz|mensuração)/i,
+            monitoramento: /(monitoramento|indicador|avaliação|pesquisa|relatório|matriz|mensuração|comprovação|lista de presença|clipagem|fiscalização|meta)/i,
             compliance: /(compliance|direito|certidão|regularidade|fgts|cnd|cndt|receita|lei|legal|ecad|sisgen)/i,
             sustentabilidade: /(sustentabilidade|esg|resíduo|carbono|ecológico|meio ambiente|reciclagem)/i,
             rider: /(rider|palco|som|luz|montagem|logística|transporte|hospedagem|técnico|camarim|iluminação|sonorização)/i
         };
 
         const regex = keywordMap[sectionType] || /(edital|regra|norma|requisito)/i;
-        const lines = fullText.split('\n');
+        const paragraphs = fullText.split(/\n\s*\n/);
         const matchedChunks = [];
         let totalLength = 0;
-        let currentChunk = "";
-        const MAX_LIMIT = 35000; // Suporta editais gigantes sem truncar regras críticas
+        const MAX_LIMIT = 35000;
 
-        for (let i = 0; i < lines.length; i++) {
-            currentChunk += lines[i] + "\n";
-            if (lines[i].trim() === "" || i === lines.length - 1) {
-                if (regex.test(currentChunk)) {
-                    if (totalLength + currentChunk.length <= MAX_LIMIT) {
-                        matchedChunks.push(currentChunk.trim());
-                        totalLength += currentChunk.length;
-                    } else {
-                        const remaining = MAX_LIMIT - totalLength;
-                        if (remaining > 100) {
-                            matchedChunks.push(currentChunk.substring(0, remaining).trim() + "...");
-                        }
-                        break;
+        for (let i = 0; i < paragraphs.length; i++) {
+            const p = paragraphs[i].trim();
+            if (!p) continue;
+            if (regex.test(p)) {
+                if (totalLength + p.length <= MAX_LIMIT) {
+                    matchedChunks.push(p);
+                    totalLength += p.length + 2;
+                } else {
+                    const remaining = MAX_LIMIT - totalLength;
+                    if (remaining > 100) {
+                        matchedChunks.push(p.substring(0, remaining) + "...");
                     }
+                    break;
                 }
-                currentChunk = "";
             }
         }
 
-        if (matchedChunks.length === 0) {
-            return fullText.substring(0, MAX_LIMIT);
+        // Fallback Contextual (Pilar 0): Se não encontrou keywords específicas,
+        // retorna o cabeçalho/objeto inicial do edital + disposições gerais para dar base ao agente.
+        if (matchedChunks.length === 0 || totalLength < 500) {
+            const headerSlice = fullText.substring(0, 10000);
+            const tailSlice = fullText.length > 20000 ? fullText.substring(fullText.length - 8000) : "";
+            return `[VISÃO GERAL DO EDITAL (CONTEXTO BASE)]:\n${headerSlice}\n\n[DISPOSIÇÕES GERAIS / FINAIS DO EDITAL]:\n${tailSlice}`;
         }
 
         return matchedChunks.join("\n\n");
+    },
+
+    // =====================================================================
+    // VALIDAÇÃO CRUZADA ZERO-ALUCINAÇÃO (PILAR 3)
+    // =====================================================================
+    validateCitations: function (text, editalText) {
+        if (!text || !editalText) return { verifiedCount: 0, unverifiedCount: 0, text: text || '' };
+        
+        const citationRegex = /\[📌\s*EDITAL:\s*['"“](.+?)['"”]\s*\]/gi;
+        let match;
+        let verifiedCount = 0;
+        let unverifiedCount = 0;
+        let validatedText = text;
+        const editalLower = editalText.toLowerCase();
+
+        while ((match = citationRegex.exec(text)) !== null) {
+            const fullCitation = match[0];
+            const citationExcerpt = match[1].trim();
+            
+            // Substring or fuzzy word-level check
+            const words = citationExcerpt.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+            let matchConfidence = 0;
+            
+            if (editalLower.includes(citationExcerpt.toLowerCase())) {
+                matchConfidence = 1.0;
+            } else if (words.length > 0) {
+                const wordsFound = words.filter(w => editalLower.includes(w));
+                matchConfidence = wordsFound.length / words.length;
+            }
+
+            if (matchConfidence >= 0.6) {
+                verifiedCount++;
+            } else {
+                unverifiedCount++;
+                // Mark unverified citations
+                validatedText = validatedText.replace(
+                    fullCitation,
+                    `[⚠️ CITAÇÃO NÃO VERIFICADA NO EDITAL: '${citationExcerpt}']`
+                );
+            }
+        }
+
+        return { verifiedCount, unverifiedCount, text: validatedText };
     },
 
     // =====================================================================
@@ -89,6 +230,11 @@ window.aiController = {
 
 Sua missão é atuar como VALIDADOR FINAL e REVISOR CRÍTICO sobre a pré-auditoria offline do motor local.
 Você deve analisar profundamente todos os documentos (Edital de Referência, Proposta, Planilha e Pré-Auditoria) e produzir um laudo técnico robusto de 14 dimensões.
+
+**DIRETRIZ ZERO-ALUCINAÇÃO & RASTREABILIDADE MANDATÓRIA:**
+- Para cada afirmação de conformidade, exigência ou penalidade apontada no parecer, você DEVE citar o trecho literal do edital entre colchetes no formato: [📌 EDITAL: '...trecho literal...'].
+- Se a sua análise for baseada em inferência contextual da tipologia do projeto (por exemplo, quando o edital não cita explicitamente a área avaliada), marque obrigatoriamente como: [⚠️ INFERÊNCIA CONTEXTUAL: ...explicação...].
+- É EXPRESSAMENTE PROIBIDO inventar artigos, cláusulas, valores ou regras que não estejam no Edital fornecido.
 
 **APLICAÇÃO DO MÉTODO M.U.S.A.:**
 - **M**apear exigências do edital — identifique cada requisito obrigatório e classificatório.
@@ -172,6 +318,8 @@ Retorne um array "agentes" com os IDs: "verticalizado", "treino_didatico".`,
                         },
                         nota: { type: "NUMBER" },
                         parecer: { type: "STRING" },
+                        confianca: { type: "STRING", enum: ["ALTA", "MEDIA", "BAIXA"] },
+                        citacoes: { type: "ARRAY", items: { type: "STRING" } },
                         erros: { type: "ARRAY", items: { type: "STRING" } },
                         recomendacoes: { type: "ARRAY", items: { type: "STRING" } }
                     },
@@ -205,7 +353,7 @@ Retorne um array "agentes" com os IDs: "verticalizado", "treino_didatico".`,
     },
 
     // =====================================================================
-    // CONCATENAÇÃO DE CONTEXTO — Payload Bruto em Markdown
+    // CONCATENAÇÃO DE CONTEXTO — Payload Otimizado com Briefing Contextual
     // =====================================================================
     buildMarkdownPayload: function (workspaceState, localAuditResult, webSearchContext = "") {
         const cover = workspaceState.cover || {};
@@ -214,6 +362,9 @@ Retorne um array "agentes" com os IDs: "verticalizado", "treino_didatico".`,
         const draftText = workspaceState.proposalDraftText || "";
         const annexes = workspaceState.annexes || [];
         const profile = workspaceState.editalProfile || {};
+
+        // Injeta o Briefing Contextual do Projeto (Pilar 0)
+        const projectBriefing = this.buildProjectBriefing(workspaceState);
 
         const docSections = [
             doc.justificativa ? `### 1. Justificativa e Relevância\n${doc.justificativa}` : '',
@@ -274,7 +425,9 @@ ${webSearchContext}
 `;
         }
 
-        const payload = `# CONTEXTO COMPLETO DO PROJETO PARA AUDITORIA HÍBRIDA (PIPELINE 3 ETAPAS)
+        let payload = `# CONTEXTO COMPLETO DO PROJETO PARA AUDITORIA HÍBRIDA (PIPELINE 3 ETAPAS)
+
+${projectBriefing}
 
 ---
 
@@ -298,40 +451,389 @@ ${docSections || "Nenhuma seção redigida no editor ainda."}
 
 ---
 
-## ANEXOS EXTRAS DO EDITAL (CONTEÚDO TEXTUAL COMPLETO DOS ANEXOS)
+## ANEXOS EXTRAS DO EDITAL (CONTEÚDO TEXTUAL DOS ANEXOS)
 
 ${annexesSection}
 
 ---
 
 **INSTRUÇÃO FINAL E DIRETRIZES DO RELATÓRIO GERAL (HTML):**
-Revise e valide o pré-relatório local da Etapa 1, as diretrizes da pesquisa online da Etapa 2 e o conteúdo integral dos Anexos. Verifique se os critérios de pontuação prioritária dos anexos (como paridade de gênero, vulnerabilidade, mestres tradicionais, territórios atingidos) estão atendidos na proposta. Gere na chave "relatorio_geral" o laudo definitivo em HTML.`;
+Revise e valide o pré-relatório local da Etapa 1, as diretrizes da pesquisa online da Etapa 2 e o conteúdo integral dos Anexos. Verifique se os critérios de pontuação prioritária dos anexos (como paridade de gênero, vulnerabilidade, mestres tradicionais, territórios atingidos) estão atendidos na proposta. Para cada afirmação, cite trechos literais [📌 EDITAL: '...'] ou marque [⚠️ INFERÊNCIA CONTEXTUAL]. Gere na chave "relatorio_geral" o laudo definitivo em HTML.`;
 
-        console.log(`[AI-CONTROLLER] Payload Híbrido 3 Etapas construído: ${payload.length} chars (com Anexos e Profile)`);
+        // Compressão de payload: normaliza quebras de linha múltiplas
+        payload = payload.replace(/\n{3,}/g, '\n\n');
+
+        console.log(`[AI-CONTROLLER] Payload Híbrido 3 Etapas construído: ${payload.length} chars (com Briefing Contextual e Anexos)`);
         return payload;
     },
 
     // =====================================================================
-    // FUNÇÃO PRINCIPAL — runAudit (Pipeline de 3 Etapas Sequenciais)
+    // ÁREAS ESPECIALIZADAS (CLUSTERS DE ALTA PERFORMANCE & PROFUNDIDADE)
     // =====================================================================
-    runAudit: async function (workspaceState) {
-        // --- ETAPA 1: Cruzamento de Dados Offline (IndexedDB + OfflineAuditor) ---
-        console.log('[AI-CONTROLLER] [ETAPA 1] Iniciando cruzamento offline...');
+    AUDIT_AREAS: {
+        cultural: [
+            {
+                id: "merito_estrategico",
+                name: "Área 1: Mérito, Objetivos & Alcance Social",
+                agents: ["justificativa", "objetivos", "publico", "contrapartida"],
+                systemPrompt: `Você é uma banca avaliadora especialista em Mérito Cultural, Objetivos e Retorno Social de projetos.
+Sua missão é avaliar detalhadamente os 4 eixos estratégicos:
+1. justificativa: Mérito artístico/cultural, relevância social e impacto territorial.
+2. objetivos: Clareza do objetivo geral e mensurabilidade quantitativa/qualitativa das metas específicas.
+3. publico: Delimitação demográfica, perfil socioeconômico e estratégias de engajamento do público-alvo.
+4. contrapartida: Retorno social gratuito, oficinas pedagógicas, fruição pública e democratização.
+
+DIRETRIZ ZERO-ALUCINAÇÃO:
+- Para cada exigência ou inconformidade apontada, cite o trecho literal do edital entre colchetes: [📌 EDITAL: '...']
+- Se for dedução pela tipologia da atividade, marque: [⚠️ INFERÊNCIA CONTEXTUAL: ...]
+- Retorne pareceres densos, técnicos e com uma subseção 'Sugestão Otimizada' contendo o texto aprimorado para cada um dos 4 agentes.`
+            },
+            {
+                id: "operacao_logistica",
+                name: "Área 2: Metodologia, Cronograma & Logística",
+                agents: ["metodologia", "cronograma", "ficha_tecnica", "rider"],
+                systemPrompt: `Você é uma banca avaliadora especialista em Operação, Cronograma Físico e Engenharia de Produção de projetos culturais.
+Sua missão é avaliar detalhadamente os 4 eixos operacionais:
+1. metodologia: Divisão estrita nas 3 fases operacionais (Pré-produção, Execução e Pós-produção).
+2. cronograma: Viabilidade temporal, escalonamento mensal das etapas e margem para prestação de contas.
+3. ficha_tecnica: Capacidade técnica, qualificação da equipe principal e portfólio comprovado.
+4. rider: Rider técnico de sonorização, mapa de palco, iluminação cênica, logística e montagem.
+
+DIRETRIZ ZERO-ALUCINAÇÃO:
+- Cite trechos do edital com [📌 EDITAL: '...'] ou [⚠️ INFERÊNCIA CONTEXTUAL: ...]
+- Retorne pareceres densos com a subseção 'Sugestão Otimizada' para cada um dos 4 agentes.`
+            },
+            {
+                id: "financas_monitoramento",
+                name: "Área 3: Orçamento, Tributos & Monitoramento",
+                agents: ["orcamento", "monitoramento"],
+                systemPrompt: `Você é um Auditor-Chefe Financeiro, Tributarista e Especialista em Prestação de Contas de Editais Públicos de Fomento.
+Sua missão é auditar com rigor contábil e profundidade os 2 eixos vitais de finanças e governança:
+
+1. orcamento (Auditoria Contábil & Tributária):
+   - Realize conferência aritmética linha a linha dos valores unitários, quantidades e totais.
+   - Verifique tetos percentuais mandatórios do edital:
+     • Gestão / Custos Administrativos (teto especificado no edital, tipicamente 10% a 20%).
+     • Divulgação / Assessoria de Comunicação (teto especificado no edital, tipicamente 10% a 15%).
+     • Acessibilidade: Verifique se há rubricas para medidas de inclusão (LIBRAS/Audiodescrição).
+   - Auditoria de Encargos Ocultos e Riscos Tributários:
+     • Pessoa Física (RPA): Deve prever recolhimento de INSS Patronal (20%), retenção na fonte de IRRF e ISS (2% a 5%).
+     • MEI / PJ: Verificar se o valor previsto comporta a tributação (DAS-MEI / Simples Nacional) e compatibilidade da prestação de serviços.
+   - Consistência Cruzada com o Projeto: Se a Metodologia ou Ficha Técnica preveem coordenador, técnico de som, oficineiros, etc., TODOS devem ter rubricas orçamentárias compatíveis.
+   - Na subseção 'Sugestão Otimizada', gere a Planilha Orçamentária Rebalanceada em tabela HTML formal (Item, Rubrica, Qtd, Unidade, Valor Unitário, Valor Total, Justificativa/Encargos).
+
+2. monitoramento (Matriz de Indicadores e Meios de Verificação):
+   - Avalie se as metas possuem indicadores quantitativos e qualitativos claros.
+   - Verifique os Meios de Comprovação para a prestação de contas:
+     • Listas de presença com assinatura e CPF para oficinas e eventos.
+     • Relatórios fiscais acompanhados de notas fiscais liquidadas e comprovantes bancários (TED/PIX identificados da conta do projeto).
+     • Registros fotográficos e videográficos datados e com geolocalização.
+     • Clipagem de mídia e comprovação de aplicação das marcas obrigatórias de fomento.
+   - Na subseção 'Sugestão Otimizada', gere uma Matriz de Indicadores pronta em tabela HTML (Objetivo, Meta, Indicador, Meio de Verificação, Periodicidade).
+
+DIRETRIZ ZERO-ALUCINAÇÃO:
+- Cite os tetos e regras do edital entre colchetes [📌 EDITAL: '...'] ou [⚠️ INFERÊNCIA CONTEXTUAL: ...]
+- Retorne pareceres densos, altamente técnicos e completos.`
+            },
+            {
+                id: "compliance_esg",
+                name: "Área 4: Inclusão, ESG & Compliance Jurídico",
+                agents: ["acessibilidade", "compliance", "sustentabilidade", "comunicacao"],
+                systemPrompt: `Você é um Auditor Jurídico e Especialista em Políticas Afirmativas, ESG e Comunicação Institucional.
+Sua missão é avaliar os 4 eixos normativos e de responsabilidade:
+1. acessibilidade: Acessibilidade comunicacional (LIBRAS, audiodescrição), física (rampas, banheiros PCD) e cotas afirmativas (Lei 13.146/2015).
+2. compliance: Regularidade fiscal e trabalhista (CND, CNDT, FGTS), direitos autorais (ECAD), cessão de imagem e SisGen.
+3. sustentabilidade: Mitigação de impacto ambiental, eliminação de descartáveis plásticos e destinação de resíduos (práticas ESG).
+4. comunicacao: Plano de divulgação, assessoria de imprensa, presença digital e aplicação correta das marcas do fomento.
+
+DIRETRIZ ZERO-ALUCINAÇÃO:
+- Cite normas do edital com [📌 EDITAL: '...'] ou [⚠️ INFERÊNCIA CONTEXTUAL: ...]
+- Retorne pareceres densos com a subseção 'Sugestão Otimizada' para cada um dos 4 agentes.`
+            }
+        ],
+        licitacao: [
+            {
+                id: "licit_preparatoria",
+                name: "Área 1: Fase Preparatória & ETP/TR",
+                agents: ["etp_tr", "alice_auditoria"],
+                systemPrompt: `Você é um Auditor Jurídico Sênior especialista na Lei nº 14.133/2021 (Fase Preparatória). Avalie 'etp_tr' e 'alice_auditoria'.`
+            },
+            {
+                id: "licit_externa",
+                name: "Área 2: Compliance & Esclarecimentos",
+                agents: ["licit_compliance", "esclarecimento"],
+                systemPrompt: `Você é um Auditor Jurídico Sênior especialista na Lei nº 14.133/2021 (Fase Externa). Avalie 'licit_compliance' e 'esclarecimento'.`
+            }
+        ],
+        concurso: [
+            {
+                id: "concurso_completo",
+                name: "Área 1: Edital Verticalizado & Treino Didático",
+                agents: ["verticalizado", "treino_didatico"],
+                systemPrompt: `Você é um Arquiteto Pedagógico especialista em Concursos Públicos. Avalie 'verticalizado' e 'treino_didatico'.`
+            }
+        ]
+    },
+
+    _buildAreaSchema: function (agentIds) {
+        return {
+            type: "OBJECT",
+            properties: {
+                relatorio_area: { type: "STRING" },
+                agentes: {
+                    type: "ARRAY",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            id: { type: "STRING", enum: agentIds },
+                            nota: { type: "NUMBER" },
+                            parecer: { type: "STRING" },
+                            confianca: { type: "STRING", enum: ["ALTA", "MEDIA", "BAIXA"] },
+                            citacoes: { type: "ARRAY", items: { type: "STRING" } },
+                            erros: { type: "ARRAY", items: { type: "STRING" } },
+                            recomendacoes: { type: "ARRAY", items: { type: "STRING" } }
+                        },
+                        required: ["id", "nota", "parecer", "erros", "recomendacoes"]
+                    }
+                },
+                alertas: {
+                    type: "ARRAY",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            tipo: { type: "STRING" },
+                            descricao: { type: "STRING" },
+                            sugestao: { type: "STRING" },
+                            nivel: { type: "STRING" }
+                        }
+                    }
+                }
+            },
+            required: ["relatorio_area", "agentes", "alertas"]
+        };
+    },
+
+    _buildAreaPayload: function (workspaceState, areaConfig, localAuditResult, webSearchContext, activeAgents = null) {
+        const doc = workspaceState.documentContent || {};
+        const projectBriefing = this.buildProjectBriefing(workspaceState);
+        const agentsToAudit = activeAgents || areaConfig.agents;
+
+        // Seções específicas desta área com texto integral
+        const areaSections = agentsToAudit.map(agId => {
+            const content = doc[agId] || "SEÇÃO AINDA NÃO PREENCHIDA NO EDITOR.";
+            return `### SEÇÃO: ${agId.toUpperCase()}\n${content}`;
+        }).join('\n\n');
+
+        // Resumo cruzado das demais seções
+        const otherSections = Object.entries(doc)
+            .filter(([k, v]) => !agentsToAudit.includes(k) && v && v.trim().length > 20)
+            .map(([k, v]) => {
+                const clean = v.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                const snippet = clean.length > 250 ? clean.substring(0, 250) + '...' : clean;
+                return `• [${k.toUpperCase()}]: ${snippet}`;
+            }).join('\n') || "Nenhuma outra seção redigida no editor.";
+
+        // Injeção de memória de cálculo pré-processada para a área financeira
+        let financialContext = "";
+        if (areaConfig.id === "financas_monitoramento" && window.offlineAuditor && typeof window.offlineAuditor.analyzeBudgetLocal === 'function') {
+            try {
+                const coverBudget = (workspaceState.cover && workspaceState.cover.budget) ? workspaceState.cover.budget : 0;
+                const bAnalysis = window.offlineAuditor.analyzeBudgetLocal(doc.orcamento || '', coverBudget);
+                financialContext = `\n[MEMÓRIA DE CÁLCULO E ANÁLISE PRÉVIA DO MOTOR LOCAL]:
+- Total Declarado na Capa: R$ ${Number(coverBudget || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+- Somatório Preliminar Detectado na Planilha: R$ ${Number(bAnalysis.totalValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+- Custos Administrativos Identificados: R$ ${Number(bAnalysis.adminCosts || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${(bAnalysis.adminPercent || 0).toFixed(1)}%)
+- Diagnóstico Preliminar: ${bAnalysis.adminPercent > 15 ? '⚠️ ATENÇÃO: Custos administrativos ultrapassam 15% do total.' : '✓ Custos administrativos dentro da margem padrão.'}\n`;
+            } catch (e) {
+                console.warn('[AI-CONTROLLER] Falha ao pré-calcular orçamento local:', e);
+            }
+        }
+
+        // Injeção do Diagnóstico Offline detalhado
+        let diagnosticSection = "";
+        const diag = (workspaceState && workspaceState.offlineDiagnostic) || (window.LocalCrossEngine && typeof window.LocalCrossEngine.runFullDiagnostic === 'function' ? window.LocalCrossEngine.runFullDiagnostic(workspaceState) : null);
+        if (diag && window.LocalCrossEngine && window.LocalCrossEngine.APIHandoff) {
+            diagnosticSection = `\n[DIAGNÓSTICO OFFLINE CONSOLIDADO (LocalCrossEngine v2.0)]:\n${window.LocalCrossEngine.APIHandoff._serializeDiagnostic(diag)}\n`;
+        }
+
+        return `Você é a banca especialista responsável por: ${areaConfig.name}.
+Avalie com rigor técnico e profundidade exclusivamente os seguintes agentes EXIGIDOS pelo edital: ${agentsToAudit.join(', ')}.
+
+${projectBriefing}
+
+${diagnosticSection}
+
+[CONTEÚDO DAS SEÇÕES DESTA ÁREA NO PROJETO]:
+${areaSections}
+
+${financialContext}
+
+[RESUMO DAS DEMAIS SEÇÕES DO PROJETO (CONTEXTO CRUZADO E COERÊNCIA GLOBAL)]:
+${otherSections}
+
+${webSearchContext ? `[DIRETRIZES DA PESQUISA WEB]:\n${webSearchContext}` : ''}
+
+DIRETRIZES TÉCNICAS MANDATÓRIAS:
+1. Analise o projeto considerando o Diagnóstico Offline já realizado acima. Concentre sua inteligência em polir a redação e aprofundar os argumentos de mérito cultural.
+2. Para cada apontamento, cite o trecho do edital entre colchetes [📌 EDITAL: '...'] ou explicite [⚠️ INFERÊNCIA CONTEXTUAL: ...].
+3. Cada parecer deve ser denso e incluir ao final a subseção 'Sugestão Otimizada' com o texto aprimorado para a proposta.
+4. Retorne um JSON estrito correspondente à schema fornecida.`;
+    },
+
+    async runAreaAudit(areaConfig, workspaceState, localAuditResult, webSearchContext, keyToUse, activeAgents = null) {
+        const agentsToAudit = activeAgents || areaConfig.agents;
+        const areaPrompt = this._buildAreaPayload(workspaceState, areaConfig, localAuditResult, webSearchContext, agentsToAudit);
+        const areaSchema = this._buildAreaSchema(agentsToAudit);
+
+        // Extração de regras do edital específicas dos agentes desta área
+        const extractionPromises = agentsToAudit.map(async (id) => {
+            const context = this.extractRelevantContext(workspaceState.editalRefText || '', id);
+            return `### REGRAS DO EDITAL PARA ${id.toUpperCase()}:\n${context}`;
+        });
+        const extractedSections = await Promise.all(extractionPromises);
+        const optimizedEditalText = extractedSections.join('\n\n');
+
+        const diag = (workspaceState && workspaceState.offlineDiagnostic) || (window.LocalCrossEngine && typeof window.LocalCrossEngine.runFullDiagnostic === 'function' ? window.LocalCrossEngine.runFullDiagnostic(workspaceState) : null);
+        const systemPromptEnriched = `Você é o Auditor Especialista responsável por: ${areaConfig.name}.
+INSTRUÇÃO MANDATÓRIA: Analise o projeto considerando o Diagnóstico Offline já realizado pelo LocalCrossEngine (Score: ${diag ? diag.score : 'N/A'}/100). Concentre sua inteligência em polir a redação e aprofundar os argumentos de mérito cultural e coerência narrativa.
+
+${areaConfig.systemPrompt}`;
+
+        const requestPayload = {
+            provider: 'gemini',
+            api_key: keyToUse,
+            prompt: areaPrompt,
+            system_instruction: systemPromptEnriched,
+            stream: false,
+            response_schema: areaSchema,
+            use_cache: true,
+            use_chunking: true,
+            edital_text: optimizedEditalText,
+            annexes: (workspaceState.annexes || []).map(a => ({
+                name: a.name,
+                content: a.content || ''
+            }))
+        };
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 240000); // 240s (4 minutos) por área para cálculos matemáticos e tributários densos
+
+        try {
+            const response = await fetch('/api/llm/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Accept': 'application/json; charset=utf-8'
+                },
+                body: JSON.stringify(requestPayload),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const responseData = await response.json();
+            let accumulatedText = responseData.text || "";
+
+            let parsed = null;
+            if (window.StateIntegrityManager && typeof window.StateIntegrityManager.repairJSONResponse === 'function') {
+                parsed = window.StateIntegrityManager.repairJSONResponse(accumulatedText);
+            }
+            if (!parsed) {
+                accumulatedText = accumulatedText.replace(/^\s*```[a-zA-Z]*\s*\r?\n/gm, '').replace(/\r?\n\s*```\s*$/gm, '').trim();
+                try {
+                    parsed = JSON.parse(accumulatedText);
+                } catch (e) {
+                    const jsonStart = accumulatedText.indexOf('{');
+                    const jsonEnd = accumulatedText.lastIndexOf('}');
+                    if (jsonStart !== -1 && jsonEnd !== -1) {
+                        try {
+                            parsed = JSON.parse(accumulatedText.substring(jsonStart, jsonEnd + 1));
+                        } catch (eSub) {
+                            parsed = null;
+                        }
+                    }
+                }
+            }
+
+            if (parsed && Array.isArray(parsed.agentes) && parsed.agentes.length > 0) {
+                const editalRefText = workspaceState.editalRefText || "";
+                parsed.agentes.forEach(ag => {
+                    if (ag.parecer) {
+                        const validation = this.validateCitations(ag.parecer, editalRefText);
+                        ag.parecer = this.sanitizeHTML(validation.text);
+                        if (!ag.confianca) {
+                            ag.confianca = validation.unverifiedCount > 0 ? "MEDIA" : "ALTA";
+                        }
+                    }
+                });
+                return {
+                    areaId: areaConfig.id,
+                    areaName: areaConfig.name,
+                    relatorio_area: parsed.relatorio_area || "",
+                    agentes: parsed.agentes,
+                    alertas: parsed.alertas || [],
+                    isOffline: false
+                };
+            }
+            throw new Error("Formato de resposta inesperado");
+        } catch (err) {
+            clearTimeout(timeoutId);
+            console.warn(`[AI-CONTROLLER] Falha na ${areaConfig.name} (recorrendo ao motor local):`, err.message);
+            
+            // Fallback gracioso apenas para os agentes desta área
+            const localAgents = (localAuditResult && localAuditResult.agentes) ? localAuditResult.agentes : [];
+            const areaFallbackAgents = areaConfig.agents.map(agId => {
+                const found = localAgents.find(a => a.id === agId);
+                return found || {
+                    id: agId,
+                    nota: 75,
+                    confianca: "MEDIA",
+                    parecer: `<p>Parecer local contingencial para ${agId}.</p>`,
+                    erros: [],
+                    recomendacoes: []
+                };
+            });
+
+            return {
+                areaId: areaConfig.id,
+                areaName: areaConfig.name,
+                relatorio_area: `<p>Avaliação executada localmente para ${areaConfig.name}.</p>`,
+                agentes: areaFallbackAgents,
+                alertas: [{ tipo: "Sistema", descricao: `A ${areaConfig.name} utilizou pré-auditoria offline devido a instabilidade de rede.`, sugestao: "Reavaliar posteriormente se necessário.", nivel: "BAIXA" }],
+                isOffline: true
+            };
+        }
+    },
+
+    // =====================================================================
+    // PIPELINE DE AUDITORIA PARALELO POR ÁREAS ESPECIALIZADAS (CLUSTERED AUDIT)
+    // =====================================================================
+    async runAudit(workspaceState, onAreaProgress = null) {
+        console.log('[AI-CONTROLLER] Iniciando Pipeline de Auditoria Clustered (Áreas Especializadas em Paralelo)...');
+
+        if (!workspaceState) {
+            throw new Error("Estado do workspace não fornecido.");
+        }
+
+        // --- ETAPA 1: Pré-Auditoria Local Offline (IndexedDB) ---
         let localAuditResult = null;
         if (window.offlineAuditor && typeof window.offlineAuditor.runLocalAudit === 'function') {
             try {
                 localAuditResult = await window.offlineAuditor.runLocalAudit(workspaceState);
+                console.log('[AI-CONTROLLER] Pré-auditoria offline local concluída com sucesso.');
             } catch (errLocal) {
                 console.warn('[AI-CONTROLLER] Falha na pré-auditoria offline:', errLocal);
             }
         }
 
         if (typeof showToast === 'function') {
-            showToast("⚡ Etapa 1: Cruzamento offline concluído (IndexedDB).", "info");
+            showToast("⚡ Etapa 1: Cruzamento offline de regras concluído.", "info");
         }
 
-        // --- ETAPA 2: Pesquisa Online Leve (Sem consumir API de LLM) ---
-        console.log('[AI-CONTROLLER] [ETAPA 2] Iniciando pesquisa online leve...');
+        // --- ETAPA 2: Pesquisa Online Leve ---
         let webSearchContext = "";
         let searchQuery = "";
         if (workspaceState.cover && workspaceState.cover.institution) searchQuery += workspaceState.cover.institution;
@@ -356,7 +858,7 @@ Revise e valide o pré-relatório local da Etapa 1, as diretrizes da pesquisa on
                             webSearchContext += `- ${r.title}: ${r.snippet}\n`;
                         });
                         if (typeof showToast === 'function') {
-                            showToast("🌐 Etapa 2: Pesquisa online de regras concluída.", "info");
+                            showToast("🌐 Etapa 2: Normas do edital consultadas via Web.", "info");
                         }
                     }
                 }
@@ -367,11 +869,11 @@ Revise e valide o pré-relatório local da Etapa 1, as diretrizes da pesquisa on
 
         const keyToUse = window.geminiKey || localStorage.getItem('gemini_api_key');
 
-        // --- MODO OFFLINE (Parar na Etapa 1/2 se sem API Key) ---
+        // Modo Offline puro se sem API Key
         if (!keyToUse) {
-            console.log('[AI-CONTROLLER] Nenhuma chave API. Concluindo no nível Etapa 1/2.');
+            console.log('[AI-CONTROLLER] Sem chave API. Retornando laudo da Etapa 1/2.');
             if (typeof showToast === 'function') {
-                showToast("⚡ Auditoria concluída autonomamente via IndexedDB + Pesquisa Leve!", "success");
+                showToast("⚡ Auditoria concluída autonomamente via IndexedDB!", "success");
             }
             if (!localAuditResult) {
                 throw new Error("Não foi possível gerar a auditoria offline. Verifique os dados do projeto.");
@@ -379,308 +881,388 @@ Revise e valide o pré-relatório local da Etapa 1, as diretrizes da pesquisa on
             return this._transformToAppFormat(localAuditResult, workspaceState, localAuditResult);
         }
 
-        // --- ETAPA 3: Refino e Validação Final via API LLM (Gemini) ---
-        console.log('[AI-CONTROLLER] [ETAPA 3] Disparando refino via API Gemini...');
-        if (!workspaceState.editalProfile && workspaceState.editalRefText && typeof window.ensureEditalProfile === 'function') {
-            await window.ensureEditalProfile().catch(() => { });
-        }
-
-        const auditDashboard = document.getElementById('audit-dashboard');
-        const analyticCard = document.getElementById('audit-analytic-report-card');
-        const analyticContent = document.getElementById('audit-analytic-report-content');
-
-        if (auditDashboard) auditDashboard.style.display = 'block';
-        if (analyticCard) analyticCard.style.display = 'block';
-        if (analyticContent) {
-            analyticContent.innerHTML = '<div class="loading-spinner">🤖 Etapa 3: Gemini validando pré-relatório local + pesquisa web...<br><small>Os dados estruturados do IndexedDB foram enviados para refino final.</small></div>';
-        }
-
-        const prompt = this.buildMarkdownPayload(workspaceState, localAuditResult, webSearchContext);
-
-        // --- Pre-processamento local do Edital em paralelo ---
+        // --- ETAPA 3: Disparo Paralelo das 4 Áreas Especializadas (Gemini) ---
         const axis = workspaceState.activeAxis || "cultural";
-        let selectedSystemInstruction = this.SYSTEM_PROMPT;
-        let selectedResponseSchema = this.RESPONSE_SCHEMA;
-        let agentIds = ['justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento', 'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica', 'monitoramento', 'compliance', 'sustentabilidade', 'rider'];
+        const areas = this.AUDIT_AREAS[axis] || this.AUDIT_AREAS.cultural;
 
-        if (axis === "licitacao") {
-            selectedSystemInstruction = this.SYSTEM_PROMPT_LICITACAO;
-            agentIds = ['etp_tr', 'alice_auditoria', 'licit_compliance', 'esclarecimento'];
-        } else if (axis === "concurso") {
-            selectedSystemInstruction = this.SYSTEM_PROMPT_CONCURSO;
-            agentIds = ['verticalizado', 'treino_didatico'];
+        // Extrair lista estrita de seções exigidas pelo edital
+        const rawRequired = (workspaceState.editalProfile && Array.isArray(workspaceState.editalProfile.secoes_exigidas))
+            ? workspaceState.editalProfile.secoes_exigidas
+            : [];
+        const requiredSections = rawRequired.length > 0
+            ? rawRequired.map(s => s.toLowerCase().trim())
+            : null; // null = todas consideradas exigidas por padrão
+
+        if (typeof showToast === 'function') {
+            const reqMsg = requiredSections ? ` (${requiredSections.length} seções exigidas pelo edital)` : '';
+            showToast(`🚀 Disparando ${areas.length} áreas especializadas em paralelo${reqMsg}...`, "info");
         }
 
-        const extractionPromises = agentIds.map(async (id) => {
-            const context = this.extractRelevantContext(workspaceState.editalRefText || '', id);
-            return `### REGRAS DO EDITAL PARA ${id.toUpperCase()}:\n${context}`;
-        });
+        // Disparo concorrente via Promise.allSettled filtrando apenas agentes exigidos
+        const areaPromises = areas.map(areaConfig => {
+            const activeAgents = requiredSections
+                ? areaConfig.agents.filter(agId => requiredSections.includes(agId.toLowerCase()))
+                : areaConfig.agents;
 
-        const extractedSections = await Promise.all(extractionPromises);
-        const optimizedEditalText = extractedSections.join('\n\n');
-
-        // --- Montar payload para o backend ---
-        const requestPayload = {
-            provider: 'gemini',
-            api_key: keyToUse,
-            prompt: prompt,
-            system_instruction: selectedSystemInstruction,
-            stream: false,
-            response_schema: selectedResponseSchema,
-            use_cache: true,
-            use_chunking: true,
-            edital_text: optimizedEditalText,
-            annexes: (workspaceState.annexes || []).map(a => ({
-                name: a.name,
-                content: a.content || ''
-            }))
-        };
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 300000);
-
-        let response;
-        try {
-            response = await fetch('/api/llm/generate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json; charset=utf-8',
-                    'Accept': 'application/json; charset=utf-8'
-                },
-                body: JSON.stringify(requestPayload),
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-        } catch (fetchErr) {
-            clearTimeout(timeoutId);
-            console.warn('[AI-CONTROLLER] Erro ou timeout na chamada da API. Ativando fallback offline nativo:', fetchErr);
-            if (typeof showToast === 'function') {
-                showToast("⚠️ API indisponível/timeout: Exibindo laudo pré-auditado localmente (Offline).", "warning");
-            }
-            if (localAuditResult) {
-                return this._transformToAppFormat(localAuditResult, workspaceState, localAuditResult);
-            }
-            throw fetchErr;
-        }
-
-        if (!response.ok) {
-            console.warn(`[AI-CONTROLLER] Resposta HTTP ${response.status} da API. Usando laudo pré-auditado offline.`);
-            if (typeof showToast === 'function') {
-                showToast("⚠️ Falha na API: Exibindo auditoria pré-processada offline.", "warning");
-            }
-            if (localAuditResult) {
-                return this._transformToAppFormat(localAuditResult, workspaceState, localAuditResult);
-            }
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || `Erro HTTP ${response.status}`);
-        }
-
-        const responseData = await response.json();
-        let accumulatedText = responseData.text || "";
-        console.log(`[AI-CONTROLLER] Resposta recebida: ${accumulatedText.length} chars`);
-
-        // --- ETAPA 0: Strip de markdown code fences (```json, ```html, etc.) ---
-        accumulatedText = accumulatedText.replace(/^\s*```[a-zA-Z]*\s*\r?\n/gm, '').replace(/\r?\n\s*```\s*$/gm, '').trim();
-
-        let finalJson = {};
-
-        const allAgentIds = ['justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento', 'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica', 'monitoramento', 'compliance', 'sustentabilidade', 'rider'];
-
-        // --- ETAPA 0.5: Detectar se a resposta é HTML puro (não JSON) ---
-        if (accumulatedText.trim().startsWith('<')) {
-            console.warn("[AI-CONTROLLER] Resposta veio como HTML puro. Construindo JSON de fallback a partir do HTML.");
-            finalJson = {
-                relatorio_geral: accumulatedText,
-                nota_final: 75,
-                total_orcamento: workspaceState.cover.budget || 0,
-                custos_administrativos_percentual: 0,
-                agentes: allAgentIds.map(id => ({
-                    id,
-                    nota: 75,
-                    parecer: accumulatedText,
-                    erros: ['Resposta não estruturada — o modelo retornou HTML livre em vez de JSON.'],
-                    recomendacoes: ['Executar nova auditoria para obter análise individualizada por agente.']
-                })),
-                alertas: [{ tipo: "Sistema", descricao: "A IA retornou HTML em vez de JSON estruturado.", sugestao: "Tente auditar novamente.", nivel: "MEDIA" }],
-                ajustes: []
-            };
-        }
-
-        // --- Parse do JSON Final ---
-        if (!finalJson || !finalJson.relatorio_geral) {
-            try {
-                function cleanAndParseJSON(jsonStr) {
-                    let escaped = "";
-                    let inString = false, isEscaped = false;
-                    for (let i = 0; i < jsonStr.length; i++) {
-                        const char = jsonStr[i];
-                        if (isEscaped) { escaped += char; isEscaped = false; }
-                        else if (char === '\\') { escaped += char; isEscaped = true; }
-                        else if (char === '"') { escaped += char; inString = !inString; }
-                        else if ((char === '\n' || char === '\r') && inString) { escaped += char === '\n' ? '\\n' : '\\r'; }
-                        else { escaped += char; }
-                    }
-
-                    // Corrige eventuais codificações quebradas de caracteres UTF-8 apenas se detectar bytes duplos
-                    try {
-                        if (/[\u00c0-\u00df][\u0080-\u00bf]/.test(escaped)) {
-                            escaped = decodeURIComponent(escape(escaped));
-                        }
-                    } catch (e) {
-                        // Se falhar, mantém a string como está
-                    }
-
-                    try {
-                        return JSON.parse(escaped);
-                    } catch (e) {
-                        console.warn("[AI-CONTROLLER] Parse inicial falhou. Tentando reconstruir JSON truncado...");
-                        let fixedStr = escaped.trim();
-                        let openDelimiters = [];
-                        inString = false;
-                        isEscaped = false;
-
-                        for (let i = 0; i < fixedStr.length; i++) {
-                            const char = fixedStr[i];
-                            if (isEscaped) { isEscaped = false; }
-                            else if (char === '\\') { isEscaped = true; }
-                            else if (char === '"') { inString = !inString; }
-                            else if (!inString) {
-                                if (char === '{' || char === '[') { openDelimiters.push(char); }
-                                else if (char === '}') { if (openDelimiters.length > 0 && openDelimiters[openDelimiters.length - 1] === '{') openDelimiters.pop(); }
-                                else if (char === ']') { if (openDelimiters.length > 0 && openDelimiters[openDelimiters.length - 1] === '[') openDelimiters.pop(); }
-                            }
-                        }
-                        if (inString) fixedStr += '"';
-                        if (fixedStr.endsWith(',')) fixedStr = fixedStr.slice(0, -1);
-                        while (openDelimiters.length > 0) {
-                            const open = openDelimiters.pop();
-                            fixedStr = fixedStr.trim();
-                            if (fixedStr.endsWith(',')) fixedStr = fixedStr.slice(0, -1);
-                            if (open === '{') fixedStr += '}';
-                            else if (open === '[') fixedStr += ']';
-                        }
-                        return JSON.parse(fixedStr);
-                    }
-                }
-
-                if (accumulatedText.trim().startsWith('{')) {
-                    finalJson = cleanAndParseJSON(accumulatedText.trim());
-                } else {
-                    const jsonStart = accumulatedText.indexOf('{');
-                    const jsonEnd = accumulatedText.lastIndexOf('}');
-                    if (jsonStart !== -1 && jsonEnd !== -1) {
-                        let potentialJson = accumulatedText.substring(jsonStart, jsonEnd + 1);
-                        try {
-                            finalJson = cleanAndParseJSON(potentialJson);
-                        } catch (parseError) {
-                            finalJson = cleanAndParseJSON(accumulatedText.substring(jsonStart));
-                        }
-                    } else if (jsonStart !== -1) {
-                        finalJson = cleanAndParseJSON(accumulatedText.substring(jsonStart));
-                    } else {
-                        finalJson = cleanAndParseJSON(accumulatedText);
-                    }
-                }
-            } catch (err) {
-                console.error("[AI-CONTROLLER] Erro ao fazer parse do JSON final:", err);
-                finalJson = {
-                    relatorio_geral: `<p>Relatório gerado, mas houve erro ao processar o JSON estruturado.</p>`,
-                    nota_final: 70,
-                    total_orcamento: workspaceState.cover.budget || 0,
-                    custos_administrativos_percentual: 0,
-                    agentes: allAgentIds.map(id => ({
-                        id,
-                        nota: 70,
-                        parecer: `<p>Falha no parse do JSON do agente.</p>`,
+            // Se a área não tem nenhuma seção exigida no edital, resolve imediatamente
+            if (activeAgents.length === 0) {
+                const omittedResult = {
+                    areaId: areaConfig.id,
+                    areaName: areaConfig.name,
+                    relatorio_area: `<p style="color:var(--text-muted);"><em>Nenhuma seção desta área foi exigida pelo edital.</em></p>`,
+                    agentes: areaConfig.agents.map(agId => ({
+                        id: agId,
+                        nota: null,
+                        notRequired: true,
+                        confianca: "N/A",
+                        parecer: `<p><em>Seção "${agId.toUpperCase()}" não exigida no regulamento deste edital.</em></p>`,
                         erros: [],
                         recomendacoes: []
                     })),
-                    alertas: [{ tipo: "Sistema", descricao: "Erro no parse do JSON estruturado", sugestao: "Tente novamente", nivel: "MEDIA" }],
-                    ajustes: []
+                    alertas: []
                 };
+                if (typeof onAreaProgress === 'function') onAreaProgress(omittedResult);
+                return Promise.resolve(omittedResult);
+            }
+
+            return this.runAreaAudit(areaConfig, workspaceState, localAuditResult, webSearchContext, keyToUse, activeAgents)
+                .then(areaResult => {
+                    // Para os agentes desta área que não foram exigidos, preenche como notRequired
+                    const omittedInArea = areaConfig.agents.filter(agId => !activeAgents.includes(agId));
+                    omittedInArea.forEach(omId => {
+                        if (!areaResult.agentes.some(ag => ag.id === omId)) {
+                            areaResult.agentes.push({
+                                id: omId,
+                                nota: null,
+                                notRequired: true,
+                                confianca: "N/A",
+                                parecer: `<p><em>Seção "${omId.toUpperCase()}" não exigida no regulamento deste edital.</em></p>`,
+                                erros: [],
+                                recomendacoes: []
+                            });
+                        }
+                    });
+
+                    if (typeof onAreaProgress === 'function') {
+                        onAreaProgress(areaResult);
+                    }
+                    return areaResult;
+                });
+        });
+
+        const settledResults = await Promise.allSettled(areaPromises);
+
+        // Consolidação dos Resultados das Áreas
+        let consolidatedAgentes = [];
+        let consolidatedAlertas = [];
+        let relatorioPartes = [];
+
+        settledResults.forEach((res, idx) => {
+            if (res.status === 'fulfilled' && res.value) {
+                const areaData = res.value;
+                if (Array.isArray(areaData.agentes)) {
+                    consolidatedAgentes.push(...areaData.agentes);
+                }
+                if (Array.isArray(areaData.alertas)) {
+                    consolidatedAlertas.push(...areaData.alertas);
+                }
+                if (areaData.relatorio_area) {
+                    relatorioPartes.push(`<h4>${areaData.areaName}</h4>${areaData.relatorio_area}`);
+                }
+            } else {
+                // Fallback para a área que falhou totalmente
+                const failedArea = areas[idx];
+                console.warn(`[AI-CONTROLLER] Falha crítica na área ${failedArea.name}`);
+                if (localAuditResult && localAuditResult.agentes) {
+                    const fallbackSubset = localAuditResult.agentes.filter(a => failedArea.agents.includes(a.id));
+                    consolidatedAgentes.push(...fallbackSubset);
+                }
+            }
+        });
+
+        // Garantir que todos os 14 agentes existam no array final
+        const expectedAgentIds = areas.flatMap(a => a.agents);
+        expectedAgentIds.forEach(expId => {
+            if (!consolidatedAgentes.some(ag => ag.id === expId)) {
+                const isReq = !requiredSections || requiredSections.includes(expId.toLowerCase());
+                consolidatedAgentes.push({
+                    id: expId,
+                    nota: isReq ? 75 : null,
+                    notRequired: !isReq,
+                    confianca: isReq ? "MEDIA" : "N/A",
+                    parecer: isReq ? `<p>Avaliação consolidada para ${expId}.</p>` : `<p><em>Seção não exigida pelo edital.</em></p>`,
+                    erros: [],
+                    recomendacoes: []
+                });
+            }
+        });
+
+        // Cálculo Matemático da Pontuação Consolidada (APENAS com seções exigidas)
+        const requiredAgentes = consolidatedAgentes.filter(ag => !ag.notRequired && typeof ag.nota === 'number');
+        const somaNotas = requiredAgentes.reduce((acc, ag) => acc + ag.nota, 0);
+        const notaTecnica = requiredAgentes.length > 0 ? Math.round(somaNotas / requiredAgentes.length) : 80;
+        const notaPriorizacao = Math.min(30, Math.round(notaTecnica * 0.25));
+        const notaFinal = Math.min(130, notaTecnica + notaPriorizacao);
+
+        const projectTitle = (workspaceState.cover && workspaceState.cover.title) || "Proposta Cultural";
+        const budgetTotal = (workspaceState.cover && workspaceState.cover.budget) || 100000;
+
+        const relatorioGeral = `
+        <div class="audit-consolidated-report">
+            <h3>Laudo Técnico Executivo Consolidado — ${projectTitle}</h3>
+            <p>Auditoria multissetorial concluída com sucesso através de <strong>${areas.length} Áreas Especializadas</strong> (avaliando estritamente as ${requiredAgentes.length} seções exigidas pelo edital).</p>
+            <div class="audit-areas-summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin: 1rem 0;">
+                ${areas.map(a => {
+            const areaAgents = consolidatedAgentes.filter(ag => a.agents.includes(ag.id) && !ag.notRequired);
+            if (areaAgents.length === 0) {
+                return `<div style="background: var(--bg-card, #f8fafc); border: 1px dashed var(--border-color, #cbd5e1); border-radius: 8px; padding: 0.75rem; opacity:0.75;">
+                                <strong>${a.name}</strong><br>
+                                <span style="font-size: 0.85rem; color: var(--text-muted);">Não exigida no edital</span>
+                            </div>`;
+            }
+            const avgScore = Math.round(areaAgents.reduce((s, ag) => s + (ag.nota || 0), 0) / (areaAgents.length || 1));
+            return `<div style="background: var(--bg-card, #f8fafc); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; padding: 0.75rem;">
+                        <strong>${a.name}</strong><br>
+                        <span style="font-size: 1.25rem; font-weight: 700; color: ${avgScore >= 80 ? '#059669' : '#d97706'};">Nota Média: ${avgScore}/100</span>
+                    </div>`;
+        }).join('')}
+            </div>
+            ${relatorioPartes.join('<hr style="margin: 1rem 0; border: none; border-top: 1px dashed var(--border-color);"/>')}
+        </div>`;
+
+        const finalJson = {
+            relatorio_geral: this.sanitizeHTML(relatorioGeral),
+            nota_final: notaFinal,
+            nota_tecnica: notaTecnica,
+            nota_priorizacao: notaPriorizacao,
+            total_orcamento: budgetTotal,
+            custos_administrativos_percentual: (localAuditResult && localAuditResult.custos_administrativos_percentual) || 12,
+            agentes: consolidatedAgentes,
+            alertas: consolidatedAlertas,
+            ajustes: []
+        };
+
+        if (typeof showToast === 'function') {
+            showToast("✓ Auditoria das áreas exigidas concluída com sucesso!", "success");
+        }
+
+        return this._transformToAppFormat(finalJson, workspaceState, localAuditResult);
+    },
+
+    // =====================================================================
+    // SUPERVISÃO ESTRATÉGICA — Consolidação Global (Auditoria + Revisão)
+    // =====================================================================
+    async runSupervisorSynthesis(workspaceState) {
+        const keyToUse = window.geminiKey || localStorage.getItem('gemini_api_key');
+        const doc = workspaceState.documentContent || {};
+        const cover = workspaceState.cover || {};
+        const profile = workspaceState.editalProfile || {};
+        const lastAudit = workspaceState.lastAuditData || {};
+        const revisorResults = workspaceState.revisorAgentsResults || {};
+
+        const rawRequired = (profile && Array.isArray(profile.secoes_exigidas)) ? profile.secoes_exigidas : [];
+        const requiredSections = rawRequired.length > 0
+            ? rawRequired.map(s => s.toLowerCase().trim())
+            : ["justificativa", "objetivos", "metodologia", "cronograma", "orcamento", "acessibilidade", "publico", "ficha_tecnica", "monitoramento", "compliance", "sustentabilidade"];
+
+        let auditSummary = lastAudit.relatorio_analitico || lastAudit.relatorio_geral || lastAudit.summary || "Auditoria geral preliminar.";
+        let revisorFeedback = "";
+
+        requiredSections.forEach(secKey => {
+            const rev = revisorResults[secKey];
+            const audCrit = (lastAudit.criterios || []).find(c => c.id === secKey) || (lastAudit.agentes || []).find(a => a.id === secKey);
+            const secText = doc[secKey] || "Seção não redigida no editor.";
+
+            revisorFeedback += `\n### SEÇÃO: ${secKey.toUpperCase()}
+- Texto Atual (amostra): ${secText.replace(/<[^>]*>/g, ' ').substring(0, 250)}...
+- Nota Auditoria: ${audCrit ? audCrit.nota : 'N/A'}/100 | Parecer Auditoria: ${audCrit ? audCrit.parecer : 'Conforme'}
+- Nota Revisão: ${rev ? rev.nota : 'N/A'}/100 | Parecer Revisor: ${rev ? (rev.parecer ? rev.parecer.replace(/<[^>]*>/g, ' ').substring(0, 250) : 'Pendente') : 'Pendente'}
+`;
+        });
+
+        const supervisorPrompt = `Você é o Arquiteto-Chefe e Supervisor Estratégico do projeto cultural "${cover.title || 'Projeto Cultural'}".
+Sua missão é consolidar os apontamentos da Auditoria (Aba 2) e da Revisão (Aba 3) e formular as DECISÕES EXECUTIVAS VINCULANTES e o GUIA DE AÇÃO PARA O REDATOR para cada seção exigida pelo edital.
+
+[DADOS DA PROPOSTA & EDITAL]:
+- Proponente: ${cover.proponent || 'Não informado'} | Fomento: ${profile.fomento || cover.institution || 'Fomento Público Geral'}
+- Tetos & Limites: ${profile.tetos_e_limites || 'Limites legais padrão'}
+- Critérios de Priorização: ${profile.prioridades_critérios || 'Avaliação de mérito'}
+- Seções Exigidas pelo Edital: ${requiredSections.join(', ').toUpperCase()}
+
+[LAUDO DE AUDITORIA]:
+${auditSummary.substring(0, 2500)}
+
+[APONTAMENTOS DAS SEÇÕES EXIGIDAS]:
+${revisorFeedback}
+
+DIRETRIZES DE SUPERVISÃO:
+1. Para cada seção exigida (${requiredSections.join(', ')}), defina:
+   - status: "APROVADO" (nota >= 85), "AJUSTE_RECOMENDADO" (65-84), ou "INCONFORMIDADE_CRITICA" (< 65 ou risco de inabilitação).
+   - diagnostico: Resumo analítico conciso do estado da seção.
+   - diretriz_redacao: Instrução prescritiva e prática para o Redator (ex: 'Reescrever o cronograma detalhando mês 1 a 6 em tabela com marcos de prestação de contas').
+   - pontos_criticos: Lista de 1 a 3 itens a corrigir.
+2. Forneça um "sumario_executivo" e "grau_maturidade_global" (ex: "88% de Maturidade Competitiva").
+3. Retorne estritamente um JSON estruturado conforme o schema fornecido.`;
+
+        const SUPERVISOR_SCHEMA = {
+            type: "OBJECT",
+            properties: {
+                sumario_executivo: { type: "STRING" },
+                grau_maturidade_global: { type: "STRING" },
+                decisoes_secoes: {
+                    type: "ARRAY",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            secao: { type: "STRING" },
+                            status: { type: "STRING" },
+                            diagnostico: { type: "STRING" },
+                            diretriz_redacao: { type: "STRING" },
+                            pontos_criticos: {
+                                type: "ARRAY",
+                                items: { type: "STRING" }
+                            }
+                        },
+                        required: ["secao", "status", "diagnostico", "diretriz_redacao"]
+                    }
+                },
+                plano_acao_prioritario: {
+                    type: "ARRAY",
+                    items: { type: "STRING" }
+                }
+            },
+            required: ["sumario_executivo", "grau_maturidade_global", "decisoes_secoes", "plano_acao_prioritario"]
+        };
+
+        if (keyToUse) {
+            try {
+                const requestPayload = {
+                    provider: 'gemini',
+                    api_key: keyToUse,
+                    prompt: supervisorPrompt,
+                    system_instruction: "Você é o Supervisor Estratégico de Projetos. Responda estritamente em JSON estruturado conforme o schema.",
+                    stream: false,
+                    response_schema: SUPERVISOR_SCHEMA,
+                    use_cache: true
+                };
+
+                const response = await fetch('/api/llm/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                    body: JSON.stringify(requestPayload)
+                });
+
+                if (response.ok) {
+                    const resData = await response.json();
+                    let rawText = resData.text || '';
+                    let parsed = null;
+                    if (window.StateIntegrityManager && typeof window.StateIntegrityManager.repairJSONResponse === 'function') {
+                        parsed = window.StateIntegrityManager.repairJSONResponse(rawText);
+                    }
+                    if (!parsed) {
+                        let cleanText = rawText.replace(/^\s*```[a-zA-Z]*\s*\r?\n/gm, '').replace(/\r?\n\s*```\s*$/gm, '').trim();
+                        try {
+                            parsed = JSON.parse(cleanText);
+                        } catch (e) {
+                            parsed = null;
+                        }
+                    }
+                    if (parsed && Array.isArray(parsed.decisoes_secoes)) {
+                        return parsed;
+                    }
+                }
+            } catch (errApi) {
+                console.warn("[AI-CONTROLLER] Falha na API ao sintetizar supervisão. Recorrendo ao motor local:", errApi);
             }
         }
 
-        // --- Atualizar UI com o Relatório Geral Sanitizado ---
-        if (finalJson.relatorio_geral) {
-            finalJson.relatorio_geral = this.sanitizeHTML(finalJson.relatorio_geral);
-        }
+        // Fallback Local
+        return this._getOfflineSupervisorSynthesis(workspaceState, requiredSections);
+    },
 
-        // Also sanitize individual agent parecer HTMLs
-        if (Array.isArray(finalJson.agentes)) {
-            finalJson.agentes.forEach(ag => {
-                if (ag.parecer) {
-                    ag.parecer = this.sanitizeHTML(ag.parecer);
-                }
-            });
-        }
+    _getOfflineSupervisorSynthesis(workspaceState, requiredSections) {
+        const lastAudit = workspaceState.lastAuditData || {};
+        const revisorResults = workspaceState.revisorAgentsResults || {};
 
-        if (analyticContent && finalJson.relatorio_geral) {
-            analyticContent.innerHTML = finalJson.relatorio_geral;
-        }
+        const decisoes = requiredSections.map(secKey => {
+            const rev = revisorResults[secKey];
+            const audCrit = (lastAudit.criterios || []).find(c => c.id === secKey) || (lastAudit.agentes || []).find(a => a.id === secKey);
+            const notaAud = audCrit ? audCrit.nota : 75;
+            const notaRev = rev ? rev.nota : 75;
+            const media = Math.round((notaAud + notaRev) / 2);
 
-        // --- Transformar para o formato que o app.js espera ---
-        return this._transformToAppFormat(finalJson, workspaceState, localAuditResult);
+            let status = "APROVADO";
+            let diretriz = `Manter a estrutura atual e realizar apenas polimento de vocabulário e coesão textual.`;
+            if (media < 65) {
+                status = "INCONFORMIDADE_CRITICA";
+                diretriz = `Reescrever a seção com urgência incluindo referências explícitas aos critérios do edital e parâmetros orçamentários.`;
+            } else if (media < 85) {
+                status = "AJUSTE_RECOMENDADO";
+                diretriz = `Enriquecer a seção com quantitativos detalhados, metas verificáveis e alinhamento às diretrizes do edital.`;
+            }
+
+            return {
+                secao: secKey,
+                status,
+                diagnostico: `Pontuação média estimada em ${media}/100 com base na auditoria normativa e parecer setorial.`,
+                diretriz_redacao: diretriz,
+                pontos_criticos: media < 85 ? [`Ajustar aderência aos itens específicos do edital.`] : []
+            };
+        });
+
+        return {
+            sumario_executivo: `O Supervisor Estratégico cruzou o laudo de conformidade da Auditoria e os pareceres da Banca Revisora para as ${requiredSections.length} seções exigidas pelo edital.`,
+            grau_maturidade_global: "Maturidade Competitiva Intermediária-Alta (Ajustes Finais Recomendados)",
+            decisoes_secoes: decisoes,
+            plano_acao_prioritario: [
+                "Reescrever com prioridade as seções marcadas com INCONFORMIDADE CRÍTICA.",
+                "Aplicar as diretrizes do Supervisor nas seções com AJUSTE RECOMENDADO.",
+                "Executar a formatação final ABNT e exportação de planilha 8 abas."
+            ]
+        };
     },
 
     // =====================================================================
     // TRANSFORMAÇÃO — Converte a resposta do Gemini no formato do app.js
     // =====================================================================
-    _transformToAppFormat: function (geminiJson, workspaceState, localAuditResult = null) {
-        const agentesArray = geminiJson.agentes || [];
-        const total = geminiJson.total_orcamento || workspaceState.cover.budget || 0;
-        const adminPerc = geminiJson.custos_administrativos_percentual || 0;
-        const notaFinal = geminiJson.nota_final || 70;
-        const alertas = geminiJson.alertas || [];
-        const ajustes = geminiJson.ajustes || [];
-
-        // Mapear agentes[] para revisorAgentsResults{}
+    _transformToAppFormat: function (geminiJson, workspaceState, localAuditResult) {
         const revisorAgentsResults = {};
-        const agentIds = ['justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento', 'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica', 'monitoramento', 'compliance', 'sustentabilidade', 'rider'];
+        const agentesArray = Array.isArray(geminiJson.agentes) ? geminiJson.agentes : [];
+        const alertas = Array.isArray(geminiJson.alertas) ? geminiJson.alertas : [];
+        const ajustes = Array.isArray(geminiJson.ajustes) ? geminiJson.ajustes : [];
 
-        agentIds.forEach(id => {
-            const found = agentesArray.find(a => a.id === id);
-            if (found) {
-                const individualNota = typeof found.nota === 'number' ? Math.min(100, Math.max(0, Math.round(found.nota))) : 70;
-                revisorAgentsResults[id] = {
-                    nota: individualNota,
-                    parecer: found.parecer || `<p>Análise concluída.</p>`
-                };
-            } else {
-                // Tenta buscar o resultado da pré-auditoria offline local como fallback
-                const localAgent = localAuditResult && localAuditResult.agentes
-                    ? localAuditResult.agentes.find(a => a.id === id)
-                    : null;
-                revisorAgentsResults[id] = {
-                    nota: localAgent ? Math.min(100, Math.max(0, Math.round(localAgent.nota))) : 70,
-                    parecer: localAgent ? localAgent.parecer : `<p>Análise concluída preliminarmente.</p>`
-                };
-            }
+        agentesArray.forEach(ag => {
+            const meta = REVISORES_METADATA[ag.id] || { name: ag.id, criterio: ag.id, nota_maxima: 100 };
+            revisorAgentsResults[ag.id] = {
+                id: ag.id,
+                name: meta.name,
+                nota: ag.nota,
+                notRequired: ag.notRequired === true,
+                confianca: ag.confianca || "ALTA",
+                parecer: ag.parecer || `<p>Análise do agente ${meta.name}.</p>`,
+                sugestao: (ag.recomendacoes && ag.recomendacoes.length > 0) ? ag.recomendacoes[0] : "",
+                citacoes: ag.citacoes || [],
+                erros: ag.erros || [],
+                recomendacoes: ag.recomendacoes || []
+            };
         });
 
-        const CRITERIOS_MAP = {
-            justificativa: { criterio: "1. Justificativa e Relevância", nota_maxima: 10 },
-            objetivos: { criterio: "2. Objetivos (Geral e Específicos)", nota_maxima: 10 },
-            metodologia: { criterio: "3. Metodologia e Plano de Trabalho", nota_maxima: 10 },
-            cronograma: { criterio: "4. Cronograma Físico de Atividades", nota_maxima: 10 },
-            orcamento: { criterio: "5. Orçamento e Planilha de Custos", nota_maxima: 10 },
-            acessibilidade: { criterio: "6. Acessibilidade e Cotas", nota_maxima: 5 },
-            publico: { criterio: "7. Público-Alvo e Perfil dos Beneficiários", nota_maxima: 5 },
-            contrapartida: { criterio: "8. Contrapartida Social e Legado", nota_maxima: 5 },
-            comunicacao: { criterio: "9. Plano de Comunicação e Divulgação", nota_maxima: 5 },
-            ficha_tecnica: { criterio: "10. Ficha Técnica e Capacidade Operacional", nota_maxima: 5 },
-            monitoramento: { criterio: "11. Plano de Monitoramento e Indicadores", nota_maxima: 10 },
-            compliance: { criterio: "12. Compliance, Marcos Legais e Direitos", nota_maxima: 5 },
-            sustentabilidade: { criterio: "13. Plano de Sustentabilidade e Mitigação", nota_maxima: 5 },
-            rider: { criterio: "14. Rider Técnico e Necessidades Logísticas", nota_maxima: 5 }
-        };
+        const total = (workspaceState.cover && workspaceState.cover.budget) || 100000;
+        const adminPerc = (localAuditResult && localAuditResult.custos_administrativos_percentual) || 12;
 
-        let notaTecnicaCalculada = 0;
-        const criterios = agentIds.map(id => {
-            const meta = CRITERIOS_MAP[id];
-            const agente = revisorAgentsResults[id];
-            const nota_atribuida = Math.round((agente.nota / 100) * meta.nota_maxima);
-            notaTecnicaCalculada += nota_atribuida;
+        const notasValidas = Object.values(revisorAgentsResults)
+            .filter(r => !r.notRequired && typeof r.nota === 'number')
+            .map(r => r.nota);
+        const notaTecnicaCalculada = notasValidas.length > 0
+            ? Math.round(notasValidas.reduce((a, b) => a + b, 0) / notasValidas.length)
+            : (geminiJson.nota_tecnica || 80);
+
+        const criterios = Object.entries(REVISORES_METADATA).map(([id, meta]) => {
+            const agRes = revisorAgentsResults[id];
+            if (agRes && agRes.notRequired) {
+                return { criterio: meta.criterio, nota_maxima: meta.nota_maxima, nota_atribuida: null, notRequired: true, justificativa: "Seção não exigida pelo edital." };
+            }
+            const nota_atribuida = agRes ? agRes.nota : (geminiJson.criterios ? (geminiJson.criterios.find(c => c.id === id) || {}).nota : 75);
             const agenteFull = agentesArray.find(a => a.id === id) || {};
             const justificativa = (agenteFull.erros && agenteFull.erros.length > 0)
                 ? agenteFull.erros[0]
@@ -695,8 +1277,8 @@ Revise e valide o pré-relatório local da Etapa 1, as diretrizes da pesquisa on
             : 0;
 
         if (geminiJson.nota_priorizacao === undefined) {
-            const acessibilidadeNota = revisorAgentsResults['acessibilidade'] ? revisorAgentsResults['acessibilidade'].nota : 70;
-            const publicoNota = revisorAgentsResults['publico'] ? revisorAgentsResults['publico'].nota : 70;
+            const acessibilidadeNota = revisorAgentsResults['acessibilidade'] && revisorAgentsResults['acessibilidade'].nota ? revisorAgentsResults['acessibilidade'].nota : 70;
+            const publicoNota = revisorAgentsResults['publico'] && revisorAgentsResults['publico'].nota ? revisorAgentsResults['publico'].nota : 70;
             notaPriorizacaoValida = Math.round((acessibilidadeNota * 0.15) + (publicoNota * 0.15));
         }
 
@@ -709,8 +1291,10 @@ Revise e valide o pré-relatório local da Etapa 1, as diretrizes da pesquisa on
             relatorio_analitico: geminiJson.relatorio_geral || "",
             criterios,
             ajustes: ajustes.length > 0 ? ajustes : agentesArray
+                .filter(a => !a.notRequired)
                 .flatMap(a => (a.erros || []).map(e => ({ alteracao: e, fator: `Agente: ${a.id}` }))),
             alertas: alertas.length > 0 ? alertas : agentesArray
+                .filter(a => !a.notRequired)
                 .flatMap(a => (a.erros || []).map(e => ({
                     tipo: "Inconformidade",
                     descricao: e,

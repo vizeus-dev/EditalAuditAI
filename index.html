@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     
-    <link rel="stylesheet" href="styles.css?v=15">
+    <link rel="stylesheet" href="styles.css?v=20">
 </head>
 <body>
     <header>
@@ -206,8 +206,9 @@
         <section class="tabs-column">
             <nav class="workspace-tabs">
                 <button class="w-tab-btn active" data-tab="setup">📂 Ingestão</button>
-                <button class="w-tab-btn" data-tab="revisor">🕵️ Revisão</button>
                 <button class="w-tab-btn" data-tab="auditor">⚖️ Auditoria</button>
+                <button class="w-tab-btn" data-tab="revisor">🕵️ Revisão</button>
+                <button class="w-tab-btn" data-tab="supervisor">🧠 Supervisor</button>
                 <button class="w-tab-btn" data-tab="redator">✍️ Redação</button>
                 <button class="w-tab-btn" data-tab="finalizacao">🏆 Finalização</button>
                 <button class="w-tab-btn" data-tab="biblioteca">📚 Biblioteca</button>
@@ -333,93 +334,7 @@
                     </div>
                 </div>
 
-                <!-- TAB 2: REDATOR -->
-                <div class="w-tab-pane" id="pane-redator">
-                    <div class="pane-header">
-                        <h2>Assistente de Redação</h2>
-                        <p>Escreva seções completas utilizando IA orientada pelas referências e anexos ingeridos.</p>
-                    </div>
-
-                    <div class="card">
-                        <h3>✍️ Gerador por Seção</h3>
-                        <div class="form-row" style="margin-bottom: 1rem;">
-                            <label for="redator-section-select">Seção a ser gerada:</label>
-                            <select id="redator-section-select" class="form-input" style="width: 100%;">
-                                <option value="justificativa">1. Justificativa e Relevância</option>
-                                <option value="objetivos">2. Objetivos Geral e Específicos</option>
-                                <option value="metodologia">3. Metodologia e Plano de Trabalho</option>
-                                <option value="cronograma">4. Cronograma de Atividades</option>
-                                <option value="orcamento">5. Planilha Orçamentária</option>
-                                <option value="acessibilidade">6. Acessibilidade e Cotas</option>
-                                <option value="publico">7. Público-Alvo e Perfil dos Beneficiários</option>
-                                <option value="contrapartida">8. Contrapartida Social e Legado</option>
-                                <option value="comunicacao">9. Plano de Comunicação e Divulgação</option>
-                                <option value="ficha_tecnica">10. Ficha Técnica e Capacidade Operacional</option>
-                                <option value="monitoramento">11. Plano de Monitoramento, Avaliação e Indicadores</option>
-                                <option value="compliance">12. Compliance, Marcos Legais e Direitos</option>
-                                <option value="sustentabilidade">13. Plano de Sustentabilidade e Mitigação Ambiental</option>
-                                <option value="rider">14. Rider Técnico e Necessidades Logísticas</option>
-                            </select>
-                        </div>
-                        <div class="form-row" style="margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.4rem;">
-                            <label for="redator-prompt" style="font-weight: 600; color: var(--color-primary);">Instruções ou ideias para a seção (Anotações do Proponente):</label>
-                            <textarea id="redator-prompt" placeholder="Ex: Focar na preservação da cultura local de sanfoneiros, detalhar orçamentos com teto R$ 300k, explicitar paridade de gênero e público vulnerável..." style="width: 100%; min-height: 140px; padding: 0.8rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); font-family: var(--font-body); font-size: 0.9rem; line-height: 1.5; color: var(--text-primary); resize: vertical; outline: none; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);"></textarea>
-                        </div>
-                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                            <button class="btn btn-primary" id="btn-generate-section" style="flex: 1; min-width: 180px;">✨ Gerar Seção Selecionada</button>
-                            <button class="btn btn-primary" id="btn-generate-section-with-chat" style="flex: 1; min-width: 220px; background: linear-gradient(135deg, #6366f1, #06b6d4); border: none;">💬 Aplicar Ajustes do Chat & Gerar</button>
-                            <button class="btn btn-secondary" id="btn-redator-run-all-sequential" style="flex: 1; min-width: 220px; background: linear-gradient(135deg, var(--color-primary-ghost), var(--bg-card)); color: var(--color-primary); border: 1px solid var(--color-primary);">⚡ Redigir 14 Seções Sequencialmente</button>
-                        </div>
-                        
-                        <!-- CAIXA DE TEXTO COM ADEQUAÇÕES E JUSTIFICATIVAS DA IA -->
-                        <div id="redator-justificativa-container" style="display: none; margin-top: 1.5rem;">
-                            <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem; color: var(--color-primary);">💡 Adequações e Justificativas de Mudanças da IA:</label>
-                            <textarea id="redator-justificativa-content" readonly style="width: 100%; height: 120px; padding: 0.6rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-panel); font-family: var(--font-body); font-size: 0.85rem; color: var(--text-secondary); resize: vertical; outline: none;"></textarea>
-                        </div>
-                    </div>
-
-                    <!-- ÁREA EDITÁVEL DO CONTEÚDO GERADO -->
-                    <div class="card" id="generation-result-card" style="display: none;">
-                        <h3 id="generation-result-title">✨ Conteúdo Gerado para o Editor</h3>
-                        <div id="generation-target-badge" style="font-size: 0.85rem; font-weight: 600; color: var(--color-primary); background: var(--color-primary-ghost); padding: 0.4rem 0.8rem; border-radius: var(--radius-md); margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem; border: 1px solid var(--border-color);">
-                            🎯 Tópico Alvo no Editor: <span id="generation-target-section-name" style="font-weight: 700;">Justificativa</span> (Pré-aprovação obrigatória ao aplicar)
-                        </div>
-                        <textarea id="generation-result-content-editable" style="width: 100%; height: 250px; padding: 0.6rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); font-family: var(--font-body); font-size: 0.85rem; color: var(--text-primary); margin-bottom: 1rem; resize: vertical; outline: none;"></textarea>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <button class="btn btn-primary" id="btn-apply-generation">📥 Enviar para Pré-Aprovação no Editor</button>
-                            <button class="btn btn-secondary" id="btn-discard-generation">Descartar</button>
-                        </div>
-                    </div>
-
-                    <!-- CARD DO CHATBOT ASSISTENTE DE REDAÇÃO -->
-                    <div class="card redator-chat-card" style="margin-top: 1rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
-                            <h3 style="margin: 0; color: var(--color-primary); display: flex; align-items: center; gap: 0.4rem;">
-                                <span>💬</span> Chatbot Assistente de Redação (Contexto Ingestor)
-                            </h3>
-                            <button class="btn btn-secondary" id="btn-redator-chat-clear" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">🧹 Limpar Chat</button>
-                        </div>
-                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.8rem;">Converse sobre os requisitos da seção ou do edital. As orientações deste chat serão integradas na geração da seção com a API.</p>
-
-                        <div id="redator-chat-messages" class="redator-chat-messages" style="max-height: 280px; overflow-y: auto; padding: 0.8rem; background: var(--bg-input); border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 0.8rem; display: flex; flex-direction: column; gap: 0.6rem;">
-                            <div class="chat-message agent" style="font-size: 0.85rem; line-height: 1.5; padding: 0.6rem 0.8rem; background: var(--bg-card); border-radius: 8px; border-left: 3px solid var(--color-primary);">
-                                🤖 <strong>Assistente:</strong> Olá! Posso te ajudar a ajustar e refinar qualquer seção com base nos dados cruzados do edital e anexos. Escreva seus pontos de atenção e clique em <em>"💬 Aplicar Ajustes do Chat & Gerar"</em> para atualizar a seção!
-                            </div>
-                        </div>
-
-                        <div style="display: flex; gap: 0.5rem;">
-                            <input type="text" id="redator-chat-input" placeholder="Digite sua dúvida ou ajuste para a seção..." class="form-input" style="flex: 1;">
-                            <button class="btn btn-primary" id="btn-redator-chat-send" style="width: auto;">Enviar 🚀</button>
-                        </div>
-
-                        <div style="margin-top: 1rem; padding-top: 0.8rem; border-top: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-                            <span style="font-size: 0.8rem; color: var(--text-secondary);">💡 Concluiu os ajustes no chat? Aplique as orientações diretamente na seção:</span>
-                            <button class="btn btn-primary" id="btn-generate-section-with-chat-bottom" style="background: linear-gradient(135deg, #6366f1, #06b6d4); border: none; font-weight: 600; padding: 0.6rem 1.2rem;">💬 Aplicar Ajustes do Chat & Gerar ✨</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- TAB 3: AUDITOR (ANTES DO REVISOR) -->
+                <!-- TAB 2: AUDITOR (ANTES DO REVISOR) -->
                 <div class="w-tab-pane" id="pane-auditor">
                     <div class="pane-header">
                         <h2>Motor de Auditoria & Compliance</h2>
@@ -534,20 +449,27 @@
                             <h2>🚨 Cláusulas Ausentes ou com Inconsistências</h2>
                             <div class="alerts-list" id="alerts-list"></div>
                         </div>
+
+                        <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
+                            <button class="btn btn-primary" id="btn-goto-revisor" style="display:none; width:auto; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); border: none; padding: 0.75rem 1.5rem; font-weight: 600;">
+                                ➡️ Avançar para a Revisão Setorial
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- TAB 4: REVISOR (O HUB CENTRAL DE INTELIGÊNCIA) -->
+                <!-- TAB 3: REVISOR (O HUB CENTRAL DE INTELIGÊNCIA) -->
                 <div class="w-tab-pane" id="pane-revisor">
                     <div class="pane-header">
-                        <h2>Hub de Revisão & Requinte Mestre</h2>
+                        <h2>Hub de Revisão & Pareceres Setoriais</h2>
                         <p>Orquestre múltiplos sub-agentes inteligentes que auditam e otimizam sua proposta em tempo real.</p>
                     </div>
 
                     <!-- BOTÕES DE AÇÃO GLOBAL -->
                     <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
-                        <button class="btn btn-primary" id="btn-revisor-run-all" style="width: auto; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); border: none;">🚀 Acionar Todos os Agentes em Paralelo</button>
-                        <button class="btn btn-secondary" id="btn-revisor-consolidated-revision" style="width: auto; background: var(--bg-card); color: var(--color-primary); border: 1px solid var(--color-primary);">✨ Otimizar Proposta Completa (Supervisor)</button>
+                        <button class="btn btn-primary" id="btn-revisor-run-all" style="width: auto; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); border: none;">🚀 Acionar Agentes Exigidos pelo Edital</button>
+                        <button class="btn btn-primary" id="btn-goto-supervisor" style="display:none; width: auto; background: linear-gradient(135deg, #10b981, #059669); border: none;">🧠 Avançar para a Supervisão Estratégica</button>
+                        <button class="btn btn-secondary" id="btn-revisor-consolidated-revision" style="width: auto; background: var(--bg-card); color: var(--color-primary); border: 1px solid var(--color-primary);">✨ Otimizar Proposta Completa</button>
                     </div>
 
                     <!-- GRID DE 14 SUB-AGENTES -->
@@ -723,18 +645,181 @@
                         </div>
                     </div>
 
-                    <!-- SEÇÃO FINALIZAÇÃO -->
-                    <div class="card" style="border: 2px solid var(--color-success);">
-                        <h3>🏆 Finalização do Projeto</h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">Gere a versão definitiva do projeto cultural contendo todo o conteúdo revisado, formatado e auditado conforme a norma ABNT.</p>
-                        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                            <button type="button" class="btn btn-primary" id="btn-consolidate-download-pdf" style="width: auto; background: var(--color-success); border: none;" title="Download instantâneo offline em PDF">🖨️ Consolidar e Baixar PDF (Instantâneo Offline)</button>
-                            <button type="button" class="btn btn-secondary" id="btn-consolidate-download-docx" style="width: auto;" title="Download instantâneo offline em Word">📝 Consolidar e Baixar Word (.doc) (Instantâneo Offline)</button>
+                    <!-- BOTÃO TRANSIÇÃO PARA SUPERVISOR -->
+                    <button class="btn btn-primary" id="btn-goto-supervisor" style="margin-top: 1rem; width: 100%; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; font-weight: 600; padding: 0.8rem;">➡️ Avançar para a Supervisão Estratégica</button>
+                </div>
+
+                <!-- TAB 4: SUPERVISOR ESTRATÉGICO -->
+                <div class="w-tab-pane" id="pane-supervisor">
+                    <div class="pane-header">
+                        <h2>🧠 Supervisão Estratégica & Plano Diretor</h2>
+                        <p>O Supervisor consolida a Ingestão, o Laudo da Auditoria e os Pareceres da Revisão para formular as decisões executivas e o plano de redação seção a seção.</p>
+                    </div>
+
+                    <!-- BANNER DE STATUS DA CADEIA -->
+                    <div class="pipeline-stepper-banner" id="supervisor-status-banner">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-size: 1.25rem;">🔗</span>
+                            <div>
+                                <strong style="font-size: 0.9rem; color: var(--text-primary);">Status da Cadeia Cognitiva:</strong>
+                                <div id="supervisor-chain-indicators" style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+                                    <span id="indicator-audit">Auditoria: ⏳ Pendente</span> • 
+                                    <span id="indicator-revisor">Revisão: ⏳ Pendente</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" id="btn-run-supervisor" style="width: auto; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; font-weight: 600;">🧠 Executar Supervisão Estratégica</button>
+                    </div>
+
+                    <!-- CARD 1: MATRIZ DE DECISÃO DO SUPERVISOR -->
+                    <div class="card" id="supervisor-decision-card" style="margin-bottom: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; flex-wrap: wrap; gap: 0.5rem;">
+                            <h3 style="margin: 0; color: var(--color-primary);">🚦 Matriz de Decisão do Supervisor (Seções Exigidas)</h3>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-secondary" id="btn-supervisor-to-redator" style="padding: 0.35rem 0.8rem; font-size: 0.8rem; background: var(--color-primary-ghost); color: var(--color-primary); border: 1px solid var(--color-primary); font-weight: 600;">✍️ Transmitir Diretrizes para o Redator ➡️</button>
+                                <button class="btn btn-secondary" id="btn-download-supervisor-pdf" style="padding: 0.35rem 0.8rem; font-size: 0.8rem; display: none;">📥 Baixar Parecer em PDF</button>
+                            </div>
+                        </div>
+                        <p style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                            O semáforo abaixo consolida a conformidade de cada área exigida pelo edital e estabelece a ação vinculante para a redação.
+                        </p>
+
+                        <div class="table-responsive-wrapper">
+                            <table class="supervisor-decision-table" id="supervisor-decision-table">
+                                <thead>
+                                    <tr>
+                                        <th>Seção Exigida</th>
+                                        <th style="text-align: center;">Nota Auditoria</th>
+                                        <th style="text-align: center;">Nota Revisão</th>
+                                        <th style="text-align: center;">Status do Supervisor</th>
+                                        <th>Diretriz de Ação Vinculante</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="supervisor-decision-tbody">
+                                    <tr>
+                                        <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                                            Clique em <em>"🧠 Executar Supervisão Estratégica"</em> para cruzar a Auditoria e a Revisão.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- CARD 2: PLANO DIRETOR DE REDAÇÃO SEÇÃO POR SEÇÃO -->
+                    <div class="card" id="supervisor-directives-container" style="margin-bottom: 1.5rem;">
+                        <h3 style="margin-bottom: 0.8rem; color: var(--color-primary);">📋 Plano Diretor de Redação (Instruções Detalhadas)</h3>
+                        <p style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                            Instruções técnicas individualizadas para o Redator corrigir cada fragilidade e potencializar a pontuação na banca examinadora.
+                        </p>
+                        <div id="supervisor-directives-list">
+                            <p style="color: var(--text-muted); font-size: 0.85rem; font-style: italic;">Nenhuma diretriz formulada ainda.</p>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" id="btn-goto-redator" style="margin-top: 1rem; width: 100%; background: linear-gradient(135deg, #06b6d4, #3b82f6); border: none; font-weight: 600; padding: 0.8rem;">✍️ Transmitir Diretrizes e Avançar para o Redator</button>
+                </div>
+
+                <!-- TAB 5: REDATOR -->
+                <div class="w-tab-pane" id="pane-redator">
+                    <div class="pane-header">
+                        <h2>Assistente de Redação</h2>
+                        <p>Escreva seções completas utilizando IA orientada pelas diretrizes consolidadas do Supervisor e referências do edital.</p>
+                    </div>
+
+                    <!-- CÁPSULA DE DIRETRIZ DO SUPERVISOR -->
+                    <div class="directive-capsule-redator" id="redator-supervisor-directive-capsule" style="display: none;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+                            <strong style="color: var(--color-primary); font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
+                                <span>🎯</span> Diretriz do Supervisor para esta Seção:
+                            </strong>
+                            <span id="redator-supervisor-directive-status" class="badge-decision-adjustment">Ajuste Recomendado</span>
+                        </div>
+                        <p id="redator-supervisor-directive-text" style="font-size: 0.85rem; line-height: 1.5; color: var(--text-primary); margin: 0;">
+                            Aguardando instruções do Supervisor...
+                        </p>
+                    </div>
+
+                    <div class="card">
+                        <h3>✍️ Gerador por Seção</h3>
+                        <div class="form-row" style="margin-bottom: 1rem;">
+                            <label for="redator-section-select">Seção a ser gerada:</label>
+                            <select id="redator-section-select" class="form-input" style="width: 100%;">
+                                <option value="justificativa">1. Justificativa e Relevância</option>
+                                <option value="objetivos">2. Objetivos Geral e Específicos</option>
+                                <option value="metodologia">3. Metodologia e Plano de Trabalho</option>
+                                <option value="cronograma">4. Cronograma de Atividades</option>
+                                <option value="orcamento">5. Planilha Orçamentária</option>
+                                <option value="acessibilidade">6. Acessibilidade e Cotas</option>
+                                <option value="publico">7. Público-Alvo e Perfil dos Beneficiários</option>
+                                <option value="contrapartida">8. Contrapartida Social e Legado</option>
+                                <option value="comunicacao">9. Plano de Comunicação e Divulgação</option>
+                                <option value="ficha_tecnica">10. Ficha Técnica e Capacidade Operacional</option>
+                                <option value="monitoramento">11. Plano de Monitoramento, Avaliação e Indicadores</option>
+                                <option value="compliance">12. Compliance, Marcos Legais e Direitos</option>
+                                <option value="sustentabilidade">13. Plano de Sustentabilidade e Mitigação Ambiental</option>
+                                <option value="rider">14. Rider Técnico e Necessidades Logísticas</option>
+                            </select>
+                        </div>
+                        <div class="form-row" style="margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                            <label for="redator-prompt" style="font-weight: 600; color: var(--color-primary);">Instruções ou ideias para a seção (Anotações do Proponente):</label>
+                            <textarea id="redator-prompt" placeholder="Ex: Focar na preservação da cultura local de sanfoneiros, detalhar orçamentos com teto R$ 300k, explicitar paridade de gênero e público vulnerável..." style="width: 100%; min-height: 140px; padding: 0.8rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); font-family: var(--font-body); font-size: 0.9rem; line-height: 1.5; color: var(--text-primary); resize: vertical; outline: none; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);"></textarea>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <button class="btn btn-primary" id="btn-generate-section" style="flex: 1; min-width: 180px;">✨ Gerar Seção Selecionada</button>
+                            <button class="btn btn-primary" id="btn-generate-section-with-chat" style="flex: 1; min-width: 220px; background: linear-gradient(135deg, #6366f1, #06b6d4); border: none;">💬 Aplicar Ajustes do Chat & Gerar</button>
+                            <button class="btn btn-secondary" id="btn-redator-run-all-sequential" style="flex: 1; min-width: 220px; background: linear-gradient(135deg, var(--color-primary-ghost), var(--bg-card)); color: var(--color-primary); border: 1px solid var(--color-primary);">⚡ Redigir Seções Sequencialmente</button>
+                        </div>
+                        
+                        <!-- CAIXA DE TEXTO COM ADEQUAÇÕES E JUSTIFICATIVAS DA IA -->
+                        <div id="redator-justificativa-container" style="display: none; margin-top: 1.5rem;">
+                            <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem; color: var(--color-primary);">💡 Adequações e Justificativas de Mudanças da IA:</label>
+                            <textarea id="redator-justificativa-content" readonly style="width: 100%; height: 120px; padding: 0.6rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-panel); font-family: var(--font-body); font-size: 0.85rem; color: var(--text-secondary); resize: vertical; outline: none;"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- ÁREA EDITÁVEL DO CONTEÚDO GERADO -->
+                    <div class="card" id="generation-result-card" style="display: none;">
+                        <h3 id="generation-result-title">✨ Conteúdo Gerado para o Editor</h3>
+                        <div id="generation-target-badge" style="font-size: 0.85rem; font-weight: 600; color: var(--color-primary); background: var(--color-primary-ghost); padding: 0.4rem 0.8rem; border-radius: var(--radius-md); margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem; border: 1px solid var(--border-color);">
+                            🎯 Tópico Alvo no Editor: <span id="generation-target-section-name" style="font-weight: 700;">Justificativa</span> (Pré-aprovação obrigatória ao aplicar)
+                        </div>
+                        <textarea id="generation-result-content-editable" style="width: 100%; height: 250px; padding: 0.6rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); font-family: var(--font-body); font-size: 0.85rem; color: var(--text-primary); margin-bottom: 1rem; resize: vertical; outline: none;"></textarea>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-primary" id="btn-apply-generation">📥 Enviar para Pré-Aprovação no Editor</button>
+                            <button class="btn btn-secondary" id="btn-discard-generation">Descartar</button>
+                        </div>
+                    </div>
+
+                    <!-- CARD DO CHATBOT ASSISTENTE DE REDAÇÃO -->
+                    <div class="card redator-chat-card" style="margin-top: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
+                            <h3 style="margin: 0; color: var(--color-primary); display: flex; align-items: center; gap: 0.4rem;">
+                                <span>💬</span> Chatbot Assistente de Redação (Contexto Ingestor)
+                            </h3>
+                            <button class="btn btn-secondary" id="btn-redator-chat-clear" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">🧹 Limpar Chat</button>
+                        </div>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.8rem;">Converse sobre os requisitos da seção ou do edital. As orientações deste chat serão integradas na geração da seção com a API.</p>
+
+                        <div id="redator-chat-messages" class="redator-chat-messages" style="max-height: 280px; overflow-y: auto; padding: 0.8rem; background: var(--bg-input); border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 0.8rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                            <div class="chat-message agent" style="font-size: 0.85rem; line-height: 1.5; padding: 0.6rem 0.8rem; background: var(--bg-card); border-radius: 8px; border-left: 3px solid var(--color-primary);">
+                                🤖 <strong>Assistente:</strong> Olá! Posso te ajudar a ajustar e refinar qualquer seção com base nos dados cruzados do edital e anexos. Escreva seus pontos de atenção e clique em <em>"💬 Aplicar Ajustes do Chat & Gerar"</em> para atualizar a seção!
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" id="redator-chat-input" placeholder="Digite sua dúvida ou ajuste para a seção..." class="form-input" style="flex: 1;">
+                            <button class="btn btn-primary" id="btn-redator-chat-send" style="width: auto;">Enviar 🚀</button>
+                        </div>
+
+                        <div style="margin-top: 1rem; padding-top: 0.8rem; border-top: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                            <span style="font-size: 0.8rem; color: var(--text-secondary);">💡 Concluiu os ajustes no chat? Aplique as orientações diretamente na seção:</span>
+                            <button class="btn btn-primary" id="btn-generate-section-with-chat-bottom" style="background: linear-gradient(135deg, #6366f1, #06b6d4); border: none; font-weight: 600; padding: 0.6rem 1.2rem;">💬 Aplicar Ajustes do Chat & Gerar ✨</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- TAB 5: FINALIZAÇÃO DO PROJETO -->
+                <!-- TAB 6: FINALIZAÇÃO DO PROJETO -->
                 <div class="w-tab-pane" id="pane-finalizacao">
                     <div class="pane-header">
                         <h2>🏆 Finalização & Exportação do Projeto</h2>
@@ -840,17 +925,20 @@
     <!-- CDNs & Dependências Local -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
-    <script src="src/xlsx.full.min.js?v=15"></script>
+    <script src="src/xlsx.full.min.js?v=20"></script>
     
     <div id="toast-container" class="toast-container"></div>
 
-    <!-- Banco Local IndexedDB & Motor de Inferência Offline -->
-    <script src="src/controllers/auditorDB.js?v=15"></script>
-    <script src="src/controllers/offlineAuditor.js?v=15"></script>
+    <!-- Banco Local IndexedDB & Motores de Inferência e Cruzamento Offline -->
+    <script src="src/controllers/auditorDB.js?v=22"></script>
+    <script src="src/controllers/stateIntegrityManager.js?v=22"></script>
+    <script src="src/controllers/contextExtractor.js?v=22"></script>
+    <script src="src/controllers/localCrossEngine.js?v=22"></script>
+    <script src="src/controllers/offlineAuditor.js?v=22"></script>
 
-    <!-- Controlador de IA (substitui Skills e Orchestrator) -->
-    <script src="src/controllers/aiController.js?v=15"></script>
-    <script src="sample_data.js?v=15"></script>
-    <script src="app.js?v=15"></script>
+    <!-- Controlador de IA (Modo Híbrido & Handoff Enriquecido) -->
+    <script src="src/controllers/aiController.js?v=22"></script>
+    <script src="sample_data.js?v=22"></script>
+    <script src="app.js?v=22"></script>
 </body>
 </html>
