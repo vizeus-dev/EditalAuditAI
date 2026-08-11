@@ -1,0 +1,160 @@
+{
+  "total": 17,
+  "passed": 14,
+  "failed": 3,
+  "results": [
+    {
+      "file": "test_architectural_fixes.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 0.3,
+      "stdout": "[CACHE] Item stored in semantic cache.\n[CACHE] Direct match hit.",
+      "stderr": "....\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK",
+      "error": null
+    },
+    {
+      "file": "test_e2e.py",
+      "passed": false,
+      "returncode": 1,
+      "duration_sec": 0.33,
+      "stdout": "==================================\n   EditalAudit AI - End-to-End Integration Test Suite\n============================================================\n\n============================================================\nTEST 1: Server Health Check\n============================================================",
+      "stderr": "14-64\\Lib\\encodings\\cp1252.py\", line 19, in encode\n    return codecs.charmap_encode(input,self.errors,encoding_table)[0]\n           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nUnicodeEncodeError: 'charmap' codec can't encode character '\\u2717' in position 2: character maps to <undefined>",
+      "error": null
+    },
+    {
+      "file": "test_encoding_and_profile.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 0.4,
+      "stdout": "€œTambores EsperanÃ§aâ€\nComplex fixed:         “Tambores Esperança”\nHTML cleanup input: <tr style=\"background:#f1f5f9; text-align:left;\">\n      <td>Item 1</td>\n      <td>R$ 10.000,00</td>\n    </tr>\nHTML cleanup output: | Item 1\n✅ Todos os testes de encoding e ReportLab passaram com 100% de sucesso!",
+      "stderr": "",
+      "error": null
+    },
+    {
+      "file": "test_excel_gen.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 0.52,
+      "stdout": "Row 9 (Item 1) Item: Servi�os Especializados (PF e PJ)\nRow 9 (Item 1) Qtde: 936\nRow 9 (Item 1) ValorPrevisto: 69\nRow 9 (Item 1) ValorTotal Formula: =E9*F9\nRow 11 Meta Total Formula: =SUM(G9:G10)\nRow 12 Total Geral Formula: =G11\nSUCCESS: EDITAL RIO DOCE LAYOUT CHECKS PASSED PERFECTLY!",
+      "stderr": "",
+      "error": null
+    },
+    {
+      "file": "test_fluxo_submissao_proposta.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 1.4,
+      "stdout": "",
+      "stderr": ".\n----------------------------------------------------------------------\nRan 1 test in 0.052s\n\nOK",
+      "error": null
+    },
+    {
+      "file": "test_full_architecture.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 0.32,
+      "stdout": "",
+      "stderr": "...\n----------------------------------------------------------------------\nRan 3 tests in 0.004s\n\nOK",
+      "error": null
+    },
+    {
+      "file": "test_integration.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 1.17,
+      "stdout": "[OK] test_search_web_editais returned 6 results.",
+      "stderr": "C:\\Users\\victo\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 404: 'Not Found'>\n  _warnings.warn(self.warn_message, ResourceWarning)\n..\n----------------------------------------------------------------------\nRan 2 tests in 0.851s\n\nOK",
+      "error": null
+    },
+    {
+      "file": "test_live_full_flow.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 1.57,
+      "stdout": "FULL FLOW TEST] TESTANDO GERAÇÃO UNIFICADA E AUDITORIA HÍBRIDA 3 ETAPAS\n======================================================================\n[TEST 1] Edital Gigante: 90528 caracteres (~22632 tokens)\n\n--- PASSO 1: Chamando /api/generate-proposal-unified ---\n[PASSO 1 FAIL]: HTTP Error 403: Forbidden",
+      "stderr": "",
+      "error": null
+    },
+    {
+      "file": "test_live_giant_edital_audit.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 2.24,
+      "stdout": "============================================================\n[TEST] Tamanho do Edital Gigante de Teste: 90528 caracteres (~22632 tokens)\n\n[TEST] Enviando requisição para a rota unificada /api/generate-proposal-unified...\n\n[FAIL] ERRO HTTP 403: {\"error\": \"Erro na API do Gemini (HTTP 403): Forbidden\"}",
+      "stderr": "",
+      "error": null
+    },
+    {
+      "file": "test_local_cross_engine_validation.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 0.16,
+      "stdout": "ller.js: briefing e payloads enriquecidos com LocalCrossEngine\n  [OK] app.js: setupAuditor e runPreFlightLinter integrados com LocalCrossEngine\n\n==================================================\n>>> TODOS OS TESTES PASSARAM COM 100% DE SUCESSO! <<<\n==================================================",
+      "stderr": "",
+      "error": null
+    },
+    {
+      "file": "test_multi_axis.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 0.28,
+      "stdout": "[OK] Teste de Empacotamento APKG/ZIP Anki aprovado.\n[OK] Teste de Gera��o TSV Anki aprovado.",
+      "stderr": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.001s\n\nOK",
+      "error": null
+    },
+    {
+      "file": "test_offline_validation.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 0.18,
+      "stdout": "fline verificado.\n[OK] aiController.js: Integrado com modo h�brido e fallback offline.\n[OK] app.js (454045 bytes)\n[OK] app.js: Suporte offline completo para as 14 se��es ABNT e Relat�rio de Revis�o verificado.\n\n[SUCCESS] Todos os testes de valida��o da arquitetura Offline-First passaram com sucesso!",
+      "stderr": "",
+      "error": null
+    },
+    {
+      "file": "test_prazo_deadline_timezone.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 0.25,
+      "stdout": "",
+      "stderr": ".......\n----------------------------------------------------------------------\nRan 7 tests in 0.000s\n\nOK",
+      "error": null
+    },
+    {
+      "file": "test_quick_api.py",
+      "passed": false,
+      "returncode": 1,
+      "duration_sec": 0.22,
+      "stdout": "Usage: python test_quick_api.py <API_KEY>",
+      "stderr": "",
+      "error": null
+    },
+    {
+      "file": "test_supervisor_and_flow.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 3.88,
+      "stdout": " do edital.\"]}}\n3. Redator Supervisor Capsule Test: {\"capsuleDisplay\": \"block\", \"status\": \"\\ud83d\\udfe1 Ajuste Recomendado\", \"hasDirectiveText\": true}\n4. Sequential Navigation Buttons Test: {\"btnAudToRev\": true, \"btnRevToSup\": true, \"btnSupToRed\": true}\nALL VERIFICATIONS COMPLETED WITH 100% SUCCESS!",
+      "stderr": "",
+      "error": null
+    },
+    {
+      "file": "test_unified_pipeline.py",
+      "passed": false,
+      "returncode": 1,
+      "duration_sec": 0.21,
+      "stdout": "Erro: Forne�a a chave de API como argumento ou defina a vari�vel GEMINI_API_KEY.",
+      "stderr": "",
+      "error": null
+    },
+    {
+      "file": "test_validacao_elegibilidade.py",
+      "passed": true,
+      "returncode": 0,
+      "duration_sec": 0.21,
+      "stdout": "",
+      "stderr": ".....\n----------------------------------------------------------------------\nRan 5 tests in 0.000s\n\nOK",
+      "error": null
+    }
+  ]
+}

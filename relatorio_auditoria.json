@@ -1,0 +1,34 @@
+{
+  "submission_id": "SUB-2026-RDO-0049",
+  "proponent_id": "PROP-0049",
+  "proponent_name": "Associacao Cultural Proponente 49",
+  "client_timestamp_iso": "2026-06-29T22:56:17.400000-04:00",
+  "client_tz": "America/Manaus",
+  "edital_title": "Edital Rio Doce 2026 - Tambores Esperanca",
+  "budget_total": 224900.0,
+  "sections": {
+    "justificativa": "Justificativa tecnica e cultural do projeto 49. O projeto visa fortalecer a salvaguarda do patrimonio imaterial.",
+    "metas": "Realizacao de 12 oficinas e 3 apresentacoes publicas no municipio proponente 49.",
+    "orcamento": "Orcamento discriminado dentro do teto de R$ 220.000,00 aprovado pela diretoria."
+  },
+  "items": [
+    {
+      "item": 1,
+      "categoria": "Equipe Principal",
+      "descricao": "Coordenador Geral",
+      "unidade": "mes",
+      "quantidade": 6,
+      "valor_unitario": 3500.0,
+      "total": 21000.0
+    },
+    {
+      "item": 2,
+      "categoria": "Producao e Execucao",
+      "descricao": "Oficineiro Mestre",
+      "unidade": "oficina",
+      "quantidade": 12,
+      "valor_unitario": 800.0,
+      "total": 9600.0
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "scenario_save": {
+    "total_requests": 200,
+    "duration_s": 1.0381366999999955,
+    "throughput_req_s": 192.65285583295616,
+    "success_rate_pct": 100.0,
+    "error_count": 0,
+    "latency_mean_ms": 114.34577400001672,
+    "latency_p50_ms": 6.437500000174623,
+    "latency_p95_ms": 508.48469999982626,
+    "latency_p99_ms": 516.2396999999146,
+    "latency_min_ms": 3.392199999780132,
+    "latency_max_ms": 1018.7710000000152,
+    "data_loss_detected": true,
+    "lost_count": 199
+  },
+  "scenario_xlsx": {
+    "total_requests": 200,
+    "duration_s": 3.9431150000000343,
+    "throughput_req_s": 50.721320580302184,
+    "success_rate_pct": 98.5,
+    "latency_mean_ms": 691.3312604999896,
+    "latency_p50_ms": 513.4419500000149,
+    "latency_p95_ms": 1568.819799999801,
+    "latency_p99_ms": 2205.714600000192,
+    "latency_min_ms": 301.3977000000523,
+    "latency_max_ms": 2210.468199999923
+  },
+  "edge_cases": [
+    {
+      "name": "Submissao 500ms antes do prazo (Brasilia)",
+      "client_time": "2026-06-29T23:59:58.500000-03:00",
+      "server_arrival_time": "2026-06-29T23:59:58.700000-03:00",
+      "eligible_by_client": true,
+      "eligible_by_server": true,
+      "divergence": false
+    },
+    {
+      "name": "Submissao no ultimo segundo com alta latencia de rede (1800ms)",
+      "client_time": "2026-06-29T23:59:58.500000-03:00",
+      "server_arrival_time": "2026-06-30T00:00:00.300000-03:00",
+      "eligible_by_client": true,
+      "eligible_by_server": false,
+      "divergence": true
+    },
+    {
+      "name": "Proponente Manaus (UTC-4) as 22:59:59 (Equivale a 23:59:59 BRT)",
+      "client_time": "2026-06-29T22:59:59-04:00",
+      "server_arrival_time": "2026-06-29T23:59:59.150000-03:00",
+      "eligible_by_client": true,
+      "eligible_by_server": false,
+      "divergence": true
+    },
+    {
+      "name": "Proponente Manaus (UTC-4) as 23:05:00 (Equivale a 00:05:00 BRT)",
+      "client_time": "2026-06-29T23:05:00-04:00",
+      "server_arrival_time": "2026-06-30T00:05:00.150000-03:00",
+      "eligible_by_client": false,
+      "eligible_by_server": false,
+      "divergence": false
+    },
+    {
+      "name": "Proponente Acre (UTC-5) as 21:59:59 (Equivale a 23:59:59 BRT)",
+      "client_time": "2026-06-29T21:59:59-05:00",
+      "server_arrival_time": "2026-06-29T23:59:59.250000-03:00",
+      "eligible_by_client": true,
+      "eligible_by_server": false,
+      "divergence": true
+    },
+    {
+      "name": "Proponente com relogio local adiantado em 3 minutos",
+      "client_time": "2026-06-30T00:02:00-03:00",
+      "server_arrival_time": "2026-06-30T00:02:00.100000-03:00",
+      "eligible_by_client": false,
+      "eligible_by_server": false,
+      "divergence": false
+    },
+    {
+      "name": "Proponente com relogio local atrasado em 3 minutos",
+      "client_time": "2026-06-29T23:57:00-03:00",
+      "server_arrival_time": "2026-06-29T23:57:00.100000-03:00",
+      "eligible_by_client": true,
+      "eligible_by_server": true,
+      "divergence": false
+    },
+    {
+      "name": "Submissao no exato limite de microsegundo (23:59:59.999999)",
+      "client_time": "2026-06-29T23:59:59.999999-03:00",
+      "server_arrival_time": "2026-06-29T23:59:59.999999-03:00",
+      "eligible_by_client": false,
+      "eligible_by_server": false,
+      "divergence": false
+    },
+    {
+      "name": "Submissao 1 microsegundo apos virada (00:00:00.000001)",
+      "client_time": "2026-06-30T00:00:00.000001-03:00",
+      "server_arrival_time": "2026-06-30T00:00:00.000001-03:00",
+      "eligible_by_client": false,
+      "eligible_by_server": false,
+      "divergence": false
+    }
+  ]
+}

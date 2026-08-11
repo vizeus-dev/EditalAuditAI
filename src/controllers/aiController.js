@@ -671,10 +671,14 @@ ${financialContext}
 [RESUMO DAS DEMAIS SEÇÕES DO PROJETO (CONTEXTO CRUZADO E COERÊNCIA GLOBAL)]:
 ${otherSections}
 
-${webSearchContext ? `[DIRETRIZES DA PESQUISA WEB]:\n${webSearchContext}` : ''}
+${webSearchContext ? `[DADOS DE PESQUISA EM TEMPO REAL DA WEB (Cotações, Legislação e Jurisprudência)]:
+${webSearchContext}
+
+*DIRETRIZ DE PRIORIDADE EM TEMPO REAL:*
+Utilize prioritariamente esses dados atualizados em tempo real obtidos da internet para validar valores de mercado, regras de acessibilidade (ABNT NBR 9050) e conformidade jurídica (Lei 14.903/2024 / SisGen / Ecad).\n` : ''}
 
 DIRETRIZES TÉCNICAS MANDATÓRIAS:
-1. Analise o projeto considerando o Diagnóstico Offline já realizado acima. Concentre sua inteligência em polir a redação e aprofundar os argumentos de mérito cultural.
+1. Analise o projeto considerando o Diagnóstico Offline já realizado acima e os dados de pesquisa web em tempo real. Concentre sua inteligência em polir a redação e aprofundar os argumentos de mérito cultural.
 2. Para cada apontamento, cite o trecho do edital entre colchetes [📌 EDITAL: '...'] ou explicite [⚠️ INFERÊNCIA CONTEXTUAL: ...].
 3. Cada parecer deve ser denso e incluir ao final a subseção 'Sugestão Otimizada' com o texto aprimorado para a proposta.
 4. Retorne um JSON estrito correspondente à schema fornecida.`;
@@ -833,37 +837,27 @@ ${areaConfig.systemPrompt}`;
             showToast("⚡ Etapa 1: Cruzamento offline de regras concluído.", "info");
         }
 
-        // --- ETAPA 2: Pesquisa Online Leve ---
+        // --- ETAPA 2: Pesquisa Online Real Contextualizada ---
         let webSearchContext = "";
-        let searchQuery = "";
-        if (workspaceState.cover && workspaceState.cover.institution) searchQuery += workspaceState.cover.institution;
-        if (workspaceState.editalRefName) {
-            const cleanName = workspaceState.editalRefName.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " ");
-            searchQuery += " " + cleanName;
-        }
-        searchQuery = searchQuery.trim();
-
-        if (searchQuery) {
+        if (window.webSearchController && typeof window.webSearchController.executeRealWebSearch === 'function') {
             try {
-                const searchRes = await fetch('/api/search-web-editais', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: searchQuery + " regras cotas limites custos" })
+                const query = window.webSearchController.buildAgentQuery('auditor', workspaceState, localAuditResult);
+                if (typeof showToast === 'function') {
+                    showToast("🌐 Etapa 2: Pesquisando jurisprudência e normas em tempo real na web...", "info");
+                }
+                const searchRes = await window.webSearchController.executeRealWebSearch(query, {
+                    agentKey: 'auditor',
+                    maxResults: 4,
+                    timeoutMs: 6500
                 });
-                if (searchRes.ok) {
-                    const searchData = await searchRes.json();
-                    if (searchData.results && searchData.results.length > 0) {
-                        webSearchContext = "DIRETRIZES ENCONTRADAS NA PESQUISA LEVE:\n";
-                        searchData.results.slice(0, 3).forEach(r => {
-                            webSearchContext += `- ${r.title}: ${r.snippet}\n`;
-                        });
-                        if (typeof showToast === 'function') {
-                            showToast("🌐 Etapa 2: Normas do edital consultadas via Web.", "info");
-                        }
+                if (searchRes && searchRes.success && searchRes.contextText) {
+                    webSearchContext = searchRes.contextText;
+                    if (typeof showToast === 'function') {
+                        showToast("🌐 Etapa 2: Normas e parâmetros atualizados da Web integrados com sucesso.", "info");
                     }
                 }
             } catch (searchErr) {
-                console.warn('[AI-CONTROLLER] Pesquisa online leve ignorada:', searchErr);
+                console.warn('[AI-CONTROLLER] Pesquisa online falhou, utilizando fallback offline:', searchErr);
             }
         }
 
@@ -1080,6 +1074,24 @@ ${areaConfig.systemPrompt}`;
 `;
         });
 
+        // Etapa 2: Pesquisa Online Real para Diretrizes de Supervisão
+        let webSearchContext = "";
+        if (window.webSearchController && typeof window.webSearchController.executeRealWebSearch === 'function') {
+            try {
+                const query = window.webSearchController.buildAgentQuery('supervisor', workspaceState);
+                const searchRes = await window.webSearchController.executeRealWebSearch(query, {
+                    agentKey: 'supervisor',
+                    maxResults: 4,
+                    timeoutMs: 6500
+                });
+                if (searchRes && searchRes.success && searchRes.contextText) {
+                    webSearchContext = searchRes.contextText;
+                }
+            } catch (err) {
+                console.warn('[SUPERVISOR] Pesquisa web ignorada:', err);
+            }
+        }
+
         const supervisorPrompt = `Você é o Arquiteto-Chefe e Supervisor Estratégico do projeto cultural "${cover.title || 'Projeto Cultural'}".
 Sua missão é consolidar os apontamentos da Auditoria (Aba 2) e da Revisão (Aba 3) e formular as DECISÕES EXECUTIVAS VINCULANTES e o GUIA DE AÇÃO PARA O REDATOR para cada seção exigida pelo edital.
 
@@ -1094,6 +1106,8 @@ ${auditSummary.substring(0, 2500)}
 
 [APONTAMENTOS DAS SEÇÕES EXIGIDAS]:
 ${revisorFeedback}
+
+${webSearchContext ? `[DADOS DE PESQUISA EM TEMPO REAL DA WEB (Jurisprudência TCU/MinC e Governança)]:\n${webSearchContext}\n` : ''}
 
 DIRETRIZES DE SUPERVISÃO:
 1. Para cada seção exigida (${requiredSections.join(', ')}), defina:

@@ -412,20 +412,31 @@ function initAutoFit() {
 // Theme & Key Management
 function initTheme() {
     const themeToggle = document.getElementById('theme-toggle-btn');
+    const applyTheme = (theme) => {
+        if (theme === 'light') {
+            document.body.classList.add('light-mode');
+            document.body.classList.remove('dark-mode');
+            if (themeToggle) themeToggle.checked = true;
+            localStorage.setItem('theme', 'light');
+        } else {
+            document.body.classList.remove('light-mode');
+            document.body.classList.add('dark-mode');
+            if (themeToggle) themeToggle.checked = false;
+            localStorage.setItem('theme', 'dark');
+        }
+    };
+
     if (themeToggle) {
         themeToggle.addEventListener('change', () => {
-            const isDark = themeToggle.checked;
-            document.body.classList.toggle('dark-mode', isDark);
-            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            applyTheme(themeToggle.checked ? 'light' : 'dark');
         });
     }
+
     const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-        document.body.classList.add('dark-mode');
-        if (themeToggle) themeToggle.checked = true;
+    if (savedTheme === 'light') {
+        applyTheme('light');
     } else {
-        document.body.classList.remove('dark-mode');
-        if (themeToggle) themeToggle.checked = false;
+        applyTheme('dark');
     }
 }
 
@@ -958,7 +969,7 @@ let _lastSyncedContentHashes = {};
 function syncDOMContentToState() {
     let hasChanges = false;
     const sections = ['justificativa', 'objetivos', 'metodologia', 'cronograma', 'orcamento', 'acessibilidade', 'publico', 'contrapartida', 'comunicacao', 'ficha_tecnica', 'monitoramento', 'compliance', 'sustentabilidade', 'rider'];
-    
+
     sections.forEach(key => {
         const el = document.getElementById(`sec-${key}`);
         const currentVal = (el && !el.classList.contains('is-placeholder')) ? el.innerHTML : ((workspaceState.documentContent && workspaceState.documentContent[key]) || '');
@@ -1762,9 +1773,26 @@ async function generateBasicProposal() {
             showToast(`✍️ [Ingestor ${i + 1}/${requiredSections.length}] Redigindo seção ${displayTitle} com profundidade e rigor...`, "info");
 
             let text = "";
+            let secWebContext = "";
+            if (window.webSearchController && typeof window.webSearchController.executeRealWebSearch === 'function') {
+                try {
+                    const query = window.webSearchController.buildAgentQuery(secKey, workspaceState);
+                    const searchRes = await window.webSearchController.executeRealWebSearch(query, {
+                        agentKey: secKey,
+                        maxResults: 3,
+                        timeoutMs: 5000
+                    });
+                    if (searchRes && searchRes.success && searchRes.contextText) {
+                        secWebContext = searchRes.contextText;
+                    }
+                } catch (webErr) {
+                    console.warn(`[INGESTOR] Pesquisa web para ${secKey} ignorada:`, webErr);
+                }
+            }
+
             if (isApiActive()) {
                 try {
-                    const refinedRaw = await callGeminiForRedator(secKey, "Redigir seção completa, profunda, rigorosa e densa com base nas regras do edital, perfil estrutural e anexos ingeridos.");
+                    const refinedRaw = await callGeminiForRedator(secKey, "Redigir seção completa, profunda, rigorosa e densa com base nas regras do edital, perfil estrutural e anexos ingeridos.", secWebContext);
                     if (refinedRaw) {
                         if (refinedRaw.includes("=== CONTEÚDO DA SEÇÃO ===") && refinedRaw.includes("=== JUSTIFICATIVA E ADEQUAÇÕES ===")) {
                             const parts = refinedRaw.split("=== JUSTIFICATIVA E ADEQUAÇÕES ===");
@@ -2007,16 +2035,16 @@ async function processAnnexFile(file) {
 
 function sanitizeExtractedText(rawText) {
     if (!rawText || typeof rawText !== 'string') return '';
-    
+
     // 1. Remove UTF-8 BOM
     let text = rawText.replace(/^\uFEFF/, '');
-    
+
     // 2. Remove non-printable control characters (except \n, \r, \t)
     text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-    
+
     // 3. Normalize multiple null / non-breaking spaces
     text = text.replace(/\u00A0/g, ' ');
-    
+
     // 4. Excessive UPPERCASE normalization (>75% uppercase in texts > 120 chars)
     if (text.length > 120) {
         const letters = text.replace(/[^a-zA-ZáàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ]/g, '');
@@ -2029,7 +2057,7 @@ function sanitizeExtractedText(rawText) {
             }
         }
     }
-    
+
     // 5. Collapse excessive spaces
     text = text.replace(/[ \t]{4,}/g, '  ');
     return text.trim();
@@ -2089,16 +2117,16 @@ async function extractTextFromFile(file) {
 async function readPdfText(arrayBuffer) {
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     if (!pdfjsLib) throw new Error("Biblioteca PDF.js não carregada.");
-    
+
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-    
+
     // Safety timeout de 30 segundos para PDFs gigantes ou travados
     const pdfPromise = (async () => {
         const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
         const pdf = await loadingTask.promise;
         let text = "";
         let totalPages = pdf.numPages;
-        
+
         for (let i = 1; i <= totalPages; i++) {
             try {
                 const page = await pdf.getPage(i);
@@ -2109,7 +2137,7 @@ async function readPdfText(arrayBuffer) {
                 console.warn(`[PDF] Erro ao ler página ${i}:`, pageErr);
             }
         }
-        
+
         // Detecção de PDF escaneado (imagem sem OCR)
         const avgCharsPerPage = totalPages > 0 ? text.length / totalPages : 0;
         if (avgCharsPerPage < 40 && totalPages > 0) {
@@ -2117,11 +2145,11 @@ async function readPdfText(arrayBuffer) {
                 showToast("⚠️ Atenção: O PDF parece ser uma imagem digitalizada sem camada de texto (OCR necessário).", "warning");
             }
         }
-        
+
         return text;
     })();
 
-    const timeoutPromise = new Promise((_, reject) => 
+    const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("Tempo limite de processamento do PDF excedido (30s).")), 30000)
     );
 
@@ -2235,36 +2263,23 @@ function setupRedator() {
                 lastGeneratedSection = sec;
                 if (resultContentEditable) resultContentEditable.value = text;
 
-                // --- ETAPA 2 (SEGUNDO): Pesquisa Online Leve (sem consumo de API LLM) ---
+                // --- ETAPA 2 (SEGUNDO): Pesquisa Online Real Contextualizada (Cotações, Legislação, Normas) ---
                 let webSearchContext = "";
-                let searchQuery = "";
-                if (workspaceState.cover.institution) searchQuery += workspaceState.cover.institution;
-                if (workspaceState.editalRefName) {
-                    const cleanName = workspaceState.editalRefName.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " ");
-                    searchQuery += " " + cleanName;
-                }
-                searchQuery = searchQuery.trim();
-
-                if (searchQuery) {
-                    btnGen.textContent = "🌐 Etapa 2: Pesquisando regras na web...";
+                if (window.webSearchController && typeof window.webSearchController.executeRealWebSearch === 'function') {
+                    btnGen.textContent = `🌐 Etapa 2: Pesquisando cotações e normas para [${sec.toUpperCase()}]...`;
                     try {
-                        const searchRes = await fetch('/api/search-web-editais', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ query: searchQuery + " " + sec + " regras limites" })
+                        const query = window.webSearchController.buildAgentQuery(sec, workspaceState);
+                        const searchRes = await window.webSearchController.executeRealWebSearch(query, {
+                            agentKey: sec,
+                            maxResults: 4,
+                            timeoutMs: 6500
                         });
-                        if (searchRes.ok) {
-                            const searchData = await searchRes.json();
-                            if (searchData.results && searchData.results.length > 0) {
-                                webSearchContext = "RESULTADOS DA BUSCA NA WEB SOBRE O EDITAL:\n";
-                                searchData.results.slice(0, 3).forEach(r => {
-                                    webSearchContext += `- Título: ${r.title}\n  URL: ${r.url}\n  Regra: ${r.snippet}\n\n`;
-                                });
-                                showToast("🌐 Etapa 2: Pesquisa de regras na web concluída.", "info");
-                            }
+                        if (searchRes && searchRes.success && searchRes.contextText) {
+                            webSearchContext = searchRes.contextText;
+                            showToast(`🌐 Etapa 2: Cotações e normas web capturadas para ${sec.toUpperCase()}.`, "info");
                         }
                     } catch (err) {
-                        console.warn("Falha na pesquisa web leve:", err);
+                        console.warn(`[REDATOR] Pesquisa web para ${sec} falhou, acionando fallback:`, err);
                     }
                 }
 
@@ -2973,8 +2988,11 @@ ${supDec.pontos_criticos && supDec.pontos_criticos.length > 0 ? '- Pontos Críti
     [EDITAL DE REFERÊNCIA (REGRAS DO PROJETO)]:
     ${editalText ? editalText.substring(0, 40000) : "Nenhum edital ativo."}
     
-    [PESQUISA WEB ATUALIZADA DO EDITAL]:
+    [DADOS DE PESQUISA EM TEMPO REAL DA WEB (Cotações, Legislação, Normas e Jurisprudência)]:
     ${webSearchContext || "Nenhuma pesquisa adicional encontrada."}
+
+    *DIRETRIZ DE PRIORIDADE EM TEMPO REAL:*
+    Utilize prioritariamente esses dados atualizados em tempo real obtidos da internet para validar valores de mercado, regras de acessibilidade (ABNT NBR 9050) e conformidade jurídica (Lei 14.903/2024 / SisGen / Ecad).
     
     [ANEXOS ADICIONAIS DO EDITAL]:
     ${annexesContext}
@@ -3407,9 +3425,9 @@ function updateRevisorPanelUI() {
         const confianca = result.confianca || "ALTA";
         const confClass = confianca === "ALTA" ? "badge-confidence-alta" : (confianca === "MEDIA" ? "badge-confidence-media" : "badge-confidence-baixa");
         scoreEl.innerHTML = `<span>${result.nota}/100</span> <span class="${confClass}" title="Nível de fundamentação">${confianca === 'ALTA' ? '✓ Alta Confiança' : (confianca === 'MEDIA' ? '⚡ Média' : '⚠️ Preliminar')}</span>`;
-        
+
         let renderedHtml = renderTextOrMarkdown(result.parecer);
-        
+
         // Se houver sugestão otimizada no parecer, injeta o botão de 1-clique
         if (/Sugestão|Otimizada|Proposta/i.test(result.parecer)) {
             renderedHtml += `
@@ -3438,7 +3456,7 @@ function updateRevisorPanelUI() {
     }
 }
 
-window.applyOptimizedSuggestion = function(sectionKey) {
+window.applyOptimizedSuggestion = function (sectionKey) {
     if (!sectionKey) sectionKey = activeRevisor;
     const result = workspaceState.revisorAgentsResults[sectionKey];
     if (!result || !result.parecer) {
@@ -3522,30 +3540,22 @@ async function runSingleAgent(agentKey) {
 
         showToast(`⚡ Etapa 1: Análise local de ${REVISORES_METADATA[agentKey].name} concluída.`, "info");
 
-        // --- ETAPA 2 (SEGUNDO): Pesquisa Online Leve (Regras e Leis) ---
+        // --- ETAPA 2 (SEGUNDO): Pesquisa Online Real Contextualizada (Regras, Leis, Cotações) ---
         let webSearchContext = "";
-        let searchQuery = (workspaceState.cover.institution || "") + " " + agentKey + " regras e normas";
-        searchQuery = searchQuery.trim();
-
-        if (searchQuery) {
+        if (window.webSearchController && typeof window.webSearchController.executeRealWebSearch === 'function') {
             try {
-                const searchRes = await fetch('/api/search-web-editais', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: searchQuery })
+                const query = window.webSearchController.buildAgentQuery(agentKey, workspaceState, localEvaluation);
+                const searchRes = await window.webSearchController.executeRealWebSearch(query, {
+                    agentKey: agentKey,
+                    maxResults: 4,
+                    timeoutMs: 6500
                 });
-                if (searchRes.ok) {
-                    const searchData = await searchRes.json();
-                    if (searchData.results && searchData.results.length > 0) {
-                        webSearchContext = `DIRETRIZES DA PESQUISA WEB PARA ${agentKey.toUpperCase()}:\n`;
-                        searchData.results.slice(0, 2).forEach(r => {
-                            webSearchContext += `- ${r.title}: ${r.snippet}\n`;
-                        });
-                        showToast(`🌐 Etapa 2: Normas web capturadas para ${REVISORES_METADATA[agentKey].name}.`, "info");
-                    }
+                if (searchRes && searchRes.success && searchRes.contextText) {
+                    webSearchContext = searchRes.contextText;
+                    showToast(`🌐 Etapa 2: Normas e parâmetros web capturados para ${REVISORES_METADATA[agentKey].name}.`, "info");
                 }
             } catch (err) {
-                console.warn("Pesquisa web leve ignorada para o agente:", err);
+                console.warn(`[REVISOR] Pesquisa web para ${agentKey} falhou, acionando fallback:`, err);
             }
         }
 
@@ -3898,8 +3908,11 @@ async function callGeminiForSubAgent(agentKey, localEvaluation = null, webSearch
     if (webSearchContext && webSearchContext.trim()) {
         skillFeedback += `
 
-    [DIRETRIZES DA PESQUISA WEB]:
+    [DADOS DE PESQUISA EM TEMPO REAL DA WEB (Cotações, Legislação, Normas e Jurisprudência)]:
     ${webSearchContext}
+
+    *DIRETRIZ DE PRIORIDADE EM TEMPO REAL:*
+    Utilize prioritariamente esses dados atualizados em tempo real obtidos da internet para validar valores de mercado, regras de acessibilidade (ABNT NBR 9050) e conformidade jurídica (Lei 14.903/2024 / SisGen / Ecad).
     `;
     }
 
@@ -5293,8 +5306,8 @@ function getSimulatedAuditorData() {
                 </div>
 
                 <!-- 2. Disclaimer -->
-                <div style="background: #fffbeb; border-left: 4px solid #f59e0b; color: #78350f; padding: 0.75rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.8rem; line-height: 1.4;">
-                    <strong>2. Aviso de Simulação (Disclaimer)</strong><br/>
+                <div style="background: var(--color-warning-bg); border-left: 4px solid var(--color-warning); border: 1px solid var(--color-warning-border); color: var(--text-primary); padding: 0.75rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.8rem; line-height: 1.4;">
+                    <strong style="color: var(--color-warning);">2. Aviso de Simulação (Disclaimer)</strong><br/>
                     Este relatório consolida uma simulação diagnóstica crítica baseada nos anexos do edital e na proposta inserida no editor. Os resultados refletem o estado atual dos rascunhos e não garantem aprovação oficial.
                 </div>
 
@@ -5406,8 +5419,8 @@ function getSimulatedAuditorData() {
                     </table>
                 </div>
 
-                <div style="background: #fef2f2; border: 1px solid #fca5a5; border-left: 5px solid #ef4444; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.8rem;">
-                    <h3 style="margin-top: 0; font-size: 1rem; color: #991b1b; border-bottom: 1px solid #fee2e2; padding-bottom: 0.5rem;">6. Riscos Eliminatórios (Red Flags) 🚩</h3>
+                <div style="background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-left: 5px solid var(--color-error); color: var(--text-primary); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.8rem;">
+                    <h3 style="margin-top: 0; font-size: 1rem; color: var(--color-error); border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">6. Riscos Eliminatórios (Red Flags) 🚩</h3>
                     <p style="margin: 0.3rem 0;">${(!hasOrc || !hasJust) ? '<strong>AVISO:</strong> Foram detectadas pendências críticas que podem levar à desclassificação.' : '✓ NENHUM RISCO ELIMINATÓRIO DETECTADO: Toda a documentação e seções essenciais possuem preenchimento mínimo inicial.'}</p>
                 </div>
 
@@ -5421,8 +5434,8 @@ function getSimulatedAuditorData() {
                 </div>
 
                 <!-- 8. Pontos Fortes a Preservar -->
-                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 5px solid #10b981; color: #166534; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.8rem;">
-                    <h3 style="margin-top: 0; font-size: 1rem; color: #166534; border-bottom: 1px solid #d1fae5; padding-bottom: 0.5rem;">8. Pontos Fortes a Preservar 🟢</h3>
+                <div style="background: var(--color-success-bg); border: 1px solid var(--color-success-border); border-left: 5px solid var(--color-success); color: var(--text-primary); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.8rem;">
+                    <h3 style="margin-top: 0; font-size: 1rem; color: var(--color-success); border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">8. Pontos Fortes a Preservar 🟢</h3>
                     <p style="margin: 0.3rem 0;">• <strong>Forte Identidade Regional:</strong> A proposta é intrinsecamente enraizada no território histórico da bacia do Rio Doce.</p>
                     <p style="margin: 0.3rem 0;">• <strong>Impacto nas Comunidades de Pescadores:</strong> Foco muito nítido em populações vulnerabilizadas e ribeirinhas.</p>
                     <p style="margin: 0.3rem 0;">• <strong>Integração de Parcerias Locais:</strong> Excelente governança participativa.</p>
@@ -5448,17 +5461,17 @@ function getSimulatedAuditorData() {
                             </tr>
                         </thead>
                         <tbody>
-                            <tr style="${!hasOrc ? 'background: #fef2f2;' : ''}">
+                            <tr style="${!hasOrc ? 'background: var(--color-error-bg);' : ''}">
                                 <td style="border: 1px solid var(--border-color); padding: 6px; color: var(--text-secondary);">Preencher Planilha Orçamentária com Detalhamento de Custos</td>
                                 <td style="border: 1px solid var(--border-color); padding: 6px; color: #ef4444; font-weight: bold;">Eliminatório (Alto)</td>
                                 <td style="border: 1px solid var(--border-color); padding: 6px; text-align: center; color: var(--text-secondary); font-family: monospace;">${hasOrc ? '✓ Concluído' : '[ ] A Fazer'}</td>
                             </tr>
-                            <tr style="${!hasAces ? 'background: #fffbeb;' : ''}">
+                            <tr style="${!hasAces ? 'background: var(--color-warning-bg);' : ''}">
                                 <td style="border: 1px solid var(--border-color); padding: 6px; color: var(--text-secondary);">Inserir Cláusula de Acessibilidade Sensorial PCD (Libras/Audiodescrição)</td>
                                 <td style="border: 1px solid var(--border-color); padding: 6px; color: #f59e0b; font-weight: bold;">Alto (-15 pts)</td>
                                 <td style="border: 1px solid var(--border-color); padding: 6px; text-align: center; color: var(--text-secondary); font-family: monospace;">${hasAces ? '✓ Concluído' : '[ ] A Fazer'}</td>
                             </tr>
-                            <tr style="${!hasJust ? 'background: #fffbeb;' : ''}">
+                            <tr style="${!hasJust ? 'background: var(--color-warning-bg);' : ''}">
                                 <td style="border: 1px solid var(--border-color); padding: 6px; color: var(--text-secondary);">Detalhar Histórico do Proponente e Comprovação Temporal</td>
                                 <td style="border: 1px solid var(--border-color); padding: 6px; color: #f59e0b; font-weight: bold;">Médio (-10 pts)</td>
                                 <td style="border: 1px solid var(--border-color); padding: 6px; text-align: center; color: var(--text-secondary); font-family: monospace;">${hasJust ? '✓ Concluído' : '[ ] A Fazer'}</td>
@@ -6859,82 +6872,82 @@ function generate3StageFinancePlanDataLocal() {
         items = generatedItems;
     }
 
-// Rider técnico: só se a categoria foi detectada como relevante
-const { categories: detectedCats } = getRelevantCategoriesContext();
-const hasRider = detectedCats.some(c => c.id === 'rider_tecnico');
-const riderItems = hasRider ? [
-    { categoria: "Sonorização PA", equipamento: "Sistema Line Array Ativo", modeloEspecifico: "12x Subs 18\" + 16x Caixas Top (JBL / RCF)", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Empresa de Sonorização", requisitoPalco: "SPL 110dB homogêneo na área de público." },
-    { categoria: "Sonorização Regia", equipamento: "Console Digital & Processamento", modeloEspecifico: "Mesa Digital 32ch (Behringer X32 / Yamaha CL5) + Stagebox", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Empresa de Sonorização", requisitoPalco: "House mix central com visão do palco." },
-    { categoria: "Microfonia & Monitores", equipamento: "Kit Microfonia & In-Ear", modeloEspecifico: "6x Sem Fio Shure ULXD4 + 4x In-Ear Sennheiser + 4x Monitores Sidefill", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Empresa de Sonorização", requisitoPalco: "Frequências ANATEL sem interferência." },
-    { categoria: "Iluminação Cênica", equipamento: "Moving Heads & LED", modeloEspecifico: "12x Moving 10R + 16x PAR LED RGBW 54x3W + Console Avolites", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Empresa de Iluminação", requisitoPalco: "Iluminação frente/contra conforme mapa de luz." },
-    { categoria: "Estrutura & Palco", equipamento: "Grid Truss & Praticáveis", modeloEspecifico: "Alumínio Q30 (10x8m x 6m) com Cobertura + 8x Praticáveis 2x1m", qtdDiarias: "1 Locação", fornecedorPrevisto: "Empresa de Estruturas", requisitoPalco: "ART registrada no CREA." },
-    { categoria: "Energia & Logística", equipamento: "Gerador Silenciado", modeloEspecifico: "Grupo Gerador 150 kVA com QTA e cabeamento 50mm", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Locadora de Geradores", requisitoPalco: "Diesel S10, aterramento independente." }
-] : [];
+    // Rider técnico: só se a categoria foi detectada como relevante
+    const { categories: detectedCats } = getRelevantCategoriesContext();
+    const hasRider = detectedCats.some(c => c.id === 'rider_tecnico');
+    const riderItems = hasRider ? [
+        { categoria: "Sonorização PA", equipamento: "Sistema Line Array Ativo", modeloEspecifico: "12x Subs 18\" + 16x Caixas Top (JBL / RCF)", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Empresa de Sonorização", requisitoPalco: "SPL 110dB homogêneo na área de público." },
+        { categoria: "Sonorização Regia", equipamento: "Console Digital & Processamento", modeloEspecifico: "Mesa Digital 32ch (Behringer X32 / Yamaha CL5) + Stagebox", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Empresa de Sonorização", requisitoPalco: "House mix central com visão do palco." },
+        { categoria: "Microfonia & Monitores", equipamento: "Kit Microfonia & In-Ear", modeloEspecifico: "6x Sem Fio Shure ULXD4 + 4x In-Ear Sennheiser + 4x Monitores Sidefill", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Empresa de Sonorização", requisitoPalco: "Frequências ANATEL sem interferência." },
+        { categoria: "Iluminação Cênica", equipamento: "Moving Heads & LED", modeloEspecifico: "12x Moving 10R + 16x PAR LED RGBW 54x3W + Console Avolites", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Empresa de Iluminação", requisitoPalco: "Iluminação frente/contra conforme mapa de luz." },
+        { categoria: "Estrutura & Palco", equipamento: "Grid Truss & Praticáveis", modeloEspecifico: "Alumínio Q30 (10x8m x 6m) com Cobertura + 8x Praticáveis 2x1m", qtdDiarias: "1 Locação", fornecedorPrevisto: "Empresa de Estruturas", requisitoPalco: "ART registrada no CREA." },
+        { categoria: "Energia & Logística", equipamento: "Gerador Silenciado", modeloEspecifico: "Grupo Gerador 150 kVA com QTA e cabeamento 50mm", qtdDiarias: "3 Diárias", fornecedorPrevisto: "Locadora de Geradores", requisitoPalco: "Diesel S10, aterramento independente." }
+    ] : [];
 
-let grandTotalSubtotal = 0;
-let grandTotalImpostos = 0;
-let grandTotalGeral = 0;
+    let grandTotalSubtotal = 0;
+    let grandTotalImpostos = 0;
+    let grandTotalGeral = 0;
 
-items.forEach(it => {
-    grandTotalSubtotal += it.subtotal;
-    grandTotalImpostos += it.impostos;
-    grandTotalGeral += it.total;
-});
-
-// Gerar validação de tetos
-const tetosProfile = workspaceState.editalProfile || {};
-const gestaoTeto = tetosProfile.tetoGestao || 25;
-const rubricaGroups = {};
-items.forEach(it => {
-    const rub = it.rubrica || 'Outros';
-    if (!rubricaGroups[rub]) rubricaGroups[rub] = 0;
-    rubricaGroups[rub] += it.total;
-});
-const validacaoTetos = Object.entries(rubricaGroups).map(([grupo, valor]) => ({
-    grupoRubrica: grupo,
-    valorTotal: valor,
-    percentualDoOrcamento: grandTotalGeral > 0 ? Math.round((valor / grandTotalGeral) * 10000) / 100 : 0,
-    tetoPermitido: grupo.toLowerCase().includes('gestão') || grupo.toLowerCase().includes('coordenação') || grupo.toLowerCase().includes('administrativ') ? `${gestaoTeto}%` : 'Sem teto específico',
-    statusConformidade: '✓ Conforme'
-}));
-
-// Gerar cronograma de desembolso mensal
-const cronogramaDesembolsoMensal = [];
-const desembolsoPorMes = grandTotalGeral / numMeses;
-for (let m = 1; m <= numMeses; m++) {
-    let fase = 'Execução';
-    let pctMes = 1.0 / numMeses;
-    if (m <= 2) { fase = 'Pré-Produção & Mobilização'; pctMes = 0.15 / 2; }
-    else if (m <= numMeses - 2) { fase = 'Produção & Execução'; pctMes = 0.70 / (numMeses - 4); }
-    else { fase = 'Pós-Produção & Prestação de Contas'; pctMes = 0.15 / 2; }
-
-    cronogramaDesembolsoMensal.push({
-        mes: m,
-        fase: fase,
-        valorDesembolso: Math.round(grandTotalGeral * pctMes),
-        principaisAtividades: m <= 2 ? 'Contratações, mobilização de equipe, licenciamentos.'
-            : m <= numMeses - 2 ? 'Execução das atividades principais do projeto.'
-                : 'Relatórios finais, prestação de contas, acervo.'
+    items.forEach(it => {
+        grandTotalSubtotal += it.subtotal;
+        grandTotalImpostos += it.impostos;
+        grandTotalGeral += it.total;
     });
-}
 
-return {
-    title,
-    proponent,
-    institution,
-    totalBudget,
-    items,
-    riderItems,
-    grandTotalSubtotal,
-    grandTotalImpostos,
-    grandTotalGeral,
-    categoriasAplicadas: detectedCats.map(c => c.name),
-    validacaoTetos,
-    cronogramaDesembolsoMensal,
-    despesasVedadasChecklist: (tetosProfile.despesasVedadas || []).map(d => ({
-        despesaVedada: d, status: '✓ Não detectada no orçamento', observacao: 'Verificação automática — confirmar manualmente.'
-    }))
-};
+    // Gerar validação de tetos
+    const tetosProfile = workspaceState.editalProfile || {};
+    const gestaoTeto = tetosProfile.tetoGestao || 25;
+    const rubricaGroups = {};
+    items.forEach(it => {
+        const rub = it.rubrica || 'Outros';
+        if (!rubricaGroups[rub]) rubricaGroups[rub] = 0;
+        rubricaGroups[rub] += it.total;
+    });
+    const validacaoTetos = Object.entries(rubricaGroups).map(([grupo, valor]) => ({
+        grupoRubrica: grupo,
+        valorTotal: valor,
+        percentualDoOrcamento: grandTotalGeral > 0 ? Math.round((valor / grandTotalGeral) * 10000) / 100 : 0,
+        tetoPermitido: grupo.toLowerCase().includes('gestão') || grupo.toLowerCase().includes('coordenação') || grupo.toLowerCase().includes('administrativ') ? `${gestaoTeto}%` : 'Sem teto específico',
+        statusConformidade: '✓ Conforme'
+    }));
+
+    // Gerar cronograma de desembolso mensal
+    const cronogramaDesembolsoMensal = [];
+    const desembolsoPorMes = grandTotalGeral / numMeses;
+    for (let m = 1; m <= numMeses; m++) {
+        let fase = 'Execução';
+        let pctMes = 1.0 / numMeses;
+        if (m <= 2) { fase = 'Pré-Produção & Mobilização'; pctMes = 0.15 / 2; }
+        else if (m <= numMeses - 2) { fase = 'Produção & Execução'; pctMes = 0.70 / (numMeses - 4); }
+        else { fase = 'Pós-Produção & Prestação de Contas'; pctMes = 0.15 / 2; }
+
+        cronogramaDesembolsoMensal.push({
+            mes: m,
+            fase: fase,
+            valorDesembolso: Math.round(grandTotalGeral * pctMes),
+            principaisAtividades: m <= 2 ? 'Contratações, mobilização de equipe, licenciamentos.'
+                : m <= numMeses - 2 ? 'Execução das atividades principais do projeto.'
+                    : 'Relatórios finais, prestação de contas, acervo.'
+        });
+    }
+
+    return {
+        title,
+        proponent,
+        institution,
+        totalBudget,
+        items,
+        riderItems,
+        grandTotalSubtotal,
+        grandTotalImpostos,
+        grandTotalGeral,
+        categoriasAplicadas: detectedCats.map(c => c.name),
+        validacaoTetos,
+        cronogramaDesembolsoMensal,
+        despesasVedadasChecklist: (tetosProfile.despesasVedadas || []).map(d => ({
+            despesaVedada: d, status: '✓ Não detectada no orçamento', observacao: 'Verificação automática — confirmar manualmente.'
+        }))
+    };
 }
 
 
@@ -7648,20 +7661,20 @@ function getOfflineRevisorReport() {
     }
 
     return `
-    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; padding: 12px;">
-        <h2 style="color: #1e1b4b; border-bottom: 2px solid #6366f1; padding-bottom: 8px;">Relatório Detalhado de Revisão (IndexedDB / OfflineAuditor)</h2>
-        <p><strong>Projeto:</strong> ${title} | <strong>Proponente:</strong> ${proponent} | <strong>Data de Emissão:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
+    <div style="font-family: var(--font-body), Arial, sans-serif; line-height: 1.6; color: var(--text-primary); padding: 12px;">
+        <h2 style="color: var(--color-primary); border-bottom: 2px solid var(--color-primary); padding-bottom: 8px;">Relatório Detalhado de Revisão (IndexedDB / OfflineAuditor)</h2>
+        <p style="color: var(--text-secondary);"><strong>Projeto:</strong> ${title} | <strong>Proponente:</strong> ${proponent} | <strong>Data de Emissão:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
         
-        <h3 style="color:#334155; margin-top:20px;">1. Sumário Executivo</h3>
-        <p>A banca examinadora composta por 14 sub-agentes especialistas realizou o cruzamento dos dados do projeto com a legislação de fomento vigente (Lei 13.146/2015, NBR 9050, tetos de custos de 15% adm / 10% marketing). A <strong>Média Global de Conformidade</strong> estimada é de <strong style="color:#4f46e5;">${avgScore} / 100 pontos</strong>.</p>
+        <h3 style="color: var(--color-primary); margin-top:20px;">1. Sumário Executivo</h3>
+        <p style="color: var(--text-secondary);">A banca examinadora composta por 14 sub-agentes especialistas realizou o cruzamento dos dados do projeto com a legislação de fomento vigente (Lei 13.146/2015, NBR 9050, tetos de custos de 15% adm / 10% marketing). A <strong>Média Global de Conformidade</strong> estimada é de <strong style="color: var(--color-primary);">${avgScore} / 100 pontos</strong>.</p>
         
-        <h3 style="color:#334155; margin-top:20px;">2. Diagnóstico por Agente Especialista</h3>
-        <table style="width:100%; border-collapse:collapse; border:1px solid #cbd5e1; font-size:12px; margin-bottom:16px;">
+        <h3 style="color: var(--color-primary); margin-top:20px;">2. Diagnóstico por Agente Especialista</h3>
+        <table style="width:100%; border-collapse:collapse; border:1px solid var(--border-color); font-size:12px; margin-bottom:16px;">
             <thead>
-                <tr style="background:#f1f5f9; text-align:left;">
-                    <th style="padding:8px; border:1px solid #cbd5e1;">Agente Especialista</th>
-                    <th style="padding:8px; border:1px solid #cbd5e1; text-align:center;">Nota</th>
-                    <th style="padding:8px; border:1px solid #cbd5e1;">Resumo do Parecer</th>
+                <tr style="background: var(--bg-panel); text-align:left;">
+                    <th style="padding:8px; border:1px solid var(--border-color); color: var(--text-primary);">Agente Especialista</th>
+                    <th style="padding:8px; border:1px solid var(--border-color); text-align:center; color: var(--text-primary);">Nota</th>
+                    <th style="padding:8px; border:1px solid var(--border-color); color: var(--text-primary);">Resumo do Parecer</th>
                 </tr>
             </thead>
             <tbody>
@@ -7669,18 +7682,18 @@ function getOfflineRevisorReport() {
             </tbody>
         </table>
 
-        <h3 style="color:#334155; margin-top:20px;">3. Processos a Melhorar e Inconformidades Identificadas</h3>
-        <ul>
+        <h3 style="color: var(--color-primary); margin-top:20px;">3. Processos a Melhorar e Inconformidades Identificadas</h3>
+        <ul style="color: var(--text-secondary);">
             ${criticalIssues.join('')}
         </ul>
 
-        <h3 style="color:#334155; margin-top:20px;">4. Plano de Ação Recomendado</h3>
-        <ul>
+        <h3 style="color: var(--color-primary); margin-top:20px;">4. Plano de Ação Recomendado</h3>
+        <ul style="color: var(--text-secondary);">
             ${actionPlanItems.join('')}
         </ul>
 
-        <h3 style="color:#334155; margin-top:20px;">5. Checklist de Finalização e Submissão</h3>
-        <ul>
+        <h3 style="color: var(--color-primary); margin-top:20px;">5. Checklist de Finalização e Submissão</h3>
+        <ul style="color: var(--text-secondary);">
             <li>[x] Preenchimento de todas as 14 seções ABNT do editor.</li>
             <li>[x] Verificação dos limites orçamentários (15% administração, 10% divulgação).</li>
             <li>[x] Inclusão de intérprete de LIBRAS e audiodescrição no plano de acessibilidade.</li>

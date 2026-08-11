@@ -7,6 +7,9 @@ Suporta servir arquivos estáticos e atua como Proxy para carregamento de links 
 """
 
 import os
+import sys
+import time
+import threading
 import json
 import urllib.request
 import urllib.parse
@@ -20,11 +23,30 @@ from html.parser import HTMLParser
 from services.api import LLMGateway, DocumentRetriever
 from services.skills.anki_exporter import create_anki_apkg_zip
 
-# ReportLab imports at top-level
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
+SERVER_START_TIME = time.time()
+
+# Garante que stdout/stderr sejam direcionados para server_run.log mesmo se executado em background/pythonw
+try:
+    if sys.stdout is None or not hasattr(sys.stdout, 'fileno'):
+        sys.stdout = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "server_run.log"), "a", encoding="utf-8", buffering=1)
+except Exception:
+    sys.stdout = io.StringIO()
+
+try:
+    if sys.stderr is None or not hasattr(sys.stderr, 'fileno'):
+        sys.stderr = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "server_run.log"), "a", encoding="utf-8", buffering=1)
+except Exception:
+    sys.stderr = io.StringIO()
+
+try:
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    REPORTLAB_AVAILABLE = True
+except Exception as e:
+    print(f"[SERVER][WARN] ReportLab não disponível no ambiente atual: {e}")
+    REPORTLAB_AVAILABLE = False
 
 # Global divider helper for ReportLab reports
 def get_divider():
@@ -264,64 +286,235 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
 ]
 
-def search_ddg(query):
+def search_ddg_html(query, timeout=7):
+    """Tier 1: DuckDuckGo HTML Search"""
     import random
     ua = random.choice(USER_AGENTS)
     headers = {
         "User-Agent": ua,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://duckduckgo.com/"
     }
-    
-    # Tentativa 1: DuckDuckGo HTML
-    url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
+    url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query, "kl": "br-pt"})
     req = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=12) as response:
-            html_content = response.read().decode('utf-8', errors='ignore')
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            html_raw = response.read()
+            charset = response.info().get_content_charset() or 'utf-8'
+            try:
+                html_content = html_raw.decode(charset)
+            except Exception:
+                html_content = html_raw.decode('utf-8', errors='ignore')
+                
             results = []
             pattern = re.compile(r'<a[^>]+class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>')
             matches = pattern.findall(html_content)
             
             for href, title in matches:
-                title_clean = re.sub(r'<[^>]+>', '', title).strip()
-                title_clean = html.unescape(title_clean)
+                title_clean = html.unescape(re.sub(r'<[^>]+>', '', title).strip())
+                title_clean = fix_double_encoded_utf8(title_clean)
                 if "/l/?kh=" in href or "uddg=" in href:
                     parsed_url = urllib.parse.urlparse(href)
                     qs = urllib.parse.parse_qs(parsed_url.query)
                     if 'uddg' in qs:
                         href = qs['uddg'][0]
-                results.append({"title": title_clean, "url": href, "snippet": ""})
+                
+                results.append({
+                    "title": title_clean,
+                    "url": href,
+                    "snippet": ""
+                })
             
             snippet_pattern = re.compile(r'<a class="result__snippet"[^>]*>([\s\S]*?)</a>')
             snippets = snippet_pattern.findall(html_content)
             for i, snip in enumerate(snippets):
                 if i < len(results):
-                    snippet_clean = re.sub(r'<[^>]+>', '', snip).strip()
-                    snippet_clean = html.unescape(snippet_clean)
+                    snippet_clean = html.unescape(re.sub(r'<[^>]+>', '', snip).strip())
+                    snippet_clean = fix_double_encoded_utf8(snippet_clean)
                     results[i]["snippet"] = snippet_clean
-                    
-            if results:
-                return results[:15]
+            
+            valid_results = [r for r in results if r["title"] and len(r["title"]) > 3]
+            return valid_results
     except Exception as e:
-        print(f"[SEARCH][WARN] DuckDuckGo HTML falhou: {e}. Tentando fallback Lite...")
-
-    # Tentativa 2: DuckDuckGo Lite Fallback
-    try:
-        lite_url = "https://lite.duckduckgo.com/lite/?" + urllib.parse.urlencode({"q": query})
-        req_lite = urllib.request.Request(lite_url, headers=headers)
-        with urllib.request.urlopen(req_lite, timeout=12) as response:
-            html_content = response.read().decode('utf-8', errors='ignore')
-            results = []
-            link_matches = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)</a>', html_content)
-            for href, title in link_matches:
-                title_clean = html.unescape(re.sub(r'<[^>]+>', '', title).strip())
-                if href.startswith('http') and len(title_clean) > 5:
-                    results.append({"title": title_clean, "url": href, "snippet": "Diretriz / Edital de fomento cultural público."})
-            return results[:15]
-    except Exception as e2:
-        print(f"[SEARCH][ERROR] Fallback DuckDuckGo Lite falhou: {e2}")
+        print(f"[SEARCH][DDG_HTML_FAIL] {e}")
         return []
+
+def search_ddg_lite(query, timeout=7):
+    """Tier 2: DuckDuckGo Lite Fallback"""
+    import random
+    ua = random.choice(USER_AGENTS)
+    headers = {
+        "User-Agent": ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    url = "https://lite.duckduckgo.com/lite/"
+    data = urllib.parse.urlencode({"q": query, "kl": "br-pt"}).encode('utf-8')
+    req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            html_raw = response.read()
+            html_content = html_raw.decode('utf-8', errors='ignore')
+            results = []
+            
+            links = re.findall(r'<a[^>]+class="result-link"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>', html_content)
+            snippets = re.findall(r'<td[^>]+class="result-snippet"[^>]*>([\s\S]*?)</td>', html_content)
+            
+            for idx, (href, title) in enumerate(links):
+                title_clean = html.unescape(re.sub(r'<[^>]+>', '', title).strip())
+                title_clean = fix_double_encoded_utf8(title_clean)
+                snippet_clean = ""
+                if idx < len(snippets):
+                    snippet_clean = html.unescape(re.sub(r'<[^>]+>', '', snippets[idx]).strip())
+                    snippet_clean = fix_double_encoded_utf8(snippet_clean)
+                
+                if href.startswith('http') or 'uddg=' in href:
+                    if 'uddg=' in href:
+                        parsed_url = urllib.parse.urlparse(href)
+                        qs = urllib.parse.parse_qs(parsed_url.query)
+                        if 'uddg' in qs:
+                            href = qs['uddg'][0]
+                    results.append({
+                        "title": title_clean,
+                        "url": href,
+                        "snippet": snippet_clean or "Diretriz e referência regulatória de fomento cultural público."
+                    })
+            return results
+    except Exception as e:
+        print(f"[SEARCH][DDG_LITE_FAIL] {e}")
+        return []
+
+def search_wikipedia_api(query, timeout=5):
+    """Tier 3: Wikipedia & Public Norms Fallback for Cultural & Legal Terms"""
+    try:
+        clean_terms = " ".join([w for w in query.split() if len(w) > 3][:6])
+        url = "https://pt.wikipedia.org/w/api.php?" + urllib.parse.urlencode({
+            "action": "query",
+            "list": "search",
+            "srsearch": clean_terms,
+            "format": "json",
+            "utf8": "1",
+            "srlimit": "3"
+        })
+        req = urllib.request.Request(url, headers={"User-Agent": "EditalAuditAI/3.0 (auditoria.cultural@editalaudit.internal)"})
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            items = data.get("query", {}).get("search", [])
+            results = []
+            for it in items:
+                title = it.get("title", "")
+                snippet_raw = it.get("snippet", "")
+                snippet_clean = html.unescape(re.sub(r'<[^>]+>', '', snippet_raw).strip())
+                snippet_clean = fix_double_encoded_utf8(snippet_clean)
+                page_url = f"https://pt.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
+                results.append({
+                    "title": f"Norma / Verbete: {title}",
+                    "url": page_url,
+                    "snippet": snippet_clean
+                })
+            return results
+    except Exception as e:
+        print(f"[SEARCH][WIKI_FAIL] {e}")
+        return []
+
+def search_yahoo(query, timeout=6):
+    """Tier 2: Yahoo Web Search (Altamente resiliente para fomento público e normas brasileiras)"""
+    import random
+    ua = random.choice(USER_AGENTS)
+    headers = {
+        "User-Agent": ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
+    url = "https://search.yahoo.com/search?" + urllib.parse.urlencode({"p": query, "ei": "UTF-8"})
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as res:
+            html_raw = res.read().decode('utf-8', errors='ignore')
+            results = []
+            
+            algo_matches = re.findall(r'<div[^>]+class="[^"]*algo[^"]*"[^>]*>([\s\S]*?)(?:</div>\s*</li>|</li>)', html_raw)
+            for b in algo_matches:
+                link_match = re.search(r'<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)</a>', b)
+                if not link_match:
+                    continue
+                raw_href, raw_title = link_match.groups()
+                
+                aria_match = re.search(r'aria-label="([^"]+)"', link_match.group(0))
+                if aria_match:
+                    title_clean = html.unescape(aria_match.group(1)).strip()
+                else:
+                    title_clean = html.unescape(re.sub(r'<[^>]+>', '', raw_title).strip())
+                    if "http" in title_clean and " - " in title_clean:
+                        parts = title_clean.split(" - ")
+                        if len(parts) > 1 and "http" in parts[0]:
+                            title_clean = " - ".join(parts[1:])
+                
+                title_clean = fix_double_encoded_utf8(title_clean)
+                
+                real_url = raw_href
+                if "/RU=" in raw_href:
+                    ru_part = raw_href.split("/RU=")[1].split("/RK=")[0]
+                    try:
+                        real_url = urllib.parse.unquote(ru_part)
+                    except Exception:
+                        pass
+                
+                snippet_match = re.search(r'<div[^>]+class="[^"]*compText[^"]*"[^>]*>([\s\S]*?)</div>', b) or re.search(r'<p[^>]*>([\s\S]*?)</p>', b)
+                snippet_clean = ""
+                if snippet_match:
+                    snippet_clean = html.unescape(re.sub(r'<[^>]+>', '', snippet_match.group(1)).strip())
+                    snippet_clean = fix_double_encoded_utf8(snippet_clean)
+                    
+                if title_clean and len(title_clean) > 3 and not title_clean.lower().startswith("yahoo"):
+                    results.append({
+                        "title": title_clean,
+                        "url": real_url,
+                        "snippet": snippet_clean or "Referência de fomento cultural e diretrizes públicas."
+                    })
+            return results
+    except Exception as e:
+        print(f"[SEARCH][YAHOO_FAIL] {e}")
+        return []
+
+def search_ddg(query, agent_key=None, max_results=6):
+    """Motor de busca web unificado multi-tier"""
+    query_clean = re.sub(r'\s+', ' ', str(query or '')).strip()
+    if not query_clean:
+        return []
+        
+    print(f"[SEARCH][ENGINE] Executando busca real: '{query_clean}' (Agente: {agent_key})")
+    
+    # 1. DuckDuckGo HTML
+    results = search_ddg_html(query_clean, timeout=6)
+    
+    # 2. Yahoo Web Search
+    if not results:
+        print("[SEARCH] Tentando motor Yahoo Web Search...")
+        results = search_yahoo(query_clean, timeout=6)
+        
+    # 3. DuckDuckGo Lite Fallback
+    if not results:
+        print("[SEARCH] Tentando DuckDuckGo Lite...")
+        results = search_ddg_lite(query_clean, timeout=6)
+        
+    # 4. Query simplificada com palavras nucleares
+    if not results:
+        stop_words = {'para', 'com', 'das', 'dos', 'uma', 'como', 'sobre', 'regras', 'normas', 'geral', 'editais'}
+        salient_words = [w for w in query_clean.split() if len(w) > 3 and w.lower() not in stop_words]
+        if len(salient_words) >= 2:
+            simplified_query = " ".join(salient_words[:5])
+            print(f"[SEARCH] Tentando com termos nucleares: '{simplified_query}'...")
+            results = search_yahoo(simplified_query, timeout=5) or search_ddg_html(simplified_query, timeout=5)
+        
+    # 5. Fallback normativo da Wikipedia
+    if not results:
+        print("[SEARCH] Tentando fallback enciclopédico de normas...")
+        results = search_wikipedia_api(query_clean, timeout=4)
+        
+    return results[:max_results]
 
 def extract_document_links(html_content, base_url):
     link_pattern = re.compile(r'<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)</a>', re.IGNORECASE)
@@ -416,12 +609,35 @@ class HTMLTableParser(HTMLParser):
 
 
 class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
+    timeout = 120  # Evita travamento de threads com conexões presas
 
     def do_GET(self):
         if self.path == '/favicon.ico':
             self.send_response(204)
             self.end_headers()
             return
+
+        if self.path == '/api/health':
+            self.send_json_response(200, {
+                "status": "healthy",
+                "version": "3.0.0",
+                "server_start_time": SERVER_START_TIME,
+                "pid": os.getpid(),
+                "cwd": os.getcwd()
+            })
+            return
+
+        if self.path == '/api/restart':
+            self.send_json_response(200, {"message": "Reiniciando servidor backend..."})
+            def _restart():
+                time.sleep(0.5)
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                venv_py = os.path.join(script_dir, ".venv", "Scripts", "python.exe")
+                py_exec = venv_py if os.path.exists(venv_py) else sys.executable
+                os.execv(py_exec, [py_exec, "-X", "utf8", "-u", os.path.join(script_dir, "server.py")])
+            threading.Thread(target=_restart, daemon=True).start()
+            return
+
         super().do_GET()
 
     def send_header(self, keyword, value):
@@ -510,12 +726,19 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 query = data.get('query')
+                agent = data.get('agent', 'geral')
                 if not query:
                     self.send_json_response(400, {"error": "Termo de busca (query) ausente."})
                     return
                 
-                results = search_ddg(query)
-                self.send_json_response(200, {"results": results})
+                results = search_ddg(query, agent_key=agent)
+                self.send_json_response(200, {
+                    "results": results,
+                    "query": query,
+                    "agent": agent,
+                    "provider": "multi_tier_web_search",
+                    "total": len(results)
+                })
             except Exception as e:
                 self.send_json_response(500, {"error": f"Erro ao pesquisar: {str(e)}"})
                 
@@ -2224,17 +2447,65 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos
         self.wfile.write(response_bytes)
 
 
+def start_auto_reloader():
+    """
+    Monitora arquivos Python e serviços do projeto.
+    Caso ocorra uma atualização massiva de código na IDE, recarrega o servidor
+    automaticamente em segundo plano, evitando travamentos e processos zumbis.
+    """
+    def _watcher():
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        watched_files = {}
+        
+        def _scan_files():
+            mtimes = {}
+            for root, _, files in os.walk(script_dir):
+                if any(ignored in root for ignored in ['.venv', '__pycache__', '.git']):
+                    continue
+                for f in files:
+                    if f.endswith('.py'):
+                        fp = os.path.join(root, f)
+                        try:
+                            mtimes[fp] = os.path.getmtime(fp)
+                        except OSError:
+                            pass
+            return mtimes
+
+        watched_files = _scan_files()
+        while True:
+            time.sleep(2.0)
+            current_mtimes = _scan_files()
+            for fp, mtime in current_mtimes.items():
+                if fp in watched_files and mtime > watched_files[fp]:
+                    print(f"[RELOADER] Alteração detectada em {os.path.basename(fp)}. Recarregando servidor...")
+                    time.sleep(0.3)
+                    venv_py = os.path.join(script_dir, ".venv", "Scripts", "python.exe")
+                    py_exec = venv_py if os.path.exists(venv_py) else sys.executable
+                    os.execv(py_exec, [py_exec, "-X", "utf8", "-u", os.path.join(script_dir, "server.py")])
+            watched_files = current_mtimes
+
+    t = threading.Thread(target=_watcher, daemon=True)
+    t.start()
+
+
 def main():
     # Garante que serve a pasta atual (onde index.html está localizado)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     
+    ThreadingHTTPServer.allow_reuse_address = True
     server_address = ('127.0.0.1', PORT)
     httpd = ThreadingHTTPServer(server_address, CustomHTTPRequestHandler)
     print(f"Servidor EditalAudit AI rodando em http://127.0.0.1:{PORT}/")
+    
+    # Inicia o auto-reloader de código
+    start_auto_reloader()
+    
     try:
         httpd.serve_forever()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         print("\nServidor encerrado.")
+    except Exception as e:
+        print(f"\n[SERVER][FATAL] Erro no servidor: {e}")
 
 if __name__ == '__main__':
     main()

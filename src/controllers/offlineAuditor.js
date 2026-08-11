@@ -406,9 +406,9 @@ window.offlineAuditor = {
      */
     buildOfflineHTMLReport: function (cover, notaFinal, notaTecnica, notaPriorizacao, budgetAnalysis, agentes, alertas) {
         return `
-        <div class="offline-audit-report-container" style="font-family: 'Inter', sans-serif; color: #1e293b; line-height: 1.6;">
+        <div class="offline-audit-report-container" style="font-family: var(--font-body), sans-serif; color: var(--text-primary); line-height: 1.6;">
             
-            <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); color: #ffffff; padding: 1.5rem; border-radius: 10px; margin-bottom: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); color: #ffffff; padding: 1.5rem; border-radius: 10px; margin-bottom: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 0.75rem; margin-bottom: 1rem;">
                     <h2 style="margin: 0; font-size: 1.4rem; color: #ffffff;">📊 PAINEL EXECUTIVO DE AUDITORIA (OFFLINE)</h2>
                     <span style="background: #22c55e; color: #000; padding: 0.2rem 0.6rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;">⚡ Processamento Local DB</span>
@@ -434,31 +434,31 @@ window.offlineAuditor = {
                 </div>
             </div>
 
-            <div style="background: #fffbeb; border: 1px solid #fef3c7; border-left: 5px solid #f59e0b; padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.85rem; color: #92400e;">
-                <strong>⚠️ AVISO DE AUDITORIA LOCAL:</strong> Este parecer foi gerado autonomamente pelo motor de inferência local (OfflineAuditor) via banco de dados IndexedDB. Quando a chave de API estiver ativa, a inteligência artificial Gemini realizará a validação final complementar.
+            <div style="background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); border-left: 5px solid var(--color-warning); padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.85rem; color: var(--text-primary);">
+                <strong style="color: var(--color-warning);">⚠️ AVISO DE AUDITORIA LOCAL:</strong> Este parecer foi gerado autonomamente pelo motor de inferência local (OfflineAuditor) via banco de dados IndexedDB. Quando a chave de API estiver ativa, a inteligência artificial Gemini realizará a validação final complementar.
             </div>
 
             <div style="margin-bottom: 1.5rem;">
-                <h3 style="color: #1e1b4b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem;">3. Metodologia de Análise de Compliance</h3>
-                <p style="font-size: 0.9rem;">A pré-auditoria varreu o texto do projeto e planilha orçamentária, cruzando com a base de regras da legislação cultural (Leis de Acessibilidade, Cotas, Limite Administrativo de 15% e Diretrizes do Edital). Cada quesito recebeu pontuação técnica proporcional à conformidade detectada.</p>
+                <h3 style="color: var(--color-primary); border-bottom: 2px solid var(--border-color); padding-bottom: 0.4rem;">3. Metodologia de Análise de Compliance</h3>
+                <p style="font-size: 0.9rem; color: var(--text-secondary);">A pré-auditoria varreu o texto do projeto e planilha orçamentária, cruzando com a base de regras da legislação cultural (Leis de Acessibilidade, Cotas, Limite Administrativo de 15% e Diretrizes do Edital). Cada quesito recebeu pontuação técnica proporcional à conformidade detectada.</p>
             </div>
 
             <div style="margin-bottom: 1.5rem;">
-                <h3 style="color: #1e1b4b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem;">4. Análise Detalhada dos 14 Quesitos de Compliance</h3>
+                <h3 style="color: var(--color-primary); border-bottom: 2px solid var(--border-color); padding-bottom: 0.4rem;">4. Análise Detalhada dos 14 Quesitos de Compliance</h3>
                 <table style="width: 100%; border-collapse: collapse; margin-top: 0.8rem; font-size: 0.85rem;">
                     <thead>
-                        <tr style="background: #f8fafc; text-align: left; border-bottom: 2px solid #cbd5e1;">
-                            <th style="padding: 0.6rem;">Quesito</th>
-                            <th style="padding: 0.6rem;">Nota Local</th>
-                            <th style="padding: 0.6rem;">Diagnóstico do Motor Offline</th>
+                        <tr style="background: var(--bg-panel); text-align: left; border-bottom: 2px solid var(--border-color);">
+                            <th style="padding: 0.6rem; color: var(--text-primary); border: 1px solid var(--border-color);">Quesito</th>
+                            <th style="padding: 0.6rem; color: var(--text-primary); border: 1px solid var(--border-color);">Nota Local</th>
+                            <th style="padding: 0.6rem; color: var(--text-primary); border: 1px solid var(--border-color);">Diagnóstico do Motor Offline</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${agentes.map(ag => `
-                            <tr style="border-bottom: 1px solid #e2e8f0;">
-                                <td style="padding: 0.6rem; font-weight: 600; color: #334155;">${ag.id.toUpperCase()}</td>
-                                <td style="padding: 0.6rem; font-weight: bold; color: ${ag.nota >= 80 ? '#16a34a' : (ag.nota >= 60 ? '#d97706' : '#dc2626')};">${ag.nota}/100</td>
-                                <td style="padding: 0.6rem;">${ag.parecer}</td>
+                            <tr style="border-bottom: 1px solid var(--border-color);">
+                                <td style="padding: 0.6rem; font-weight: 600; color: var(--text-primary); border: 1px solid var(--border-color);">${ag.id.toUpperCase()}</td>
+                                <td style="padding: 0.6rem; font-weight: bold; color: ${ag.nota >= 80 ? 'var(--color-success)' : (ag.nota >= 60 ? 'var(--color-warning)' : 'var(--color-error)')}; border: 1px solid var(--border-color);">${ag.nota}/100</td>
+                                <td style="padding: 0.6rem; color: var(--text-secondary); border: 1px solid var(--border-color);">${ag.parecer}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -466,22 +466,22 @@ window.offlineAuditor = {
             </div>
 
             <div style="margin-bottom: 1.5rem;">
-                <h3 style="color: #1e1b4b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem;">5. Plano de Ação para Aperfeiçoamento de Notas</h3>
-                ${agentes.filter(a => a.nota < 85).length === 0 ? '<p style="color: #16a34a;">Nenhum quesito com nota baixa detectado!</p>' : `
-                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; background: #fff;">
+                <h3 style="color: var(--color-primary); border-bottom: 2px solid var(--border-color); padding-bottom: 0.4rem;">5. Plano de Ação para Aperfeiçoamento de Notas</h3>
+                ${agentes.filter(a => a.nota < 85).length === 0 ? '<p style="color: var(--color-success);">Nenhum quesito com nota baixa detectado!</p>' : `
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; background: var(--bg-card);">
                     <thead>
-                        <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
-                            <th style="padding: 0.5rem;">Área</th>
-                            <th style="padding: 0.5rem;">Pendência</th>
-                            <th style="padding: 0.5rem;">Ação Recomendada</th>
+                        <tr style="background: var(--bg-panel); border-bottom: 2px solid var(--border-color);">
+                            <th style="padding: 0.5rem; color: var(--text-primary); border: 1px solid var(--border-color);">Área</th>
+                            <th style="padding: 0.5rem; color: var(--text-primary); border: 1px solid var(--border-color);">Pendência</th>
+                            <th style="padding: 0.5rem; color: var(--text-primary); border: 1px solid var(--border-color);">Ação Recomendada</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${agentes.filter(a => a.nota < 85).map(a => `
-                            <tr style="border-bottom: 1px solid #e2e8f0;">
-                                <td style="padding: 0.5rem; font-weight: bold; color: #991b1b;">${a.id.toUpperCase()}</td>
-                                <td style="padding: 0.5rem;">${a.erros.join('<br>') || 'Texto sucinto'}</td>
-                                <td style="padding: 0.5rem;">${a.recomendacoes.join('<br>') || 'Expandir conteúdo'}</td>
+                            <tr style="border-bottom: 1px solid var(--border-color);">
+                                <td style="padding: 0.5rem; font-weight: bold; color: var(--color-error); border: 1px solid var(--border-color);">${a.id.toUpperCase()}</td>
+                                <td style="padding: 0.5rem; color: var(--text-secondary); border: 1px solid var(--border-color);">${a.erros.join('<br>') || 'Texto sucinto'}</td>
+                                <td style="padding: 0.5rem; color: var(--text-secondary); border: 1px solid var(--border-color);">${a.recomendacoes.join('<br>') || 'Expandir conteúdo'}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -489,18 +489,18 @@ window.offlineAuditor = {
                 `}
             </div>
 
-            <div style="background: #fef2f2; border: 1px solid #fecaca; border-left: 5px solid #ef4444; padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem;">
-                <h4 style="margin: 0 0 0.5rem 0; color: #991b1b;">🚨 Riscos Eliminatórios Detectados</h4>
-                ${alertas.length === 0 ? '<p style="margin: 0; font-size: 0.85rem; color: #166534;">Nenhum risco eliminatório encontrado.</p>' : `
-                <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.85rem; color: #7f1d1d;">
-                    ${alertas.map(al => `<li><strong>${al.tipo}:</strong> ${al.descricao} <em>(Sugestão: ${al.sugestao})</em></li>`).join('')}
+            <div style="background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-left: 5px solid var(--color-error); padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem;">
+                <h4 style="margin: 0 0 0.5rem 0; color: var(--color-error);">🚨 Riscos Eliminatórios Detectados</h4>
+                ${alertas.length === 0 ? '<p style="margin: 0; font-size: 0.85rem; color: var(--color-success);">Nenhum risco eliminatório encontrado.</p>' : `
+                <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.85rem; color: var(--text-primary);">
+                    ${alertas.map(al => `<li><strong>${al.tipo}:</strong> ${al.descricao} <em style="color: var(--text-secondary);">(Sugestão: ${al.sugestao})</em></li>`).join('')}
                 </ul>
                 `}
             </div>
 
             <div style="margin-bottom: 1.5rem;">
-                <h3 style="color: #1e1b4b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem;">7. Pontos Fortes do Projeto</h3>
-                <ul style="font-size: 0.85rem; color: #334155;">
+                <h3 style="color: var(--color-primary); border-bottom: 2px solid var(--border-color); padding-bottom: 0.4rem;">7. Pontos Fortes do Projeto</h3>
+                <ul style="font-size: 0.85rem; color: var(--text-secondary);">
                     <li>Projeto estruturado em conformidade com as diretrizes ABNT do editor local.</li>
                     <li>Orçamento pré-auditado para conformidade com o limite administrativo.</li>
                     <li>Pontuação de priorização territorial preservada com dados locais.</li>
@@ -508,18 +508,18 @@ window.offlineAuditor = {
             </div>
 
             <div style="margin-bottom: 1.5rem;">
-                <h3 style="color: #1e1b4b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem;">8. Veredito Técnico da Banca Offline</h3>
-                <p style="font-size: 0.9rem; background: #f8fafc; padding: 1rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                <h3 style="color: var(--color-primary); border-bottom: 2px solid var(--border-color); padding-bottom: 0.4rem;">8. Veredito Técnico da Banca Offline</h3>
+                <p style="font-size: 0.9rem; background: var(--bg-card); padding: 1rem; border-radius: 6px; border: 1px solid var(--border-color); color: var(--text-primary);">
                     A proposta apresenta viabilidade técnica sólida com pontuação de <strong>${notaFinal}/130</strong>. Recomenda-se realizar os ajustes no editor ABNT nos quesitos identificados como pendentes antes do envio definitivo.
                 </p>
             </div>
 
             <div>
-                <h3 style="color: #1e1b4b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem;">9. Checklist Final de Pendências</h3>
-                <ul style="font-size: 0.85rem; list-style-type: none; padding: 0;">
-                    <li style="padding: 0.4rem 0; border-bottom: 1px solid #f1f5f9;">☑️ Validação Orçamentária: Teto Administrativo ≤ 15%</li>
-                    <li style="padding: 0.4rem 0; border-bottom: 1px solid #f1f5f9;">☑️ Acessibilidade Comunicacional (LIBRAS / Audiodescrição)</li>
-                    <li style="padding: 0.4rem 0; border-bottom: 1px solid #f1f5f9;">☑️ Certidões CNDT e FGTS em conformidade</li>
+                <h3 style="color: var(--color-primary); border-bottom: 2px solid var(--border-color); padding-bottom: 0.4rem;">9. Checklist Final de Pendências</h3>
+                <ul style="font-size: 0.85rem; list-style-type: none; padding: 0; color: var(--text-secondary);">
+                    <li style="padding: 0.4rem 0; border-bottom: 1px solid var(--border-color);">☑️ Validação Orçamentária: Teto Administrativo ≤ 15%</li>
+                    <li style="padding: 0.4rem 0; border-bottom: 1px solid var(--border-color);">☑️ Acessibilidade Comunicacional (LIBRAS / Audiodescrição)</li>
+                    <li style="padding: 0.4rem 0; border-bottom: 1px solid var(--border-color);">☑️ Certidões CNDT e FGTS em conformidade</li>
                 </ul>
             </div>
 

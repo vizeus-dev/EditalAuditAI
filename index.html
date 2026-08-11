@@ -1,18 +1,23 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="EditalAudit AI - Avaliador e auditor mestre de editais e chamadas públicas governamentais e não governamentais usando inteligência artificial avançada.">
+    <meta name="description"
+        content="EditalAudit AI - Avaliador e auditor mestre de editais e chamadas públicas governamentais e não governamentais usando inteligência artificial avançada.">
     <title>EditalAudit AI – Avaliador Mestre de Editais & Chamadas Públicas</title>
-    
+
     <!-- Google Fonts: Inter + JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    
-    <link rel="stylesheet" href="styles.css?v=20">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+
+    <link rel="stylesheet" href="styles.css?v=32">
 </head>
+
 <body>
     <header>
         <h1 class="logo" id="app-logo">
@@ -20,14 +25,15 @@
             <span class="logo-text">EditalAudit AI</span>
         </h1>
         <div class="axis-selector-wrapper" style="display: flex; align-items: center; margin-left: 1rem;">
-            <select id="axis-select" style="background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); padding: 0.35rem 0.75rem; border-radius: 8px; font-weight: 600; font-size: 0.85rem; cursor: pointer;">
+            <select id="axis-select">
                 <option value="cultural">🎨 Eixo 1: Fomento Cultural & Incentivo (M.U.S.A. 14 Agentes)</option>
                 <option value="licitacao">🏛️ Eixo 2: Licitações 14.133/21 (SollAi & ALICE)</option>
                 <option value="concurso">🎓 Eixo 3: Concursos Públicos (EstudePlan & Anki SRS)</option>
             </select>
         </div>
         <div class="header-actions">
-            <button class="btn btn-secondary" id="btn-clear-all-context" style="width: auto; background: var(--color-error-bg); color: var(--color-error); border-color: var(--color-error-border); padding: 0.3rem 0.6rem; font-size: 0.75rem;" title="Limpa todo o histórico de editais, anexos, rascunhos e proposta do editor">🧹 Limpar Contexto</button>
+            <button class="btn btn-cyber-danger btn-sm btn-auto" id="btn-clear-all-context"
+                title="Limpa todo o histórico de editais, anexos, rascunhos e proposta do editor">🧹 Limpar Contexto</button>
             <div class="theme-switch-wrapper" title="Alternar Tema Escuro/Claro">
                 <span class="theme-icon">🌙</span>
                 <label class="theme-switch" for="theme-toggle-btn">
@@ -36,23 +42,28 @@
                 </label>
                 <span class="theme-icon">☀️</span>
             </div>
-            <div id="offline-status-badge" style="display: flex; align-items: center; gap: 0.3rem; background: rgba(34, 197, 94, 0.12); color: #16a34a; padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; border: 1px solid rgba(34, 197, 94, 0.3);" title="Banco local IndexedDB ativo para autonomia offline 100%">⚡ Offline-First (IndexedDB)</div>
+            <div id="offline-status-badge"
+                style="display: flex; align-items: center; gap: 0.3rem; background: rgba(34, 197, 94, 0.12); color: #16a34a; padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; border: 1px solid rgba(34, 197, 94, 0.3);"
+                title="Banco local IndexedDB ativo para autonomia offline 100%">⚡ Offline-First (IndexedDB)</div>
             <div class="api-config" id="api-config-container">
                 <label for="api-key-input">Chave API:</label>
-                <input type="password" id="api-key-input" placeholder="Digite sua API Key..." autocomplete="current-password">
+                <input type="password" id="api-key-input" placeholder="Digite sua API Key..."
+                    autocomplete="current-password">
                 <div class="status-indicator" id="key-status" title="Status da chave API"></div>
             </div>
         </div>
     </header>
-     <main class="workspace-split-layout">
-        
+    <main class="workspace-split-layout">
+
         <!-- COLUNA ESQUERDA: EDITOR PERSISTENTE -->
         <section class="editor-column">
             <div class="card abnt-document-card">
                 <div class="abnt-editor-toolbar">
                     <div class="toolbar-row-1">
                         <div class="toolbar-info">
-                            <span class="toolbar-title">📄 EDITOR DE PROPOSTAS ABNT <span id="editor-compliance-badge" style="margin-left: 0.5rem; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-weight: bold; border: 1px solid #ddd; display: none;">Score: -</span></span>
+                            <span class="toolbar-title">📄 EDITOR DE PROPOSTAS ABNT <span id="editor-compliance-badge"
+                                    style="margin-left: 0.5rem; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-weight: bold; border: 1px solid #ddd; display: none;">Score:
+                                    -</span></span>
                             <span class="toolbar-sep">|</span>
                             <label class="toolbar-font-label">
                                 Fonte:
@@ -63,14 +74,19 @@
                             </label>
                         </div>
                         <div class="toolbar-actions">
-                            <button class="btn btn-secondary toolbar-action-btn" id="btn-undo-proposal" title="Voltar à Versão Anterior no Editor" style="background: var(--bg-card); color: var(--text-primary);">⏮️ Versão Anterior</button>
-                            <button class="btn btn-secondary toolbar-action-btn" id="btn-redo-proposal" title="Retroceder / Restabelecer Versão Posterior" style="background: var(--bg-card); color: var(--text-primary);">⏭️ Retroceder Versão</button>
-                            <button class="btn btn-secondary toolbar-action-btn" id="btn-format-abnt-ai" title="Otimizar e Formatar ABNT com IA" style="background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.2);">🪄 Formatar ABNT IA</button>
-                            <button class="btn btn-secondary toolbar-action-btn" id="btn-save-draft" title="Salvar Rascunho (.json)">💾 Salvar</button>
-                            <button class="btn btn-secondary toolbar-action-btn toolbar-action-danger" id="btn-clear-draft">Limpar</button>
+                            <button class="btn btn-secondary toolbar-action-btn" id="btn-undo-proposal"
+                                title="Voltar à Versão Anterior no Editor">⏮️ Versão Anterior</button>
+                            <button class="btn btn-secondary toolbar-action-btn" id="btn-redo-proposal"
+                                title="Retroceder / Restabelecer Versão Posterior">⏭️ Retroceder Versão</button>
+                            <button class="btn btn-cyber-purple toolbar-action-btn" id="btn-format-abnt-ai"
+                                title="Otimizar e Formatar ABNT com IA">🪄 Formatar ABNT IA</button>
+                            <button class="btn btn-cyber-emerald toolbar-action-btn" id="btn-save-draft"
+                                title="Salvar Rascunho (.json)">💾 Salvar</button>
+                            <button class="btn toolbar-action-btn toolbar-action-danger"
+                                id="btn-clear-draft">Limpar</button>
                         </div>
                     </div>
-                    
+
                     <div class="toolbar-row-2">
                         <button class="toolbar-btn" data-command="bold" title="Negrito (Ctrl+B)">B</button>
                         <button class="toolbar-btn" data-command="italic" title="Itálico (Ctrl+I)">I</button>
@@ -88,9 +104,12 @@
                     <div class="abnt-page-sheet" id="abnt-document-preview">
                         <!-- COVER PAGE -->
                         <div class="abnt-cover-page">
-                            <div id="preview-cover-institution" class="cover-institution" contenteditable="true">INSTITUIÇÃO DE FOMENTO</div>
-                            <div id="preview-cover-proponent" class="cover-proponent" contenteditable="true">NOME DO PROPONENTE</div>
-                            <div id="preview-cover-title" class="cover-title" contenteditable="true">TÍTULO DO PROJETO CULTURAL</div>
+                            <div id="preview-cover-institution" class="cover-institution" contenteditable="true">
+                                INSTITUIÇÃO DE FOMENTO</div>
+                            <div id="preview-cover-proponent" class="cover-proponent" contenteditable="true">NOME DO
+                                PROPONENTE</div>
+                            <div id="preview-cover-title" class="cover-title" contenteditable="true">TÍTULO DO PROJETO
+                                CULTURAL</div>
                             <div class="cover-footer">
                                 <div id="preview-cover-city" class="cover-city" contenteditable="true">CIDADE - UF</div>
                                 <div id="preview-cover-year" class="cover-year" contenteditable="true">ANO</div>
@@ -185,7 +204,8 @@
 
                             <div class="abnt-section">
                                 <h3>13. PLANO DE SUSTENTABILIDADE E MITIGAÇÃO AMBIENTAL</h3>
-                                <div class="abnt-text-block abnt-indent" id="sec-sustentabilidade" contenteditable="true">
+                                <div class="abnt-text-block abnt-indent" id="sec-sustentabilidade"
+                                    contenteditable="true">
                                     Clique aqui ou use o agente de sustentabilidade.
                                 </div>
                             </div>
@@ -215,7 +235,7 @@
             </nav>
 
             <div class="workspace-tab-contents">
-                
+
                 <!-- TAB 1: INGESTÃO E SETUP -->
                 <div class="w-tab-pane active" id="pane-setup">
                     <div class="pane-header">
@@ -238,20 +258,23 @@
                         <div class="sidebar-link-input" style="margin-top: 1rem;">
                             <label for="edital-link-url">🔗 Link do edital online:</label>
                             <div class="sidebar-link-row" style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
-                                <input type="url" id="edital-link-url" placeholder="https://..." style="flex: 1; padding: 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: var(--bg-input);">
-                                <button class="btn btn-secondary" id="btn-fetch-link" style="width: auto;">Buscar</button>
+                                <input type="url" id="edital-link-url" placeholder="https://..."
+                                    style="flex: 1; padding: 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: var(--bg-input);">
+                                <button class="btn btn-secondary btn-auto" id="btn-fetch-link">Buscar</button>
                             </div>
                             <span id="link-status-msg" class="sidebar-link-status"></span>
                         </div>
                         <div class="text-input-container" style="margin-top: 1rem;">
-                            <textarea id="edital-ref-text" placeholder="Ou cole as regras do edital aqui..." style="height: 350px; min-height: 250px;"></textarea>
+                            <textarea id="edital-ref-text" placeholder="Ou cole as regras do edital aqui..."
+                                style="height: 350px; min-height: 250px;"></textarea>
                         </div>
                     </div>
 
                     <!-- ANEXADOR DE RASCUNHO DE PROPOSTA -->
                     <div class="card">
                         <h3>📝 Rascunho de Proposta</h3>
-                        <p style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.75rem;">Suba o seu rascunho. O sistema irá autodetectar dados para preencher a capa ABNT.</p>
+                        <p style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.75rem;">Suba o seu
+                            rascunho. O sistema irá autodetectar dados para preencher a capa ABNT.</p>
                         <div class="drop-zone" id="drop-zone-proposal-draft">
                             <span class="drop-zone-icon">📥</span>
                             <h4>Arraste seu rascunho de proposta</h4>
@@ -263,7 +286,9 @@
                             <button class="btn-remove-file" id="btn-remove-proposal-draft">×</button>
                         </div>
                         <div class="text-input-container" style="margin-top: 1rem;">
-                            <textarea id="proposal-draft-text" placeholder="Cole seu rascunho preliminar de proposta aqui..." style="height: 350px; min-height: 250px;"></textarea>
+                            <textarea id="proposal-draft-text"
+                                placeholder="Cole seu rascunho preliminar de proposta aqui..."
+                                style="height: 350px; min-height: 250px;"></textarea>
                         </div>
                     </div>
 
@@ -271,10 +296,14 @@
                     <div class="card">
                         <h3>📝 Anotações & Instruções Específicas do Proponente</h3>
                         <p style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.75rem;">
-                            Acrescente aqui observações extras que não estão nos anexos do rascunho ou direcionamentos específicos para os agentes de domínio analisarem com atenção (ex: foco em acessibilidade LIBRAS, teto orçamentário específico, contrapartida social ou perfil do público).
+                            Acrescente aqui observações extras que não estão nos anexos do rascunho ou direcionamentos
+                            específicos para os agentes de domínio analisarem com atenção (ex: foco em acessibilidade
+                            LIBRAS, teto orçamentário específico, contrapartida social ou perfil do público).
                         </p>
                         <div class="text-input-container">
-                            <textarea id="ingestao-notes-text" placeholder="Digite aqui suas observações complementares ou orientações de domínio para a IA..." style="width: 100%; height: 160px; min-height: 120px; padding: 0.8rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); font-family: var(--font-body); font-size: 0.9rem; line-height: 1.5; color: var(--text-primary); resize: vertical; outline: none;"></textarea>
+                            <textarea id="ingestao-notes-text"
+                                placeholder="Digite aqui suas observações complementares ou orientações de domínio para a IA..."
+                                style="width: 100%; height: 160px; min-height: 120px; padding: 0.8rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); font-family: var(--font-body); font-size: 0.9rem; line-height: 1.5; color: var(--text-primary); resize: vertical; outline: none;"></textarea>
                         </div>
                     </div>
 
@@ -307,7 +336,8 @@
                             <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                                 <div class="form-row">
                                     <label for="cover-city">Cidade - UF:</label>
-                                    <input type="text" id="cover-city" placeholder="Ex: Linhares - ES" class="form-input">
+                                    <input type="text" id="cover-city" placeholder="Ex: Linhares - ES"
+                                        class="form-input">
                                 </div>
                                 <div class="form-row">
                                     <label for="cover-year">Ano:</label>
@@ -316,20 +346,24 @@
                             </div>
                             <div class="form-row" style="margin-top: 0.5rem;">
                                 <label for="cover-budget">Orçamento Total Planejado (R$):</label>
-                                <input type="number" id="cover-budget" placeholder="Ex: 150000" class="form-input" style="width: 100%;">
+                                <input type="number" id="cover-budget" placeholder="Ex: 150000" class="form-input"
+                                    style="width: 100%;">
                             </div>
                         </div>
                     </div>
 
                     <!-- BOTOES DE ANALISE E PROPOSTA COMPLETA CRUZADA -->
-                    <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 1rem; margin-bottom: 2rem;">
-                        <button class="btn btn-secondary" id="btn-analyze-edital" style="width: auto; background: var(--color-primary-bg); color: var(--color-primary); border-color: var(--color-primary-border);">⚖️ Analisar Edital & Anexos</button>
-                        <button class="btn btn-primary" id="btn-generate-basic-proposal" style="width: auto;">⚡ Gerar Proposta Completa Cruzada</button>
+                    <div
+                        style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 1rem; margin-bottom: 2rem;">
+                        <button class="btn btn-secondary btn-auto" id="btn-analyze-edital">⚖️ Analisar Edital & Anexos</button>
+                        <button class="btn btn-primary btn-auto btn-glow-pulse" id="btn-generate-basic-proposal">⚡ Gerar Proposta Completa Cruzada</button>
                     </div>
-                    
+
                     <!-- CARD DA ANALISE DO EDITAL -->
-                    <div class="card" id="edital-profile-card" style="display: none; margin-top: 1rem; border-left: 4px solid var(--color-primary);">
-                        <h3 style="margin-bottom: 0.8rem; color: var(--color-primary);">⚖️ Diretrizes e Regras Estruturais do Edital</h3>
+                    <div class="card" id="edital-profile-card"
+                        style="display: none; margin-top: 1rem; border-left: 4px solid var(--color-primary);">
+                        <h3 style="margin-bottom: 0.8rem; color: var(--color-primary);">⚖️ Diretrizes e Regras
+                            Estruturais do Edital</h3>
                         <div id="edital-profile-content" style="font-size: 0.85rem; line-height: 1.5;"></div>
                     </div>
                 </div>
@@ -338,107 +372,181 @@
                 <div class="w-tab-pane" id="pane-auditor">
                     <div class="pane-header">
                         <h2>Motor de Auditoria & Compliance</h2>
-                        <p>Verifique a conformidade geral da proposta cultural contra o edital e regulamentos anexos.</p>
+                        <p>Verifique a conformidade geral da proposta cultural contra o edital e regulamentos anexos.
+                        </p>
                     </div>
 
                     <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
-                        <button class="btn btn-primary" id="btn-run-audit" style="width: auto;">🔍 Iniciar Auditoria do Edital</button>
-                        <button class="btn btn-secondary" id="btn-download-audit-pdf" style="width: auto; display: none;">📥 Baixar Relatório em PDF</button>
-                        <button class="btn btn-secondary" id="btn-save-audit-annex" style="width: auto; display: none;">📎 Salvar Relatório nos Anexos</button>
+                        <button class="btn btn-primary btn-auto btn-glow-pulse" id="btn-run-audit">🔍 Iniciar Auditoria do Edital</button>
+                        <button class="btn btn-cyber-emerald btn-auto" id="btn-download-audit-pdf" style="display: none;">📥 Baixar Relatório em PDF</button>
+                        <button class="btn btn-secondary btn-auto" id="btn-save-audit-annex" style="display: none;">📎 Salvar Relatório nos Anexos</button>
                     </div>
 
                     <div class="audit-dashboard-layout" id="audit-dashboard" style="display: none;">
-                        <div class="audit-summary-card" style="display: flex; gap: 2rem; align-items: center; background: var(--bg-card); border: 1px solid var(--border-color); padding: 1.5rem; border-radius: var(--radius-lg); margin-bottom: 1.5rem;">
+                        <div class="audit-summary-card"
+                            style="display: flex; gap: 2rem; align-items: center; background: var(--bg-card); border: 1px solid var(--border-color); padding: 1.5rem; border-radius: var(--radius-lg); margin-bottom: 1.5rem;">
                             <div class="score-main-card" id="score-card" style="margin-bottom: 0; min-width: 180px;">
                                 <label class="score-label">Nota de Qualidade</label>
                                 <div class="score-badge" id="score-value">0</div>
                                 <span class="classification-label" id="score-class">Sem Nota</span>
-                                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.4rem; font-weight: 600;" id="score-split-detail"></div>
+                                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.4rem; font-weight: 600;"
+                                    id="score-split-detail"></div>
                             </div>
                             <div class="audit-intro-text" style="flex: 1;">
-                                <h3 id="audit-proj-title" style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">Diagnóstico Completo</h3>
-                                <p id="audit-proj-sub" style="font-size: 0.9rem; color: var(--text-secondary);">Análise baseada em leis federais de incentivo e economicidade.</p>
+                                <h3 id="audit-proj-title"
+                                    style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">
+                                    Diagnóstico Completo</h3>
+                                <p id="audit-proj-sub" style="font-size: 0.9rem; color: var(--text-secondary);">Análise
+                                    baseada em leis federais de incentivo e economicidade.</p>
                             </div>
                         </div>
 
                         <!-- RELATÓRIO ANALÍTICO COMPLETO -->
                         <div class="card" id="audit-analytic-report-card" style="margin-bottom: 1.5rem; display: none;">
                             <h2>📋 Parecer Analítico Completo do Auditor</h2>
-                            <div id="audit-analytic-report-content" style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; max-height: 500px; overflow-y: auto; padding-right: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; background: var(--bg-panel); word-wrap: break-word; overflow-wrap: anywhere;"></div>
+                            <div id="audit-analytic-report-content"
+                                style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; max-height: 500px; overflow-y: auto; padding-right: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; background: var(--bg-panel); word-wrap: break-word; overflow-wrap: anywhere;">
+                            </div>
                         </div>
 
                         <!-- RELATÓRIO DETALHADO POR ÁREA -->
-                        <div id="audit-areas-detail" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;"></div>
+                        <div id="audit-areas-detail"
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                        </div>
 
-                        <div class="audit-details-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                        <div class="audit-details-grid"
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
                             <div class="card" style="margin-bottom: 0;">
                                 <h2>Matriz de Avaliação (Pontuação Técnica e Priorização)</h2>
                                 <div class="dimensions-container" style="border: none; box-shadow: none; padding: 0;">
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">1. Justificativa e Relevância</span><span class="dimension-score" id="score-dim-1">0 / 10</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-1"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">1. Justificativa e
+                                                Relevância</span><span class="dimension-score" id="score-dim-1">0 /
+                                                10</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-1"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">2. Objetivos (Geral e Específicos)</span><span class="dimension-score" id="score-dim-2">0 / 10</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-2"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">2. Objetivos (Geral e
+                                                Específicos)</span><span class="dimension-score" id="score-dim-2">0 /
+                                                10</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-2"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">3. Metodologia e Plano de Trabalho</span><span class="dimension-score" id="score-dim-3">0 / 10</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-3"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">3. Metodologia e Plano
+                                                de Trabalho</span><span class="dimension-score" id="score-dim-3">0 /
+                                                10</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-3"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">4. Cronograma Físico de Atividades</span><span class="dimension-score" id="score-dim-4">0 / 10</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-4"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">4. Cronograma Físico de
+                                                Atividades</span><span class="dimension-score" id="score-dim-4">0 /
+                                                10</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-4"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">5. Orçamento e Planilha de Custos</span><span class="dimension-score" id="score-dim-5">0 / 10</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-5"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">5. Orçamento e Planilha
+                                                de Custos</span><span class="dimension-score" id="score-dim-5">0 /
+                                                10</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-5"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">6. Acessibilidade e Cotas</span><span class="dimension-score" id="score-dim-6">0 / 5</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-6"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">6. Acessibilidade e
+                                                Cotas</span><span class="dimension-score" id="score-dim-6">0 / 5</span>
+                                        </div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-6"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">7. Público-Alvo e Perfil dos Beneficiários</span><span class="dimension-score" id="score-dim-7">0 / 5</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-7"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">7. Público-Alvo e
+                                                Perfil dos Beneficiários</span><span class="dimension-score"
+                                                id="score-dim-7">0 / 5</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-7"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">8. Contrapartida Social e Legado</span><span class="dimension-score" id="score-dim-8">0 / 5</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-8"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">8. Contrapartida Social
+                                                e Legado</span><span class="dimension-score" id="score-dim-8">0 /
+                                                5</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-8"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">9. Plano de Comunicação e Divulgação</span><span class="dimension-score" id="score-dim-9">0 / 5</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-9"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">9. Plano de Comunicação
+                                                e Divulgação</span><span class="dimension-score" id="score-dim-9">0 /
+                                                5</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-9"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">10. Ficha Técnica e Capacidade Operacional</span><span class="dimension-score" id="score-dim-10">0 / 5</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-10"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">10. Ficha Técnica e
+                                                Capacidade Operacional</span><span class="dimension-score"
+                                                id="score-dim-10">0 / 5</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-10"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">11. Plano de Monitoramento, Avaliação e Indicadores</span><span class="dimension-score" id="score-dim-11">0 / 10</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-11"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">11. Plano de
+                                                Monitoramento, Avaliação e Indicadores</span><span
+                                                class="dimension-score" id="score-dim-11">0 / 10</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-11"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">12. Compliance, Marcos Legais e Direitos</span><span class="dimension-score" id="score-dim-12">0 / 5</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-12"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">12. Compliance, Marcos
+                                                Legais e Direitos</span><span class="dimension-score"
+                                                id="score-dim-12">0 / 5</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-12"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">13. Plano de Sustentabilidade e Mitigação Ambiental</span><span class="dimension-score" id="score-dim-13">0 / 5</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-13"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">13. Plano de
+                                                Sustentabilidade e Mitigação Ambiental</span><span
+                                                class="dimension-score" id="score-dim-13">0 / 5</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-13"></div>
+                                        </div>
                                     </div>
                                     <div class="dimension-row">
-                                        <div class="dimension-info"><span class="dimension-name">14. Rider Técnico e Necessidades Logísticas</span><span class="dimension-score" id="score-dim-14">0 / 5</span></div>
-                                        <div class="meter-bg"><div class="meter-fill" id="fill-dim-14"></div></div>
+                                        <div class="dimension-info"><span class="dimension-name">14. Rider Técnico e
+                                                Necessidades Logísticas</span><span class="dimension-score"
+                                                id="score-dim-14">0 / 5</span></div>
+                                        <div class="meter-bg">
+                                            <div class="meter-fill" id="fill-dim-14"></div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="card" style="margin-bottom: 0;">
                                 <h2>★ Tabela de Ajustes e Sugestões</h2>
-                                <p class="card-subtitle" style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem;">Alterações identificadas que aumentam a nota final.</p>
+                                <p class="card-subtitle"
+                                    style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                                    Alterações identificadas que aumentam a nota final.</p>
                                 <div style="max-height: 220px; overflow-y: auto;">
                                     <table class="banca-table" id="table-adjusts" style="width: 100%;">
-                                        <thead><tr><th>Alteração Sugerida</th><th class="col-medium">Fator</th></tr></thead>
+                                        <thead>
+                                            <tr>
+                                                <th>Alteração Sugerida</th>
+                                                <th class="col-medium">Fator</th>
+                                            </tr>
+                                        </thead>
                                         <tbody></tbody>
                                     </table>
                                 </div>
@@ -451,9 +559,7 @@
                         </div>
 
                         <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
-                            <button class="btn btn-primary" id="btn-goto-revisor" style="display:none; width:auto; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); border: none; padding: 0.75rem 1.5rem; font-weight: 600;">
-                                ➡️ Avançar para a Revisão Setorial
-                            </button>
+                            <button class="btn btn-primary btn-auto btn-lg btn-glow-pulse" id="btn-goto-revisor" style="display: none;">➡️ Avançar para a Revisão Setorial</button>
                         </div>
                     </div>
                 </div>
@@ -462,116 +568,132 @@
                 <div class="w-tab-pane" id="pane-revisor">
                     <div class="pane-header">
                         <h2>Hub de Revisão & Pareceres Setoriais</h2>
-                        <p>Orquestre múltiplos sub-agentes inteligentes que auditam e otimizam sua proposta em tempo real.</p>
+                        <p>Orquestre múltiplos sub-agentes inteligentes que auditam e otimizam sua proposta em tempo
+                            real.</p>
                     </div>
 
                     <!-- BOTÕES DE AÇÃO GLOBAL -->
                     <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
-                        <button class="btn btn-primary" id="btn-revisor-run-all" style="width: auto; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); border: none;">🚀 Acionar Agentes Exigidos pelo Edital</button>
-                        <button class="btn btn-primary" id="btn-goto-supervisor" style="display:none; width: auto; background: linear-gradient(135deg, #10b981, #059669); border: none;">🧠 Avançar para a Supervisão Estratégica</button>
-                        <button class="btn btn-secondary" id="btn-revisor-consolidated-revision" style="width: auto; background: var(--bg-card); color: var(--color-primary); border: 1px solid var(--color-primary);">✨ Otimizar Proposta Completa</button>
+                        <button class="btn btn-primary btn-auto btn-glow-pulse" id="btn-revisor-run-all">🚀 Acionar Agentes Exigidos pelo Edital</button>
+                        <button class="btn btn-cyber-purple btn-auto" id="btn-goto-supervisor" style="display: none;">🧠 Avançar para a Supervisão Estratégica</button>
+                        <button class="btn btn-secondary btn-auto" id="btn-revisor-consolidated-revision">✨ Otimizar Proposta Completa</button>
                     </div>
 
                     <!-- GRID DE 14 SUB-AGENTES -->
                     <div class="card" style="margin-bottom: 1.5rem;">
                         <h3>🕵️ Selecione o Sub-Agente Especialista</h3>
-                        <div class="revisor-agents-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem;">
+                        <div class="revisor-agents-grid"
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem;">
                             <button class="revisor-agent-card active" data-agent="justificativa">
                                 <span class="agent-avatar">🎯</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Mérito & Relevância</span>
-                                    <span class="agent-status-badge status-pending" id="status-justificativa">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-justificativa">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="objetivos">
                                 <span class="agent-avatar">📌</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Objetivos & Metas</span>
-                                    <span class="agent-status-badge status-pending" id="status-objetivos">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-objetivos">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="metodologia">
                                 <span class="agent-avatar">⚙️</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Metodologia & Execução</span>
-                                    <span class="agent-status-badge status-pending" id="status-metodologia">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-metodologia">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="cronograma">
                                 <span class="agent-avatar">📅</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Cronograma & Prazos</span>
-                                    <span class="agent-status-badge status-pending" id="status-cronograma">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-cronograma">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="orcamento">
                                 <span class="agent-avatar">💰</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Financeiro & Orçamento</span>
-                                    <span class="agent-status-badge status-pending" id="status-orcamento">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-orcamento">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="acessibilidade">
                                 <span class="agent-avatar">♿</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Acessibilidade & Inclusão</span>
-                                    <span class="agent-status-badge status-pending" id="status-acessibilidade">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-acessibilidade">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="publico">
                                 <span class="agent-avatar">👥</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Público-Alvo & Perfil</span>
-                                    <span class="agent-status-badge status-pending" id="status-publico">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-publico">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="contrapartida">
                                 <span class="agent-avatar">🤝</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Contrapartida & Legado</span>
-                                    <span class="agent-status-badge status-pending" id="status-contrapartida">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-contrapartida">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="comunicacao">
                                 <span class="agent-avatar">📢</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Comunicação & Divulgação</span>
-                                    <span class="agent-status-badge status-pending" id="status-comunicacao">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-comunicacao">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="ficha_tecnica">
                                 <span class="agent-avatar">👔</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Ficha Técnica & Capacidade</span>
-                                    <span class="agent-status-badge status-pending" id="status-ficha_tecnica">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-ficha_tecnica">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="monitoramento">
                                 <span class="agent-avatar">📊</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Monitoramento & Indicadores</span>
-                                    <span class="agent-status-badge status-pending" id="status-monitoramento">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-monitoramento">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="compliance">
                                 <span class="agent-avatar">📜</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Compliance & Marcos Legais</span>
-                                    <span class="agent-status-badge status-pending" id="status-compliance">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-compliance">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="sustentabilidade">
                                 <span class="agent-avatar">🌱</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Sustentabilidade & ESG</span>
-                                    <span class="agent-status-badge status-pending" id="status-sustentabilidade">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-sustentabilidade">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                             <button class="revisor-agent-card" data-agent="rider">
                                 <span class="agent-avatar">🛠️</span>
                                 <div class="agent-details">
                                     <span class="agent-title">Rider Técnico & Logística</span>
-                                    <span class="agent-status-badge status-pending" id="status-rider">Não Iniciado</span>
+                                    <span class="agent-status-badge status-pending" id="status-rider">Não
+                                        Iniciado</span>
                                 </div>
                             </button>
                         </div>
@@ -579,81 +701,113 @@
 
                     <!-- PARECER DO AGENTE SELECIONADO -->
                     <div class="card" id="revisor-result-panel" style="margin-bottom: 1.5rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                             <h3 id="revisor-panel-title">🎯 Parecer: Agente de Mérito & Relevância</h3>
-                            <span class="score-badge" id="revisor-panel-score" style="font-size: 1.1rem; padding: 0.4rem 0.8rem; background: var(--bg-input);">--</span>
+                            <span class="score-badge" id="revisor-panel-score"
+                                style="font-size: 1.1rem; padding: 0.4rem 0.8rem; background: var(--bg-input);">--</span>
                         </div>
-                        <div id="revisor-panel-feedback" style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 1rem; word-wrap: break-word; overflow-wrap: anywhere;">
+                        <div id="revisor-panel-feedback"
+                            style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 1rem; word-wrap: break-word; overflow-wrap: anywhere;">
                             Clique em "Acionar Todos" ou use o botão para analisar este agente específico.
                         </div>
                         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                            <button class="btn btn-secondary" id="btn-run-single-agent" style="width: auto;">Analisar apenas este agente</button>
-                            <button class="btn btn-secondary" id="btn-download-finance-xls" style="width: auto; display: none; background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border);">📊 Baixar Planilha Orçamentária (.xlsx)</button>
-                            <button class="btn btn-secondary" id="btn-download-finance-pdf" style="width: auto; display: none; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.2);">📄 Baixar Planilha em PDF</button>
+                            <button class="btn btn-secondary btn-auto" id="btn-run-single-agent">Analisar apenas este agente</button>
+                            <button class="btn btn-cyber-emerald btn-auto" id="btn-download-finance-xls" style="display: none;">📊 Baixar Planilha Orçamentária (.xlsx)</button>
+                            <button class="btn btn-secondary btn-auto" id="btn-download-finance-pdf" style="display: none;">📄 Baixar Planilha em PDF</button>
                         </div>
                     </div>
 
                     <!-- COMPARAÇÃO DE TEXTO (DIFF VIEW) -->
                     <div class="card" id="revisor-diff-card" style="display: none; margin-bottom: 1.5rem;">
                         <h3>🔎 Comparação e Aprovação de Alterações</h3>
-                        <p style="color: var(--text-secondary); font-size: 0.75rem; margin-bottom: 1rem;">Veja as sugestões consolidadas sob tom de voz formal e sanitizado de marcas de IA.</p>
-                        
-                        <div class="diff-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
+                        <p style="color: var(--text-secondary); font-size: 0.75rem; margin-bottom: 1rem;">Veja as
+                            sugestões consolidadas sob tom de voz formal e sanitizado de marcas de IA.</p>
+
+                        <div class="diff-container"
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
                             <div>
-                                <h4 style="font-size: 0.8rem; margin-bottom: 0.5rem; color: var(--text-muted);">Texto Atual no Editor:</h4>
-                                <div id="diff-text-original" style="background: var(--bg-input); padding: 0.75rem; border-radius: var(--radius-md); font-size: 0.8rem; border: 1px solid var(--border-color); white-space: pre-wrap; max-height: 250px; overflow-y: auto; word-wrap: break-word; overflow-wrap: anywhere;"></div>
+                                <h4 style="font-size: 0.8rem; margin-bottom: 0.5rem; color: var(--text-muted);">Texto
+                                    Atual no Editor:</h4>
+                                <div id="diff-text-original"
+                                    style="background: var(--bg-input); padding: 0.75rem; border-radius: var(--radius-md); font-size: 0.8rem; border: 1px solid var(--border-color); white-space: pre-wrap; max-height: 250px; overflow-y: auto; word-wrap: break-word; overflow-wrap: anywhere;">
+                                </div>
                             </div>
                             <div>
-                                <h4 style="font-size: 0.8rem; margin-bottom: 0.5rem; color: var(--color-success);">Texto Sugerido pelo Revisor (Sanitizado):</h4>
-                                <div id="diff-text-suggested" style="background: var(--bg-input); padding: 0.75rem; border-radius: var(--radius-md); font-size: 0.8rem; border: 1px solid var(--color-success); white-space: pre-wrap; max-height: 250px; overflow-y: auto; word-wrap: break-word; overflow-wrap: anywhere;" contenteditable="true"></div>
+                                <h4 style="font-size: 0.8rem; margin-bottom: 0.5rem; color: var(--color-success);">Texto
+                                    Sugerido pelo Revisor (Sanitizado):</h4>
+                                <div id="diff-text-suggested"
+                                    style="background: var(--bg-input); padding: 0.75rem; border-radius: var(--radius-md); font-size: 0.8rem; border: 1px solid var(--color-success); white-space: pre-wrap; max-height: 250px; overflow-y: auto; word-wrap: break-word; overflow-wrap: anywhere;"
+                                    contenteditable="true"></div>
                             </div>
                         </div>
 
                         <div style="display: flex; gap: 0.5rem;">
-                            <button class="btn btn-primary" id="btn-apply-revisor-diff" style="width: auto;">✅ Aprovar e Atualizar Proposta</button>
-                            <button class="btn btn-secondary" id="btn-discard-revisor-diff" style="width: auto;">Descartar Sugestão</button>
+                            <button class="btn btn-cyber-emerald btn-auto" id="btn-apply-revisor-diff">✅ Aprovar e Atualizar Proposta</button>
+                            <button class="btn btn-secondary btn-auto" id="btn-discard-revisor-diff">Descartar Sugestão</button>
                         </div>
                     </div>
 
                     <!-- SEÇÃO RELATÓRIO DO REVISOR -->
                     <div class="card" id="revisor-report-card" style="margin-bottom: 1.5rem;">
                         <h3>📋 Relatório Detalhado do Revisor</h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Gere um relatório analítico detalhado compilando todos os pareceres dos agentes especialistas (erros e planos de ação).</p>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Gere um
+                            relatório analítico detalhado compilando todos os pareceres dos agentes especialistas (erros
+                            e planos de ação).</p>
                         <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                            <button class="btn btn-primary" id="btn-generate-revisor-report" style="width: auto;">📋 Gerar Relatório Detalhado</button>
-                            <button class="btn btn-secondary" id="btn-download-revisor-pdf" style="width: auto; display: none;">📥 Baixar Relatório em PDF</button>
+                            <button class="btn btn-primary btn-auto" id="btn-generate-revisor-report">📋 Gerar Relatório Detalhado</button>
+                            <button class="btn btn-cyber-emerald btn-auto" id="btn-download-revisor-pdf" style="display: none;">📥 Baixar Relatório em PDF</button>
                         </div>
-                        <div id="revisor-report-content" style="display: none; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; max-height: 500px; overflow-y: auto; padding: 1rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-panel); margin-top: 1rem; word-wrap: break-word; overflow-wrap: anywhere;"></div>
+                        <div id="revisor-report-content"
+                            style="display: none; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; max-height: 500px; overflow-y: auto; padding: 1rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-panel); margin-top: 1rem; word-wrap: break-word; overflow-wrap: anywhere;">
+                        </div>
                     </div>
 
                     <!-- SEÇÃO PLANILHA FINANCEIRA DO REVISOR -->
                     <div class="card" id="revisor-finance-card" style="margin-bottom: 1.5rem;">
                         <h3>💰 Planilha Financeira Otimizada (IA & Offline)</h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Escolha entre a <strong>Geração por IA (Gemini)</strong> com cruzamento de 3 etapas ou o <strong>Download Instantâneo Offline</strong> baseado nos dados do Editor ABNT.</p>
-                        
-                        <div style="margin-bottom: 0.75rem; font-weight: 600; font-size: 0.85rem; color: var(--color-primary);">🤖 Opção 1: Geração & Consolidação por IA (Gemini 3 Etapas)</div>
-                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 1.25rem;">
-                            <button type="button" class="btn btn-primary" id="btn-generate-finance-ia" style="width: auto; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #ffffff; border: none; font-weight: 600;">🤖 Gerar Planilha Detalhada por IA</button>
-                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-download-finance-xls-main" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border);">📊 Baixar Planilha IA (.xlsx)</button>
-                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-download-finance-pdf-main" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.2);">📄 Baixar Planilha IA (.pdf)</button>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Escolha entre
+                            a <strong>Geração por IA (Gemini)</strong> com cruzamento de 3 etapas ou o <strong>Download
+                                Instantâneo Offline</strong> baseado nos dados do Editor ABNT.</p>
+
+                        <div
+                            style="margin-bottom: 0.75rem; font-weight: 600; font-size: 0.85rem; color: var(--color-primary);">
+                            🤖 Opção 1: Geração & Consolidação por IA (Gemini 3 Etapas)</div>
+                        <div
+                            style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 1.25rem;">
+                            <button type="button" class="btn btn-cyber-purple btn-auto" id="btn-generate-finance-ia">🤖 Gerar Planilha Detalhada por IA</button>
+                            <button type="button" class="btn btn-cyber-emerald btn-auto btn-finance-download"
+                                id="btn-download-finance-xls-main" disabled
+                                title="Aguardando geração pelas 3 Etapas de IA"
+                                style="display: none;">📊 Baixar Planilha IA (.xlsx)</button>
+                            <button type="button" class="btn btn-secondary btn-auto btn-finance-download"
+                                id="btn-download-finance-pdf-main" disabled
+                                title="Aguardando geração pelas 3 Etapas de IA"
+                                style="display: none;">📄 Baixar Planilha IA (.pdf)</button>
                         </div>
 
-                        <div style="margin-bottom: 0.75rem; font-weight: 600; font-size: 0.85rem; color: var(--color-success);">⚡ Opção 2: Gerar & Baixar Planilha Offline (Instantâneo do Editor)</div>
+                        <div
+                            style="margin-bottom: 0.75rem; font-weight: 600; font-size: 0.85rem; color: var(--color-success);">
+                            ⚡ Opção 2: Gerar & Baixar Planilha Offline (Instantâneo do Editor)</div>
                         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-                            <button type="button" class="btn btn-secondary" id="btn-download-finance-offline-xls" style="width: auto; background: rgba(34, 197, 94, 0.1); color: var(--color-success); border: 1px solid var(--color-success-border); font-weight: 600;" title="Gera e baixa a planilha instantaneamente a partir dos dados do editor ABNT local">⚡ Baixar Planilha Offline (.xlsx)</button>
-                            <button type="button" class="btn btn-secondary" id="btn-download-finance-offline-pdf" style="width: auto; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color);" title="Gera o PDF instantâneo a partir dos dados do editor ABNT local">📄 Baixar Planilha Offline (.pdf)</button>
+                            <button type="button" class="btn btn-cyber-emerald btn-auto" id="btn-download-finance-offline-xls"
+                                title="Gera e baixa a planilha instantaneamente a partir dos dados do editor ABNT local">⚡ Baixar Planilha Offline (.xlsx)</button>
+                            <button type="button" class="btn btn-secondary btn-auto" id="btn-download-finance-offline-pdf"
+                                title="Gera o PDF instantâneo a partir dos dados do editor ABNT local">📄 Baixar Planilha Offline (.pdf)</button>
                         </div>
                     </div>
 
                     <!-- BOTÃO TRANSIÇÃO PARA SUPERVISOR -->
-                    <button class="btn btn-primary" id="btn-goto-supervisor" style="margin-top: 1rem; width: 100%; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; font-weight: 600; padding: 0.8rem;">➡️ Avançar para a Supervisão Estratégica</button>
+                    <button class="btn btn-cyber-purple btn-full btn-lg" id="btn-goto-supervisor"
+                        style="margin-top: 1rem;">➡️ Avançar para a Supervisão Estratégica</button>
                 </div>
 
                 <!-- TAB 4: SUPERVISOR ESTRATÉGICO -->
                 <div class="w-tab-pane" id="pane-supervisor">
                     <div class="pane-header">
                         <h2>🧠 Supervisão Estratégica & Plano Diretor</h2>
-                        <p>O Supervisor consolida a Ingestão, o Laudo da Auditoria e os Pareceres da Revisão para formular as decisões executivas e o plano de redação seção a seção.</p>
+                        <p>O Supervisor consolida a Ingestão, o Laudo da Auditoria e os Pareceres da Revisão para
+                            formular as decisões executivas e o plano de redação seção a seção.</p>
                     </div>
 
                     <!-- BANNER DE STATUS DA CADEIA -->
@@ -661,27 +815,32 @@
                         <div style="display: flex; align-items: center; gap: 0.75rem;">
                             <span style="font-size: 1.25rem;">🔗</span>
                             <div>
-                                <strong style="font-size: 0.9rem; color: var(--text-primary);">Status da Cadeia Cognitiva:</strong>
-                                <div id="supervisor-chain-indicators" style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
-                                    <span id="indicator-audit">Auditoria: ⏳ Pendente</span> • 
+                                <strong style="font-size: 0.9rem; color: var(--text-primary);">Status da Cadeia
+                                    Cognitiva:</strong>
+                                <div id="supervisor-chain-indicators"
+                                    style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+                                    <span id="indicator-audit">Auditoria: ⏳ Pendente</span> •
                                     <span id="indicator-revisor">Revisão: ⏳ Pendente</span>
                                 </div>
                             </div>
                         </div>
-                        <button class="btn btn-primary" id="btn-run-supervisor" style="width: auto; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; font-weight: 600;">🧠 Executar Supervisão Estratégica</button>
+                        <button class="btn btn-cyber-purple btn-auto btn-glow-pulse-purple" id="btn-run-supervisor">🧠 Executar Supervisão Estratégica</button>
                     </div>
 
                     <!-- CARD 1: MATRIZ DE DECISÃO DO SUPERVISOR -->
                     <div class="card" id="supervisor-decision-card" style="margin-bottom: 1.5rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; flex-wrap: wrap; gap: 0.5rem;">
-                            <h3 style="margin: 0; color: var(--color-primary);">🚦 Matriz de Decisão do Supervisor (Seções Exigidas)</h3>
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; flex-wrap: wrap; gap: 0.5rem;">
+                            <h3 style="margin: 0; color: var(--color-primary);">🚦 Matriz de Decisão do Supervisor
+                                (Seções Exigidas)</h3>
                             <div style="display: flex; gap: 0.5rem;">
-                                <button class="btn btn-secondary" id="btn-supervisor-to-redator" style="padding: 0.35rem 0.8rem; font-size: 0.8rem; background: var(--color-primary-ghost); color: var(--color-primary); border: 1px solid var(--color-primary); font-weight: 600;">✍️ Transmitir Diretrizes para o Redator ➡️</button>
-                                <button class="btn btn-secondary" id="btn-download-supervisor-pdf" style="padding: 0.35rem 0.8rem; font-size: 0.8rem; display: none;">📥 Baixar Parecer em PDF</button>
+                                <button class="btn btn-secondary btn-sm btn-auto" id="btn-supervisor-to-redator">✍️ Transmitir Diretrizes para o Redator ➡️</button>
+                                <button class="btn btn-cyber-emerald btn-sm btn-auto" id="btn-download-supervisor-pdf" style="display: none;">📥 Baixar Parecer em PDF</button>
                             </div>
                         </div>
                         <p style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 1rem;">
-                            O semáforo abaixo consolida a conformidade de cada área exigida pelo edital e estabelece a ação vinculante para a redação.
+                            O semáforo abaixo consolida a conformidade de cada área exigida pelo edital e estabelece a
+                            ação vinculante para a redação.
                         </p>
 
                         <div class="table-responsive-wrapper">
@@ -697,8 +856,10 @@
                                 </thead>
                                 <tbody id="supervisor-decision-tbody">
                                     <tr>
-                                        <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">
-                                            Clique em <em>"🧠 Executar Supervisão Estratégica"</em> para cruzar a Auditoria e a Revisão.
+                                        <td colspan="5"
+                                            style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                                            Clique em <em>"🧠 Executar Supervisão Estratégica"</em> para cruzar a
+                                             Auditoria e a Revisão.
                                         </td>
                                     </tr>
                                 </tbody>
@@ -708,34 +869,43 @@
 
                     <!-- CARD 2: PLANO DIRETOR DE REDAÇÃO SEÇÃO POR SEÇÃO -->
                     <div class="card" id="supervisor-directives-container" style="margin-bottom: 1.5rem;">
-                        <h3 style="margin-bottom: 0.8rem; color: var(--color-primary);">📋 Plano Diretor de Redação (Instruções Detalhadas)</h3>
+                        <h3 style="margin-bottom: 0.8rem; color: var(--color-primary);">📋 Plano Diretor de Redação
+                            (Instruções Detalhadas)</h3>
                         <p style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 1rem;">
-                            Instruções técnicas individualizadas para o Redator corrigir cada fragilidade e potencializar a pontuação na banca examinadora.
+                            Instruções técnicas individualizadas para o Redator corrigir cada fragilidade e
+                            potencializar a pontuação na banca examinadora.
                         </p>
                         <div id="supervisor-directives-list">
-                            <p style="color: var(--text-muted); font-size: 0.85rem; font-style: italic;">Nenhuma diretriz formulada ainda.</p>
+                            <p style="color: var(--text-muted); font-size: 0.85rem; font-style: italic;">Nenhuma
+                                diretriz formulada ainda.</p>
                         </div>
                     </div>
 
-                    <button class="btn btn-primary" id="btn-goto-redator" style="margin-top: 1rem; width: 100%; background: linear-gradient(135deg, #06b6d4, #3b82f6); border: none; font-weight: 600; padding: 0.8rem;">✍️ Transmitir Diretrizes e Avançar para o Redator</button>
+                    <button class="btn btn-primary btn-full btn-lg" id="btn-goto-redator" style="margin-top: 1rem;">✍️ Transmitir Diretrizes e Avançar para o Redator</button>
                 </div>
 
                 <!-- TAB 5: REDATOR -->
                 <div class="w-tab-pane" id="pane-redator">
                     <div class="pane-header">
                         <h2>Assistente de Redação</h2>
-                        <p>Escreva seções completas utilizando IA orientada pelas diretrizes consolidadas do Supervisor e referências do edital.</p>
+                        <p>Escreva seções completas utilizando IA orientada pelas diretrizes consolidadas do Supervisor
+                            e referências do edital.</p>
                     </div>
 
                     <!-- CÁPSULA DE DIRETRIZ DO SUPERVISOR -->
-                    <div class="directive-capsule-redator" id="redator-supervisor-directive-capsule" style="display: none;">
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
-                            <strong style="color: var(--color-primary); font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
+                    <div class="directive-capsule-redator" id="redator-supervisor-directive-capsule"
+                        style="display: none;">
+                        <div
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+                            <strong
+                                style="color: var(--color-primary); font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
                                 <span>🎯</span> Diretriz do Supervisor para esta Seção:
                             </strong>
-                            <span id="redator-supervisor-directive-status" class="badge-decision-adjustment">Ajuste Recomendado</span>
+                            <span id="redator-supervisor-directive-status" class="badge-decision-adjustment">Ajuste
+                                Recomendado</span>
                         </div>
-                        <p id="redator-supervisor-directive-text" style="font-size: 0.85rem; line-height: 1.5; color: var(--text-primary); margin: 0;">
+                        <p id="redator-supervisor-directive-text"
+                            style="font-size: 0.85rem; line-height: 1.5; color: var(--text-primary); margin: 0;">
                             Aguardando instruções do Supervisor...
                         </p>
                     </div>
@@ -755,66 +925,91 @@
                                 <option value="contrapartida">8. Contrapartida Social e Legado</option>
                                 <option value="comunicacao">9. Plano de Comunicação e Divulgação</option>
                                 <option value="ficha_tecnica">10. Ficha Técnica e Capacidade Operacional</option>
-                                <option value="monitoramento">11. Plano de Monitoramento, Avaliação e Indicadores</option>
+                                <option value="monitoramento">11. Plano de Monitoramento, Avaliação e Indicadores
+                                </option>
                                 <option value="compliance">12. Compliance, Marcos Legais e Direitos</option>
-                                <option value="sustentabilidade">13. Plano de Sustentabilidade e Mitigação Ambiental</option>
+                                <option value="sustentabilidade">13. Plano de Sustentabilidade e Mitigação Ambiental
+                                </option>
                                 <option value="rider">14. Rider Técnico e Necessidades Logísticas</option>
                             </select>
                         </div>
-                        <div class="form-row" style="margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.4rem;">
-                            <label for="redator-prompt" style="font-weight: 600; color: var(--color-primary);">Instruções ou ideias para a seção (Anotações do Proponente):</label>
-                            <textarea id="redator-prompt" placeholder="Ex: Focar na preservação da cultura local de sanfoneiros, detalhar orçamentos com teto R$ 300k, explicitar paridade de gênero e público vulnerável..." style="width: 100%; min-height: 140px; padding: 0.8rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); font-family: var(--font-body); font-size: 0.9rem; line-height: 1.5; color: var(--text-primary); resize: vertical; outline: none; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);"></textarea>
+                        <div class="form-row"
+                            style="margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                            <label for="redator-prompt"
+                                style="font-weight: 600; color: var(--color-primary);">Instruções ou ideias para a seção
+                                (Anotações do Proponente):</label>
+                            <textarea id="redator-prompt"
+                                placeholder="Ex: Focar na preservação da cultura local de sanfoneiros, detalhar orçamentos com teto R$ 300k, explicitar paridade de gênero e público vulnerável..."
+                                style="width: 100%; min-height: 140px; padding: 0.8rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); font-family: var(--font-body); font-size: 0.9rem; line-height: 1.5; color: var(--text-primary); resize: vertical; outline: none; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);"></textarea>
                         </div>
                         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                            <button class="btn btn-primary" id="btn-generate-section" style="flex: 1; min-width: 180px;">✨ Gerar Seção Selecionada</button>
-                            <button class="btn btn-primary" id="btn-generate-section-with-chat" style="flex: 1; min-width: 220px; background: linear-gradient(135deg, #6366f1, #06b6d4); border: none;">💬 Aplicar Ajustes do Chat & Gerar</button>
-                            <button class="btn btn-secondary" id="btn-redator-run-all-sequential" style="flex: 1; min-width: 220px; background: linear-gradient(135deg, var(--color-primary-ghost), var(--bg-card)); color: var(--color-primary); border: 1px solid var(--color-primary);">⚡ Redigir Seções Sequencialmente</button>
+                            <button class="btn btn-primary btn-auto" id="btn-generate-section" style="flex: 1; min-width: 180px;">✨ Gerar Seção Selecionada</button>
+                            <button class="btn btn-cyber-purple btn-auto" id="btn-generate-section-with-chat" style="flex: 1; min-width: 220px;">💬 Aplicar Ajustes do Chat & Gerar</button>
+                            <button class="btn btn-secondary btn-auto" id="btn-redator-run-all-sequential" style="flex: 1; min-width: 220px;">⚡ Redigir Seções Sequencialmente</button>
                         </div>
-                        
+
                         <!-- CAIXA DE TEXTO COM ADEQUAÇÕES E JUSTIFICATIVAS DA IA -->
                         <div id="redator-justificativa-container" style="display: none; margin-top: 1.5rem;">
-                            <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem; color: var(--color-primary);">💡 Adequações e Justificativas de Mudanças da IA:</label>
-                            <textarea id="redator-justificativa-content" readonly style="width: 100%; height: 120px; padding: 0.6rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-panel); font-family: var(--font-body); font-size: 0.85rem; color: var(--text-secondary); resize: vertical; outline: none;"></textarea>
+                            <label
+                                style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem; color: var(--color-primary);">💡
+                                Adequações e Justificativas de Mudanças da IA:</label>
+                            <textarea id="redator-justificativa-content" readonly
+                                style="width: 100%; height: 120px; padding: 0.6rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-panel); font-family: var(--font-body); font-size: 0.85rem; color: var(--text-secondary); resize: vertical; outline: none;"></textarea>
                         </div>
                     </div>
 
                     <!-- ÁREA EDITÁVEL DO CONTEÚDO GERADO -->
                     <div class="card" id="generation-result-card" style="display: none;">
                         <h3 id="generation-result-title">✨ Conteúdo Gerado para o Editor</h3>
-                        <div id="generation-target-badge" style="font-size: 0.85rem; font-weight: 600; color: var(--color-primary); background: var(--color-primary-ghost); padding: 0.4rem 0.8rem; border-radius: var(--radius-md); margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem; border: 1px solid var(--border-color);">
-                            🎯 Tópico Alvo no Editor: <span id="generation-target-section-name" style="font-weight: 700;">Justificativa</span> (Pré-aprovação obrigatória ao aplicar)
+                        <div id="generation-target-badge"
+                            style="font-size: 0.85rem; font-weight: 600; color: var(--color-primary); background: var(--color-primary-ghost); padding: 0.4rem 0.8rem; border-radius: var(--radius-md); margin-bottom: 0.8rem; display: flex; align-items: gap: 0.5rem; border: 1px solid var(--border-color);">
+                            🎯 Tópico Alvo no Editor: <span id="generation-target-section-name"
+                                style="font-weight: 700;">Justificativa</span> (Pré-aprovação obrigatória ao aplicar)
                         </div>
-                        <textarea id="generation-result-content-editable" style="width: 100%; height: 250px; padding: 0.6rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); font-family: var(--font-body); font-size: 0.85rem; color: var(--text-primary); margin-bottom: 1rem; resize: vertical; outline: none;"></textarea>
+                        <textarea id="generation-result-content-editable"
+                            style="width: 100%; height: 250px; padding: 0.6rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-input); font-family: var(--font-body); font-size: 0.85rem; color: var(--text-primary); margin-bottom: 1rem; resize: vertical; outline: none;"></textarea>
                         <div style="display: flex; gap: 0.5rem;">
-                            <button class="btn btn-primary" id="btn-apply-generation">📥 Enviar para Pré-Aprovação no Editor</button>
-                            <button class="btn btn-secondary" id="btn-discard-generation">Descartar</button>
+                            <button class="btn btn-cyber-emerald btn-auto" id="btn-apply-generation">📥 Enviar para Pré-Aprovação no Editor</button>
+                            <button class="btn btn-secondary btn-auto" id="btn-discard-generation">Descartar</button>
                         </div>
                     </div>
 
                     <!-- CARD DO CHATBOT ASSISTENTE DE REDAÇÃO -->
                     <div class="card redator-chat-card" style="margin-top: 1rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
-                            <h3 style="margin: 0; color: var(--color-primary); display: flex; align-items: center; gap: 0.4rem;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
+                            <h3
+                                style="margin: 0; color: var(--color-primary); display: flex; align-items: center; gap: 0.4rem;">
                                 <span>💬</span> Chatbot Assistente de Redação (Contexto Ingestor)
                             </h3>
-                            <button class="btn btn-secondary" id="btn-redator-chat-clear" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">🧹 Limpar Chat</button>
+                            <button class="btn btn-secondary btn-sm btn-auto" id="btn-redator-chat-clear">🧹 Limpar Chat</button>
                         </div>
-                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.8rem;">Converse sobre os requisitos da seção ou do edital. As orientações deste chat serão integradas na geração da seção com a API.</p>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.8rem;">Converse
+                            sobre os requisitos da seção ou do edital. As orientações deste chat serão integradas na
+                            geração da seção com a API.</p>
 
-                        <div id="redator-chat-messages" class="redator-chat-messages" style="max-height: 280px; overflow-y: auto; padding: 0.8rem; background: var(--bg-input); border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 0.8rem; display: flex; flex-direction: column; gap: 0.6rem;">
-                            <div class="chat-message agent" style="font-size: 0.85rem; line-height: 1.5; padding: 0.6rem 0.8rem; background: var(--bg-card); border-radius: 8px; border-left: 3px solid var(--color-primary);">
-                                🤖 <strong>Assistente:</strong> Olá! Posso te ajudar a ajustar e refinar qualquer seção com base nos dados cruzados do edital e anexos. Escreva seus pontos de atenção e clique em <em>"💬 Aplicar Ajustes do Chat & Gerar"</em> para atualizar a seção!
+                        <div id="redator-chat-messages" class="redator-chat-messages"
+                            style="max-height: 280px; overflow-y: auto; padding: 0.8rem; background: var(--bg-input); border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 0.8rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                            <div class="chat-message agent"
+                                style="font-size: 0.85rem; line-height: 1.5; padding: 0.6rem 0.8rem; background: var(--bg-card); border-radius: 8px; border-left: 3px solid var(--color-primary);">
+                                🤖 <strong>Assistente:</strong> Olá! Posso te ajudar a ajustar e refinar qualquer seção
+                                com base nos dados cruzados do edital e anexos. Escreva seus pontos de atenção e clique
+                                em <em>"💬 Aplicar Ajustes do Chat & Gerar"</em> para atualizar a seção!
                             </div>
                         </div>
 
                         <div style="display: flex; gap: 0.5rem;">
-                            <input type="text" id="redator-chat-input" placeholder="Digite sua dúvida ou ajuste para a seção..." class="form-input" style="flex: 1;">
-                            <button class="btn btn-primary" id="btn-redator-chat-send" style="width: auto;">Enviar 🚀</button>
+                            <input type="text" id="redator-chat-input"
+                                placeholder="Digite sua dúvida ou ajuste para a seção..." class="form-input"
+                                style="flex: 1;">
+                            <button class="btn btn-primary btn-auto" id="btn-redator-chat-send">Enviar 🚀</button>
                         </div>
 
-                        <div style="margin-top: 1rem; padding-top: 0.8rem; border-top: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-                            <span style="font-size: 0.8rem; color: var(--text-secondary);">💡 Concluiu os ajustes no chat? Aplique as orientações diretamente na seção:</span>
-                            <button class="btn btn-primary" id="btn-generate-section-with-chat-bottom" style="background: linear-gradient(135deg, #6366f1, #06b6d4); border: none; font-weight: 600; padding: 0.6rem 1.2rem;">💬 Aplicar Ajustes do Chat & Gerar ✨</button>
+                        <div
+                            style="margin-top: 1rem; padding-top: 0.8rem; border-top: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                            <span style="font-size: 0.8rem; color: var(--text-secondary);">💡 Concluiu os ajustes no
+                                chat? Aplique as orientações diretamente na seção:</span>
+                            <button class="btn btn-cyber-purple btn-auto" id="btn-generate-section-with-chat-bottom">💬 Aplicar Ajustes do Chat & Gerar ✨</button>
                         </div>
                     </div>
                 </div>
@@ -823,23 +1018,30 @@
                 <div class="w-tab-pane" id="pane-finalizacao">
                     <div class="pane-header">
                         <h2>🏆 Finalização & Exportação do Projeto</h2>
-                        <p>Central de consolidação e download de todos os entregáveis do projeto (Proposta ABNT, Planilha Financeira e Laudos Auditados).</p>
+                        <p>Central de consolidação e download de todos os entregáveis do projeto (Proposta ABNT,
+                            Planilha Financeira e Laudos Auditados).</p>
                     </div>
 
                     <!-- CARD 1: PROPOSTA CULTURAL DEFINITIVA -->
-                    <div class="card" style="border: 2px solid var(--color-success); margin-bottom: 1.5rem; background: linear-gradient(135deg, rgba(34, 197, 94, 0.05), var(--bg-card));">
+                    <div class="card"
+                        style="border: 2px solid var(--color-success); margin-bottom: 1.5rem; background: linear-gradient(135deg, rgba(34, 197, 94, 0.05), var(--bg-card));">
                         <h3 style="color: var(--color-success); display: flex; align-items: center; gap: 0.5rem;">
                             <span>🏆</span> Finalização do Projeto (Proposta Cultural Definitiva)
                         </h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Gere a versão definitiva do projeto cultural contendo todo o conteúdo revisado, formatado e auditado conforme a norma ABNT (suporte completo a até 100 páginas de texto).</p>
-                        
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Gere a versão
+                            definitiva do projeto cultural contendo todo o conteúdo revisado, formatado e auditado
+                            conforme a norma ABNT (suporte completo a até 100 páginas de texto).</p>
+
                         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.25rem;">
-                            <button type="button" class="btn btn-secondary" id="btn-format-abnt-single-call" style="width: auto; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.3); font-weight: 600;" title="Executa a formatação ABNT completa por IA em uma única chamada de API (documento inteiro)">🪄 Formatar Documento Completo em ABNT via IA (Chamada Única)</button>
+                            <button type="button" class="btn btn-cyber-purple btn-auto" id="btn-format-abnt-single-call"
+                                title="Executa a formatação ABNT completa por IA em uma única chamada de API (documento inteiro)">🪄 Formatar Documento Completo em ABNT via IA (Chamada Única)</button>
                         </div>
 
                         <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                            <button type="button" class="btn btn-primary" id="btn-final-download-pdf" style="width: auto; background: var(--color-success); border: none;" title="Download instantâneo offline sem passar por agentes">🖨️ Consolidar e Baixar PDF (Instantâneo Offline)</button>
-                            <button type="button" class="btn btn-secondary" id="btn-final-download-docx" style="width: auto;" title="Download instantâneo offline em formato Word">📝 Consolidar e Baixar Word (.doc) (Instantâneo Offline)</button>
+                            <button type="button" class="btn btn-cyber-emerald btn-auto btn-glow-pulse-emerald" id="btn-final-download-pdf"
+                                title="Download instantâneo offline sem passar por agentes">🖨️ Consolidar e Baixar PDF (Instantâneo Offline)</button>
+                            <button type="button" class="btn btn-secondary btn-auto" id="btn-final-download-docx"
+                                title="Download instantâneo offline em formato Word">📝 Consolidar e Baixar Word (.doc) (Instantâneo Offline)</button>
                         </div>
                     </div>
 
@@ -848,33 +1050,46 @@
                         <h3 style="display: flex; align-items: center; gap: 0.5rem;">
                             <span>💰</span> Planilha Financeira Otimizada (IA & Offline)
                         </h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Gere a planilha orçamentária por <strong>IA (Gemini)</strong> ou efetue o <strong>Download Instantâneo Offline</strong> diretamente do editor ABNT.</p>
-                        
-                        <div style="margin-bottom: 0.5rem; font-weight: 600; font-size: 0.85rem; color: var(--color-primary);">🤖 Planilha por IA (Gemini 3 Etapas):</div>
-                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; margin-bottom: 1.25rem;">
-                            <button type="button" class="btn btn-primary" id="btn-final-finance-ia" style="width: auto; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #ffffff; border: none; font-weight: 600;">🤖 Gerar Planilha Detalhada por IA</button>
-                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-final-finance-xls" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border);">📊 Baixar Planilha IA (.xlsx)</button>
-                            <button type="button" class="btn btn-secondary btn-finance-download" id="btn-final-finance-pdf" disabled title="Aguardando geração pelas 3 Etapas de IA" style="width: auto; display: none; opacity: 0.4; cursor: not-allowed; background: var(--color-primary-ghost); color: var(--color-primary); border-color: rgba(99, 102, 241, 0.2);">📄 Baixar Planilha IA (.pdf)</button>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Gere a
+                            planilha orçamentária por <strong>IA (Gemini)</strong> ou efetue o <strong>Download
+                                Instantâneo Offline</strong> diretamente do editor ABNT.</p>
+
+                        <div
+                            style="margin-bottom: 0.5rem; font-weight: 600; font-size: 0.85rem; color: var(--color-primary);">
+                            🤖 Planilha por IA (Gemini 3 Etapas):</div>
+                        <div
+                            style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; margin-bottom: 1.25rem;">
+                            <button type="button" class="btn btn-cyber-purple btn-auto" id="btn-final-finance-ia">🤖 Gerar Planilha Detalhada por IA</button>
+                            <button type="button" class="btn btn-cyber-emerald btn-auto btn-finance-download"
+                                id="btn-final-finance-xls" disabled title="Aguardando geração pelas 3 Etapas de IA"
+                                style="display: none;">📊 Baixar Planilha IA (.xlsx)</button>
+                            <button type="button" class="btn btn-secondary btn-auto btn-finance-download"
+                                id="btn-final-finance-pdf" disabled title="Aguardando geração pelas 3 Etapas de IA"
+                                style="display: none;">📄 Baixar Planilha IA (.pdf)</button>
                         </div>
 
-                        <div style="margin-bottom: 0.5rem; font-weight: 600; font-size: 0.85rem; color: var(--color-success);">⚡ Planilha Offline (Dados do Editor):</div>
+                        <div
+                            style="margin-bottom: 0.5rem; font-weight: 600; font-size: 0.85rem; color: var(--color-success);">
+                            ⚡ Planilha Offline (Dados do Editor):</div>
                         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
-                            <button type="button" class="btn btn-secondary" id="btn-download-finance-offline-xls-pane" style="width: auto; background: rgba(34, 197, 94, 0.1); color: var(--color-success); border: 1px solid var(--color-success-border); font-weight: 600;" title="Gera e baixa a planilha instantaneamente a partir dos dados do editor ABNT local">⚡ Baixar Planilha Offline (.xlsx)</button>
-                            <button type="button" class="btn btn-secondary" id="btn-download-finance-offline-pdf-pane" style="width: auto; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color);" title="Gera o PDF instantâneo a partir dos dados do editor ABNT local">📄 Baixar Planilha Offline (.pdf)</button>
+                            <button type="button" class="btn btn-cyber-emerald btn-auto" id="btn-download-finance-offline-xls-pane"
+                                title="Gera e baixa a planilha instantaneamente a partir dos dados do editor ABNT local">⚡ Baixar Planilha Offline (.xlsx)</button>
+                            <button type="button" class="btn btn-secondary btn-auto" id="btn-download-finance-offline-pdf-pane"
+                                title="Gera o PDF instantâneo a partir dos dados do editor ABNT local">📄 Baixar Planilha Offline (.pdf)</button>
                         </div>
                     </div>
-
-
 
                     <!-- CARD 3: RELATÓRIO DO REVISOR -->
                     <div class="card" style="margin-bottom: 1.5rem;">
                         <h3 style="display: flex; align-items: center; gap: 0.5rem;">
                             <span>📋</span> Relatório Detalhado do Revisor & Supervisor
                         </h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">Baixe o relatório analítico detalhado compilando os pareceres de cada agente especialista e o plano de ação.</p>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">Baixe o
+                            relatório analítico detalhado compilando os pareceres de cada agente especialista e o plano
+                            de ação.</p>
                         <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                            <button class="btn btn-primary" id="btn-final-revisor-report-gen" style="width: auto;">📋 Gerar / Atualizar Relatório</button>
-                            <button class="btn btn-secondary" id="btn-final-revisor-pdf" style="width: auto;">📥 Baixar Relatório em PDF</button>
+                            <button class="btn btn-primary btn-auto" id="btn-final-revisor-report-gen">📋 Gerar / Atualizar Relatório</button>
+                            <button class="btn btn-cyber-emerald btn-auto" id="btn-final-revisor-pdf">📥 Baixar Relatório em PDF</button>
                         </div>
                     </div>
 
@@ -883,9 +1098,10 @@
                         <h3 style="display: flex; align-items: center; gap: 0.5rem;">
                             <span>⚖️</span> Laudo de Auditoria & Compliance General
                         </h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">Exporte o laudo de conformidade técnica e priorização gerado pelo Auditor Geral.</p>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">Exporte o
+                            laudo de conformidade técnica e priorização gerado pelo Auditor Geral.</p>
                         <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                            <button class="btn btn-secondary" id="btn-final-audit-print" style="width: auto;">🖨️ Imprimir / Salvar Laudo de Auditoria</button>
+                            <button class="btn btn-secondary btn-auto" id="btn-final-audit-print">🖨️ Imprimir / Salvar Laudo de Auditoria</button>
                         </div>
                     </div>
                 </div>
@@ -900,11 +1116,14 @@
                     <div class="card">
                         <h3>🔍 Buscador de Editais Online</h3>
                         <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                            <input type="text" id="search-query-input" placeholder="Ex: editais cultura fapes 2026..." class="form-input" style="flex: 1;">
-                            <button class="btn btn-primary" id="btn-search-web" style="width: auto;">Pesquisar</button>
+                            <input type="text" id="search-query-input" placeholder="Ex: editais cultura fapes 2026..."
+                                class="form-input" style="flex: 1;">
+                            <button class="btn btn-primary btn-auto" id="btn-search-web">Pesquisar</button>
                         </div>
-                        <div id="search-results-list" class="search-results-list" style="max-height: 250px; overflow-y: auto;">
-                            <div class="empty-search-msg" style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 1rem;">
+                        <div id="search-results-list" class="search-results-list"
+                            style="max-height: 250px; overflow-y: auto;">
+                            <div class="empty-search-msg"
+                                style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 1rem;">
                                 Digite um termo de pesquisa e clique em pesquisar.
                             </div>
                         </div>
@@ -912,7 +1131,8 @@
 
                     <div class="card">
                         <h3>📚 Acervo de Editais Salvos (Memória do Agente)</h3>
-                        <div id="library-list-container" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 300px; overflow-y: auto;">
+                        <div id="library-list-container"
+                            style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 300px; overflow-y: auto;">
                             <!-- Dynamic saved editais will display here -->
                         </div>
                     </div>
@@ -926,19 +1146,23 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <script src="src/xlsx.full.min.js?v=20"></script>
-    
+
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Banco Local IndexedDB & Motores de Inferência e Cruzamento Offline -->
-    <script src="src/controllers/auditorDB.js?v=22"></script>
-    <script src="src/controllers/stateIntegrityManager.js?v=22"></script>
-    <script src="src/controllers/contextExtractor.js?v=22"></script>
-    <script src="src/controllers/localCrossEngine.js?v=22"></script>
-    <script src="src/controllers/offlineAuditor.js?v=22"></script>
+    <script src="src/controllers/auditorDB.js?v=23"></script>
+    <script src="src/controllers/stateIntegrityManager.js?v=23"></script>
+    <script src="src/controllers/contextExtractor.js?v=23"></script>
+    <script src="src/controllers/localCrossEngine.js?v=23"></script>
+    <script src="src/controllers/offlineAuditor.js?v=23"></script>
+
+    <!-- Motor de Busca Web em Tempo Real -->
+    <script src="src/controllers/webSearchController.js?v=23"></script>
 
     <!-- Controlador de IA (Modo Híbrido & Handoff Enriquecido) -->
-    <script src="src/controllers/aiController.js?v=22"></script>
-    <script src="sample_data.js?v=22"></script>
-    <script src="app.js?v=22"></script>
+    <script src="src/controllers/aiController.js?v=23"></script>
+    <script src="sample_data.js?v=23"></script>
+    <script src="app.js?v=23"></script>
 </body>
+
 </html>
