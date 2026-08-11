@@ -15,9 +15,8 @@ import urllib.error
 import time
 
 # Configurar stdout para utf-8 em sistemas Windows se necessário
-if sys.platform == 'win32':
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if sys.platform == 'win32' and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 def run_giant_edital_test(api_key):
     print("=" * 70)

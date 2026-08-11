@@ -4,7 +4,9 @@ import os
 import sys
 import json
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 from services.api import DocumentRetriever, SemanticCache, GeminiProvider
 
 class FullArchitectureVerification(unittest.TestCase):
@@ -58,9 +60,9 @@ class FullArchitectureVerification(unittest.TestCase):
     def test_js_files_syntax_integrity(self):
         """Verifies that JS files are properly formatted and valid."""
         js_files = [
-            os.path.join(os.path.dirname(__file__), "src", "controllers", "aiController.js"),
-            os.path.join(os.path.dirname(__file__), "src", "controllers", "offlineAuditor.js"),
-            os.path.join(os.path.dirname(__file__), "app.js")
+            os.path.join(PROJECT_ROOT, "src", "controllers", "aiController.js"),
+            os.path.join(PROJECT_ROOT, "src", "controllers", "offlineAuditor.js"),
+            os.path.join(PROJECT_ROOT, "app.js")
         ]
         for fpath in js_files:
             self.assertTrue(os.path.exists(fpath), f"File {fpath} must exist")

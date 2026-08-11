@@ -3,8 +3,8 @@ import sys
 import io
 from server import fix_double_encoded_utf8, make_reportlab_safe, clean_html_tags
 
-# Ensure stdout uses utf-8 encoding on Windows console
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 def test_encoding_fixes():
     print("[TEST] Iniciar testes de encoding e ReportLab safe...")
