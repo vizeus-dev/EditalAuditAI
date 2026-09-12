@@ -189,25 +189,43 @@ def run_cycle(cycle_num):
     return test_info["is_success"]
 
 
+def get_next_cycle_number():
+    """Detecta o próximo número de ciclo a partir do log existente."""
+    if not os.path.exists(LOG_PATH):
+        return 1
+    try:
+        with open(LOG_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+        import re
+        matches = re.findall(r'Ciclo #(\d+)', content)
+        if matches:
+            return max(int(m) for m in matches) + 1
+    except Exception:
+        pass
+    return 1
+
+
 def main():
     parser = argparse.ArgumentParser(description="Orquestrador do Loop Contínuo de Auditoria e Otimização")
     parser.add_argument("--cycles", type=int, default=1, help="Número de ciclos a executar (0 para contínuo)")
     parser.add_argument("--interval", type=int, default=10, help="Intervalo em segundos entre ciclos (se contínuo)")
     args = parser.parse_args()
     
-    cycle = 1
+    current_cycle = get_next_cycle_number()
+    executed_count = 0
     while True:
-        success = run_cycle(cycle)
+        success = run_cycle(current_cycle)
+        executed_count += 1
         if not success:
-            print(f"[ALERTA] Falhas detectadas no ciclo #{cycle}. Mantendo o loop ativo para diagnóstico.")
+            print(f"[ALERTA] Falhas detectadas no ciclo #{current_cycle}. Mantendo o loop ativo para diagnóstico.")
             
-        if args.cycles > 0 and cycle >= args.cycles:
+        if args.cycles > 0 and executed_count >= args.cycles:
             print(f"\n[ORQUESTRADOR] Meta de {args.cycles} ciclo(s) concluída com sucesso.")
             break
             
         print(f"\n[ORQUESTRADOR] Aguardando {args.interval}s para o próximo ciclo...")
         time.sleep(args.interval)
-        cycle += 1
+        current_cycle += 1
 
 
 if __name__ == "__main__":
