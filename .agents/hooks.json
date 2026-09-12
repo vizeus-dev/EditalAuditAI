@@ -1,0 +1,87 @@
+{
+  "$schema": "https://antigravity.google/schemas/hooks.v1.json",
+  "version": "1.0",
+  "description": "Configuração de Hooks Automáticos para Antigravity IDE - Auto-Testing & Verification Loop on File Save",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "id": "auto-test-on-save",
+        "matcher": {
+          "tools": [
+            "write_to_file",
+            "replace_file_content",
+            "multi_replace_file_content",
+            "edit_file",
+            "apply_diff"
+          ],
+          "filePatterns": [
+            "src/**/*.ts",
+            "src/**/*.tsx",
+            "src/**/*.js",
+            "src/**/*.py",
+            "services/**/*.py",
+            "server.py",
+            "lib/**/*.ts"
+          ]
+        },
+        "action": {
+          "type": "execute_command",
+          "command": ".\\.venv\\Scripts\\python.exe -m unittest discover tests || npm run test:quick || pytest --maxfail=1",
+          "timeout": 30000
+        },
+        "onFailure": {
+          "behavior": "inject_feedback_and_retry",
+          "feedbackTemplate": "⚠️ O teste automatizado falhou após a alteração no arquivo {file_path}.\n\nSaída do erro:\n{stderr}\n{stdout}\n\nAnalise o log acima, identifique a regressão ou falha de sintaxe/lógica e aplique a correção imediatamente.",
+          "maxRetries": 5
+        }
+      },
+      {
+        "id": "auto-lint-check",
+        "matcher": {
+          "tools": [
+            "write_to_file",
+            "replace_file_content",
+            "multi_replace_file_content",
+            "edit_file"
+          ],
+          "filePatterns": [
+            "src/**/*.ts",
+            "src/**/*.tsx",
+            "src/**/*.js"
+          ]
+        },
+        "action": {
+          "type": "execute_command",
+          "command": "node --check {file_path} || npx eslint {file_path} --fix-dry-run",
+          "timeout": 15000
+        },
+        "onFailure": {
+          "behavior": "inject_feedback_and_retry",
+          "feedbackTemplate": "⚠️ O Linter detectou violações de estilo/tipagem no arquivo {file_path}:\n{stdout}\n\nCorrija as violações antes de prosseguir.",
+          "maxRetries": 3
+        }
+      }
+    ],
+    "PreToolUse": [
+      {
+        "id": "block-destructive-commands",
+        "matcher": {
+          "tools": [
+            "run_command",
+            "execute_command"
+          ],
+          "commandPatterns": [
+            "rm -rf /",
+            "git push*",
+            "git push --force*",
+            "drop database"
+          ]
+        },
+        "action": {
+          "type": "interrupt",
+          "message": "🛑 Ação destrutiva interceptada pelo Hook de Segurança (PreToolUse). Operação bloqueada em conformidade com o guardrail ZERO GIT PUSH e segurança de dados."
+        }
+      }
+    ]
+  }
+}
