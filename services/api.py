@@ -1,4 +1,3 @@
-import os
 import re
 import json
 import socket
@@ -50,7 +49,9 @@ class DocumentRetriever:
         "cnd", "cndt", "fgts", "ecad", "sisgen", "contrapartida", "cronograma", "prazo",
         "penalidade", "glosa", "habilitacao", "habilitação", "desclassificacao", "desclassificação",
         "vedado", "vedada", "vedacao", "vedação", "inelegivel", "inelegível", "priorizacao",
-        "priorização", "criterio", "critério", "barema", "pontuacao", "pontuação"
+        "priorização", "criterio", "critério", "barema", "pontuacao", "pontuação",
+        "matriz", "risco", "etp", "preliminar", "impugnacao", "impugnação", "esclarecimento",
+        "bdi", "sinapi", "sicro", "sobrepreco", "sobrepreço", "superfaturamento", "restritiva"
     }
 
     _CHUNK_CACHE = {}  # In-memory LRU-style cache for semantic chunks
@@ -289,7 +290,10 @@ class GeminiProvider(LLMProvider):
             generation_config["responseSchema"] = response_schema
         payload["generationConfig"] = generation_config
             
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key
+        }
         req_data = json.dumps(payload).encode('utf-8')
         
         # Models to try: primary first, fallback to active gemini-3.x models
@@ -302,7 +306,7 @@ class GeminiProvider(LLMProvider):
         max_retries = 3
         
         for current_model in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent"
             model_failed = False
             
             for attempt in range(max_retries):
@@ -397,7 +401,10 @@ class GeminiProvider(LLMProvider):
             generation_config["responseSchema"] = response_schema
         payload["generationConfig"] = generation_config
             
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key
+        }
         req_data = json.dumps(payload).encode('utf-8')
         
         # Models to try: primary first, fallback to active gemini-3.x models
@@ -410,7 +417,7 @@ class GeminiProvider(LLMProvider):
         max_retries = 3
         
         for current_model in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:streamGenerateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:streamGenerateContent"
             model_failed = False
             
             for attempt in range(max_retries):

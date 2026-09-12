@@ -1,5 +1,4 @@
 import sqlite3
-import os
 import glob
 
 def search_dbs(search_term):

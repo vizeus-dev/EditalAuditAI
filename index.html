@@ -37,7 +37,7 @@
             <div class="theme-switch-wrapper" title="Alternar Tema Escuro/Claro">
                 <span class="theme-icon">🌙</span>
                 <label class="theme-switch" for="theme-toggle-btn">
-                    <input type="checkbox" id="theme-toggle-btn">
+                    <input type="checkbox" id="theme-toggle-btn" aria-label="Alternar tema claro e escuro">
                     <div class="slider"></div>
                 </label>
                 <span class="theme-icon">☀️</span>
@@ -88,15 +88,15 @@
                     </div>
 
                     <div class="toolbar-row-2">
-                        <button class="toolbar-btn" data-command="bold" title="Negrito (Ctrl+B)">B</button>
-                        <button class="toolbar-btn" data-command="italic" title="Itálico (Ctrl+I)">I</button>
-                        <button class="toolbar-btn" data-command="underline" title="Sublinhado (Ctrl+U)">U</button>
+                        <button class="toolbar-btn" data-command="bold" title="Negrito (Ctrl+B)" aria-label="Negrito">B</button>
+                        <button class="toolbar-btn" data-command="italic" title="Itálico (Ctrl+I)" aria-label="Itálico">I</button>
+                        <button class="toolbar-btn" data-command="underline" title="Sublinhado (Ctrl+U)" aria-label="Sublinhado">U</button>
                         <span class="toolbar-sep">|</span>
-                        <button class="toolbar-btn" data-command="justifyLeft" title="Alinhar à Esquerda">⬅️</button>
-                        <button class="toolbar-btn" data-command="justifyCenter" title="Centralizar">C</button>
-                        <button class="toolbar-btn" data-command="justifyFull" title="Justificar">≡</button>
+                        <button class="toolbar-btn" data-command="justifyLeft" title="Alinhar à Esquerda" aria-label="Alinhar à Esquerda">⬅️</button>
+                        <button class="toolbar-btn" data-command="justifyCenter" title="Centralizar" aria-label="Centralizar">C</button>
+                        <button class="toolbar-btn" data-command="justifyFull" title="Justificar" aria-label="Justificar">≡</button>
                         <span class="toolbar-sep">|</span>
-                        <button class="toolbar-btn" id="editor-insert-table-btn" title="Inserir Tabela">📊</button>
+                        <button class="toolbar-btn" id="editor-insert-table-btn" title="Inserir Tabela" aria-label="Inserir Tabela Orçamentária">📊</button>
                     </div>
                 </div>
 
@@ -253,7 +253,7 @@
                         </div>
                         <div class="file-info-badge" id="file-badge-edital-ref">
                             <span id="file-name-edital-ref">-</span>
-                            <button class="btn-remove-file" id="btn-remove-edital-ref">×</button>
+                            <button class="btn-remove-file" id="btn-remove-edital-ref" aria-label="Remover edital de referência">×</button>
                         </div>
                         <div class="sidebar-link-input" style="margin-top: 1rem;">
                             <label for="edital-link-url">🔗 Link do edital online:</label>
@@ -283,7 +283,7 @@
                         </div>
                         <div class="file-info-badge" id="file-badge-proposal-draft">
                             <span id="file-name-proposal-draft">-</span>
-                            <button class="btn-remove-file" id="btn-remove-proposal-draft">×</button>
+                            <button class="btn-remove-file" id="btn-remove-proposal-draft" aria-label="Remover rascunho de proposta">×</button>
                         </div>
                         <div class="text-input-container" style="margin-top: 1rem;">
                             <textarea id="proposal-draft-text"
@@ -798,7 +798,7 @@
                     </div>
 
                     <!-- BOTÃO TRANSIÇÃO PARA SUPERVISOR -->
-                    <button class="btn btn-cyber-purple btn-full btn-lg" id="btn-goto-supervisor"
+                    <button class="btn btn-cyber-purple btn-full btn-lg" id="btn-goto-supervisor-alt"
                         style="margin-top: 1rem;">➡️ Avançar para a Supervisão Estratégica</button>
                 </div>
 
@@ -1143,9 +1143,12 @@
     </main>
 
     <!-- CDNs & Dependências Local -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
-    <script src="src/xlsx.full.min.js?v=20"></script>
+    <script type="module">
+        import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs';
+        window.pdfjsLib = pdfjsLib;
+        window['pdfjs-dist/build/pdf'] = pdfjsLib;
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.11.0/mammoth.browser.min.js"></script>
 
     <div id="toast-container" class="toast-container"></div>
 

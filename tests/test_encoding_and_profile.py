@@ -1,6 +1,8 @@
 # test_encoding_and_profile.py
 import sys
-import io
+import os
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from server import fix_double_encoded_utf8, make_reportlab_safe, clean_html_tags
 
 if hasattr(sys.stdout, 'reconfigure'):

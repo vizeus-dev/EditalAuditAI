@@ -10,8 +10,6 @@ import sys
 import os
 import time
 import json
-import socket
-import threading
 import subprocess
 import urllib.request
 import urllib.error

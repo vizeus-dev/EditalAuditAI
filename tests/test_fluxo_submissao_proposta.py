@@ -7,12 +7,8 @@ Testa as 5 etapas integradas (Ingestão -> Auditoria -> Revisão -> Supervisão 
 
 import unittest
 import io
-import os
 import openpyxl
 from docx import Document
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
 
 
 class FullProposalSubmissionPipeline:

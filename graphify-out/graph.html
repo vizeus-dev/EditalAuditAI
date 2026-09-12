@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EditalAudit AI — Grafo de Dependências & AST (Graphify)</title>
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --surface: #111827;
+            --border: #1e293b;
+            --text: #f8fafc;
+            --accent: #6366f1;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 24px;
+        }
+        h1 { color: var(--accent); margin-bottom: 8px; font-size: 22px; }
+        p.subtitle { color: #94a3b8; font-size: 14px; margin-top: 0; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 16px;
+            margin-top: 24px;
+        }
+        .card {
+            background-color: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+        }
+        .card h3 { margin-top: 0; font-size: 16px; color: #38bdf8; display: flex; align-items: center; justify-content: space-between; }
+        .badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .badge-backend { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
+        .badge-frontend { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+        .badge-domain { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+        .badge-quality { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+        .desc { font-size: 13px; color: #cbd5e1; line-height: 1.5; }
+        .relations { margin-top: 12px; font-size: 12px; color: #64748b; }
+        .relations span { color: #e2e8f0; }
+    </style>
+</head>
+<body>
+    <h1>EditalAudit AI — Grafo de Arquitetura AST & Dependências</h1>
+    <p class="subtitle">Mapeamento interativo dos 17 nós e conexões do sistema (Graphify Engine)</p>
+
+    <div class="grid" id="nodes-container">
+        <!-- Renderizado dinamicamente via JS a partir de graph.json -->
+    </div>
+
+    <script>
+        fetch('graph.json')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('nodes-container');
+                data.nodes.forEach(node => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <h3>
+                            ${node.label}
+                            <span class="badge badge-${node.community}">${node.type}</span>
+                        </h3>
+                        <p class="desc">${node.summary}</p>
+                        <div class="relations">
+                            Comunidade: <span>${node.community.toUpperCase()}</span>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+            })
+            .catch(err => {
+                console.error("Erro ao carregar graph.json:", err);
+            });
+    </script>
+</body>
+</html>

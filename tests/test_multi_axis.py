@@ -6,7 +6,10 @@ test_multi_axis.py — Testes Unitários de Verificação do Suporte Multi-Eixo 
 """
 
 import unittest
-import json
+import sys
+import os
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from services.skills.anki_exporter import create_anki_tsv, create_anki_apkg_zip
 
 class TestMultiAxisSkills(unittest.TestCase):

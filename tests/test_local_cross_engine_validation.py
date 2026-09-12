@@ -1,6 +1,4 @@
 import os
-import re
-import json
 
 def test_local_cross_engine_integrity():
     print("=== [TEST 1] Verificação Estrutural do LocalCrossEngine ===")

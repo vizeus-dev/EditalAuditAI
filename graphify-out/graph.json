@@ -1,0 +1,160 @@
+{
+  "graph_version": "2.0.0",
+  "project": "EditalAudit AI",
+  "generated_at": "2026-09-11T21:55:00-03:00",
+  "nodes": [
+    {
+      "id": "node_server_py",
+      "label": "server.py",
+      "type": "backend_monolith",
+      "path": "server.py",
+      "community": "backend",
+      "size": 2614,
+      "summary": "CustomHTTPRequestHandler, anti-SSRF, proxies, exportação ReportLab PDF e OpenPyXL"
+    },
+    {
+      "id": "node_api_py",
+      "label": "services/api.py",
+      "type": "service",
+      "path": "services/api.py",
+      "community": "backend",
+      "summary": "LLMGateway, SemanticCache in-memory e DocumentRetriever BM25 com table awareness"
+    },
+    {
+      "id": "node_time_auditor",
+      "label": "services/time_auditor.py",
+      "type": "service",
+      "path": "services/time_auditor.py",
+      "community": "backend",
+      "summary": "DeadlineTimezoneCalculator multi-fuso (BSB, MAO, RBR, FEN) com grace period de 120s"
+    },
+    {
+      "id": "node_anki_exporter",
+      "label": "services/skills/anki_exporter.py",
+      "type": "service",
+      "path": "services/skills/anki_exporter.py",
+      "community": "backend",
+      "summary": "Gerador e empacotador de baralhos Anki (.apkg via zipfile) para regras de edital"
+    },
+    {
+      "id": "node_orchestrator_loop",
+      "label": "tools/orchestrator_loop.py",
+      "type": "tool",
+      "path": "tools/orchestrator_loop.py",
+      "community": "quality",
+      "summary": "Executor autônomo do loop contínuo de verificação, teste, auditoria e log local"
+    },
+    {
+      "id": "node_index_html",
+      "label": "index.html",
+      "type": "presentation",
+      "path": "index.html",
+      "community": "frontend",
+      "summary": "SPA Shell com abas: Workspace, Auditoria, Supervisor M.U.S.A., Planilha e Exportação"
+    },
+    {
+      "id": "node_app_js",
+      "label": "app.js",
+      "type": "frontend_dispatcher",
+      "path": "app.js",
+      "community": "frontend",
+      "summary": "Controlador central de eventos do DOM, renderização de cards, toasts e abas"
+    },
+    {
+      "id": "node_styles_css",
+      "label": "styles.css",
+      "type": "styling",
+      "path": "styles.css",
+      "community": "frontend",
+      "summary": "Design System Cyber-Dark, tokens de contraste WCAG 2.1 AA e regras responsivas para 390px"
+    },
+    {
+      "id": "node_local_cross_engine",
+      "label": "src/controllers/localCrossEngine.js",
+      "type": "controller",
+      "path": "src/controllers/localCrossEngine.js",
+      "community": "frontend",
+      "summary": "Motor determinístico 100% offline: BudgetAuditor, ComplianceScanner, SectionValidator"
+    },
+    {
+      "id": "node_ai_controller",
+      "label": "src/controllers/aiController.js",
+      "type": "controller",
+      "path": "src/controllers/aiController.js",
+      "community": "frontend",
+      "summary": "Orquestrador de IA, SSE streaming para Gemini, prompt denso dos 14 pareceristas M.U.S.A."
+    },
+    {
+      "id": "node_auditor_db",
+      "label": "src/controllers/auditorDB.js",
+      "type": "controller",
+      "path": "src/controllers/auditorDB.js",
+      "community": "frontend",
+      "summary": "Wrapper IndexedDB para persistência offline monoposto no navegador"
+    },
+    {
+      "id": "node_state_integrity",
+      "label": "src/controllers/stateIntegrityManager.js",
+      "type": "controller",
+      "path": "src/controllers/stateIntegrityManager.js",
+      "community": "frontend",
+      "summary": "Autocura e higienização de estado no LocalStorage/IndexedDB"
+    },
+    {
+      "id": "node_web_search",
+      "label": "src/controllers/webSearchController.js",
+      "type": "controller",
+      "path": "src/controllers/webSearchController.js",
+      "community": "frontend",
+      "summary": "Motor de busca web por domínio (orçamento, acessibilidade, compliance)"
+    },
+    {
+      "id": "node_domain_lei_14133",
+      "label": "Lei 14.133/2021",
+      "type": "domain_normative",
+      "community": "domain",
+      "summary": "Nova Lei de Licitações: ETP, Matriz de Risco, Impugnação (Art. 164), Vedação a Cláusulas Restritivas"
+    },
+    {
+      "id": "node_domain_lei_14903",
+      "label": "Lei 14.903/2024",
+      "type": "domain_normative",
+      "community": "domain",
+      "summary": "Marco Legal da Cultura: Tetos orçamentários (15% adm, 10% divulgação), Acessibilidade, Cotas"
+    },
+    {
+      "id": "node_domain_tcu",
+      "label": "Jurisprudência TCU",
+      "type": "domain_normative",
+      "community": "domain",
+      "summary": "Súmula 263 (capacidade técnica proporcional), Súmula 272 (visita técnica), Acórdão BDI 1214"
+    },
+    {
+      "id": "node_test_suite",
+      "label": "Suíte de Testes (75 Testes)",
+      "type": "test_suite",
+      "path": "tests/",
+      "community": "quality",
+      "summary": "20 arquivos de teste unitário e de integração cobrindo 100% das rotas e regras"
+    }
+  ],
+  "edges": [
+    { "source": "node_index_html", "target": "node_app_js", "relation": "loads_script" },
+    { "source": "node_index_html", "target": "node_styles_css", "relation": "loads_stylesheet" },
+    { "source": "node_app_js", "target": "node_local_cross_engine", "relation": "invokes_diagnostic" },
+    { "source": "node_app_js", "target": "node_ai_controller", "relation": "triggers_ai_audit" },
+    { "source": "node_app_js", "target": "node_auditor_db", "relation": "persists_state" },
+    { "source": "node_app_js", "target": "node_state_integrity", "relation": "sanitizes_state" },
+    { "source": "node_ai_controller", "target": "node_web_search", "relation": "enriches_context" },
+    { "source": "node_ai_controller", "target": "node_server_py", "relation": "dispatches_sse_stream" },
+    { "source": "node_server_py", "target": "node_api_py", "relation": "invokes_retriever_and_llm" },
+    { "source": "node_server_py", "target": "node_time_auditor", "relation": "audits_deadlines" },
+    { "source": "node_server_py", "target": "node_anki_exporter", "relation": "exports_deck" },
+    { "source": "node_local_cross_engine", "target": "node_domain_lei_14133", "relation": "enforces_rules" },
+    { "source": "node_local_cross_engine", "target": "node_domain_lei_14903", "relation": "enforces_budget_ceilings" },
+    { "source": "node_local_cross_engine", "target": "node_domain_tcu", "relation": "enforces_jurisprudence" },
+    { "source": "node_api_py", "target": "node_domain_lei_14133", "relation": "boosts_compliance_chunks" },
+    { "source": "node_orchestrator_loop", "target": "node_test_suite", "relation": "executes_validation" },
+    { "source": "node_orchestrator_loop", "target": "node_server_py", "relation": "audits_security" }
+  ]
+}

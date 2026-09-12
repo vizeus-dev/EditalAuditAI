@@ -1,6 +1,5 @@
 import urllib.request
 import pypdf
-import os
 
 def download_and_parse(url, filename, txt_filename):
     print(f"Downloading from {url}...")

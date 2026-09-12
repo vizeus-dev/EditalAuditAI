@@ -11,6 +11,9 @@ import sys
 import time
 import threading
 import json
+import socket
+import ipaddress
+import uuid
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -25,17 +28,16 @@ from services.skills.anki_exporter import create_anki_apkg_zip
 
 SERVER_START_TIME = time.time()
 
-# Garante que stdout/stderr sejam direcionados para server_run.log mesmo se executado em background/pythonw
 try:
     if sys.stdout is None or not hasattr(sys.stdout, 'fileno'):
         sys.stdout = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "server_run.log"), "a", encoding="utf-8", buffering=1)
-except Exception:
+except Exception as e:
     sys.stdout = io.StringIO()
 
 try:
     if sys.stderr is None or not hasattr(sys.stderr, 'fileno'):
         sys.stderr = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "server_run.log"), "a", encoding="utf-8", buffering=1)
-except Exception:
+except Exception as e:
     sys.stderr = io.StringIO()
 
 try:
@@ -43,10 +45,8 @@ try:
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib import colors
-    REPORTLAB_AVAILABLE = True
 except Exception as e:
     print(f"[SERVER][WARN] ReportLab não disponível no ambiente atual: {e}")
-    REPORTLAB_AVAILABLE = False
 
 # Global divider helper for ReportLab reports
 def get_divider():
@@ -58,6 +58,20 @@ def get_divider():
         ('TOPPADDING', (0,0), (-1,-1), 0),
     ]))
     return line
+
+def add_reportlab_footer(canvas, doc):
+    """
+    Função utilitária unificada para desenho de rodapé padronizado em PDFs ReportLab.
+    Suporta layouts Portrait e Landscape automaticamente calculando a largura da página.
+    """
+    canvas.saveState()
+    canvas.setFont('Helvetica', 8)
+    canvas.setFillColor(colors.HexColor('#64748b'))
+    date_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    page_width = getattr(doc, 'pagesize', A4)[0]
+    canvas.drawString(54, 30, f"Gerado por EditalAudit AI em {date_str}")
+    canvas.drawRightString(page_width - 54, 30, f"Página {doc.page}")
+    canvas.restoreState()
 
 gateway = LLMGateway()
 
@@ -193,7 +207,7 @@ def append_html_content_to_story(html_content, story, body_style, h2_style):
                                 cell_p = Paragraph(f"<b>{cell_text}</b>", ParagraphStyle('ThCustom', parent=body_style, fontName='Helvetica-Bold', textColor=colors.HexColor('#0f172a')))
                             else:
                                 cell_p = Paragraph(cell_text, body_style)
-                        except Exception:
+                        except Exception as e:
                             esc_txt = html.escape(re.sub(r'<[^>]+>', '', cell_text))
                             cell_p = Paragraph(esc_txt, body_style)
                         row_cells.append(cell_p)
@@ -277,7 +291,7 @@ def make_reportlab_safe(text):
     
     return text
 
-PORT = 8085
+PORT = int(os.environ.get('PORT', 8085))
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -304,7 +318,7 @@ def search_ddg_html(query, timeout=7):
             charset = response.info().get_content_charset() or 'utf-8'
             try:
                 html_content = html_raw.decode(charset)
-            except Exception:
+            except Exception as e:
                 html_content = html_raw.decode('utf-8', errors='ignore')
                 
             results = []
@@ -459,8 +473,8 @@ def search_yahoo(query, timeout=6):
                     ru_part = raw_href.split("/RU=")[1].split("/RK=")[0]
                     try:
                         real_url = urllib.parse.unquote(ru_part)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        real_url = raw_href
                 
                 snippet_match = re.search(r'<div[^>]+class="[^"]*compText[^"]*"[^>]*>([\s\S]*?)</div>', b) or re.search(r'<p[^>]*>([\s\S]*?)</p>', b)
                 snippet_clean = ""
@@ -608,8 +622,46 @@ class HTMLTableParser(HTMLParser):
             self.current_cell.append(data)
 
 
+def validate_safe_url(target_url: str):
+    """
+    Valida se uma URL é segura para requisição (Anti-SSRF).
+    Permite apenas HTTP/HTTPS e bloqueia endereços de loopback (127.0.0.1, localhost),
+    redes privadas (RFC 1918: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) e metadados de nuvem (169.254.169.254).
+    """
+    if not target_url or not isinstance(target_url, str):
+        raise ValueError("URL inválida ou não fornecida.")
+        
+    parsed = urllib.parse.urlparse(target_url.strip())
+    if parsed.scheme not in ('http', 'https'):
+        raise ValueError(f"Esquema de URL inválido '{parsed.scheme}'. Apenas HTTP e HTTPS são permitidos.")
+        
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Hostname inválido na URL fornecida.")
+        
+    # Bloqueio explícito de hostnames de loopback comuns
+    if hostname.lower() in ('localhost', '127.0.0.1', '::1'):
+        raise ValueError(f"Acesso bloqueado ao endereço local/loopback: {hostname}")
+        
+    try:
+        resolved_ips = socket.getaddrinfo(hostname, None)
+        if not resolved_ips:
+            raise ValueError(f"Não foi possível resolver o hostname: {hostname}")
+            
+        for item in resolved_ips:
+            ip_str = item[4][0]
+            ip_obj = ipaddress.ip_address(ip_str)
+            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_reserved or ip_obj.is_link_local or ip_obj.is_multicast:
+                raise ValueError(f"Acesso bloqueado ao endereço de rede privada/interna: {ip_str}")
+            if str(ip_obj) == "169.254.169.254":
+                raise ValueError("Acesso bloqueado a endpoint de metadados da nuvem.")
+    except socket.gaierror:
+        raise ValueError(f"Falha na resolução de DNS para o domínio: {hostname}")
+
+
 class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
     timeout = 120  # Evita travamento de threads com conexões presas
+    directory = os.path.dirname(os.path.abspath(__file__))
 
     def do_GET(self):
         if self.path == '/favicon.ico':
@@ -628,7 +680,20 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
             return
 
         if self.path == '/api/restart':
-            self.send_json_response(200, {"message": "Reiniciando servidor backend..."})
+            client_ip = self.client_address[0]
+            # Restrição apenas a localhost
+            if client_ip not in ('127.0.0.1', '::1'):
+                self.send_json_response(403, {"error": "Acesso não autorizado a comandos administrativos. Origem deve ser local."})
+                return
+
+            # Exige token administrativo
+            auth_header = self.headers.get('X-Admin-Token', '')
+            expected_token = os.environ.get('EDITAL_ADMIN_TOKEN')
+            if not expected_token or auth_header != expected_token:
+                self.send_json_response(401, {"error": "Token administrativo ausente ou inválido (X-Admin-Token)."})
+                return
+
+            self.send_json_response(200, {"message": "Reiniciando servidor backend com autorização..."})
             def _restart():
                 time.sleep(0.5)
                 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -647,23 +712,94 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     value += '; charset=utf-8'
         super().send_header(keyword, value)
 
+    def read_limited_body(self, max_bytes=50 * 1024 * 1024):
+        """
+        Lê e valida o corpo da requisição HTTP garantindo um teto máximo de bytes (Anti-DoS).
+        Retorna os bytes lidos ou None caso uma resposta de erro (400, 411, 413) já tenha sido enviada.
+        """
+        raw_cl = self.headers.get('Content-Length')
+        if not raw_cl:
+            self.send_json_response(411, {"error": "Content-Length obrigatório."})
+            return None
+        try:
+            content_length = int(raw_cl)
+        except ValueError:
+            self.send_json_response(400, {"error": "Content-Length inválido."})
+            return None
+
+        if content_length < 0:
+            self.send_json_response(400, {"error": "Content-Length não pode ser negativo."})
+            return None
+
+        if content_length > max_bytes:
+            self.send_json_response(413, {"error": f"Payload muito grande. Máximo permitido: {max_bytes // (1024*1024)} MB."})
+            return None
+
+        return self.rfile.read(content_length)
+
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
         self.send_header('Pragma', 'no-cache')
         self.send_header('Expires', '0')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('X-Frame-Options', 'DENY')
+        self.send_header('Referrer-Policy', 'strict-origin-when-cross-origin')
+        self.send_header('Permissions-Policy', 'geolocation=(), camera=(), microphone=()')
+        self.send_header('Content-Security-Policy', (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+            "worker-src 'self' blob: https://cdnjs.cloudflare.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' https://generativelanguage.googleapis.com http://localhost:11434 http://127.0.0.1:11434; "
+            "object-src 'none'; "
+            "frame-ancestors 'none';"
+        ))
         super().end_headers()
 
     def do_POST(self):
+        # NÃO CONECTADO AO FRONTEND ATUAL (Persistência real via StateIntegrityManager IndexedDB). Reservado para uso futuro / exportações batch.
+        if self.path == '/api/load-audit-report':
+            try:
+                submissions_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "submissions")
+                if os.path.exists('relatorio_auditoria.json'):
+                    with open('relatorio_auditoria.json', 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    self.send_json_response(200, data)
+                elif os.path.exists(submissions_dir):
+                    sub_files = [os.path.join(submissions_dir, f) for f in os.listdir(submissions_dir) if f.endswith('.json')]
+                    if sub_files:
+                        latest_file = max(sub_files, key=os.path.getmtime)
+                        with open(latest_file, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        self.send_json_response(200, data)
+                    else:
+                        self.send_json_response(404, {"error": "Nenhum relatório encontrado no diretório de submissões."})
+                else:
+                    self.send_json_response(404, {"error": "Relatório não encontrado no backend."})
+            except Exception as e:
+                self.send_json_response(500, {"error": f"Erro ao carregar relatório: {str(e)}"})
+            return
+
+        post_data = self.read_limited_body()
+        if post_data is None:
+            return
+
         if self.path == '/api/fetch-url':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 url = data.get('url')
                 
                 if not url:
                     self.send_json_response(400, {"error": "URL ausente no corpo da requisição."})
+                    return
+
+                # Validação de segurança anti-SSRF
+                try:
+                    validate_safe_url(url)
+                except ValueError as ve:
+                    self.send_json_response(403, {"error": f"URL bloqueada por segurança (Anti-SSRF): {str(ve)}"})
                     return
 
                 # Realiza a requisição ao link do edital
@@ -692,12 +828,12 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                         if not raw_charset:
                             try:
                                 html_content = content.decode('utf-8')
-                            except Exception:
+                            except Exception as e:
                                 html_content = content.decode('latin1', errors='replace')
                         else:
                             try:
                                 html_content = content.decode(raw_charset)
-                            except Exception:
+                            except Exception as e:
                                 html_content = content.decode('utf-8', errors='replace')
                         
                         # Extrai texto limpo usando parser embutido
@@ -721,8 +857,6 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json_response(500, {"error": f"Erro inesperado no servidor proxy: {str(e)}"})
         
         elif self.path == '/api/search-web-editais':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 query = data.get('query')
@@ -743,13 +877,18 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json_response(500, {"error": f"Erro ao pesquisar: {str(e)}"})
                 
         elif self.path == '/api/parse-portal-page':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 url = data.get('url')
                 if not url:
                     self.send_json_response(400, {"error": "URL ausente."})
+                    return
+
+                # Validação de segurança anti-SSRF
+                try:
+                    validate_safe_url(url)
+                except ValueError as ve:
+                    self.send_json_response(403, {"error": f"URL bloqueada por segurança (Anti-SSRF): {str(ve)}"})
                     return
                 
                 req = urllib.request.Request(
@@ -779,12 +918,12 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                         if not raw_charset:
                             try:
                                 html_content = content.decode('utf-8')
-                            except Exception:
+                            except Exception as e:
                                 html_content = content.decode('latin1', errors='replace')
                         else:
                             try:
                                 html_content = content.decode(raw_charset)
-                            except Exception:
+                            except Exception as e:
                                 html_content = content.decode('utf-8', errors='replace')
                         
                         links = extract_document_links(html_content, url)
@@ -797,8 +936,6 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json_response(500, {"error": f"Erro ao analisar portal: {str(e)}"})
         
         elif self.path == '/api/generate-audit-pdf':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 project_title = str(data.get('project_title') or 'Projeto Cultural')
@@ -943,8 +1080,8 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 score_num = 0
                 try:
                     score_num = float(score)
-                except:
-                    pass
+                except (ValueError, TypeError):
+                    score_num = 0
                 percent = min(100.0, max(0.0, (score_num / float(max_score)) * 100)) if max_score > 0 else 0
                 width_filled = max(1, int(487 * (percent / 100.0)))
                 width_empty = max(1, 487 - width_filled)
@@ -973,11 +1110,11 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     crit_name = make_reportlab_safe(crit.get('criterio', 'Critério'))
                     try:
                         nota_atrib = int(crit.get('nota_atribuida', 0) or 0)
-                    except:
+                    except (ValueError, TypeError):
                         nota_atrib = 0
                     try:
                         nota_max = int(crit.get('nota_maxima', 25) or 25)
-                    except:
+                    except (ValueError, TypeError):
                         nota_max = 25
                     just = make_reportlab_safe(crit.get('justificativa', ''))
                     
@@ -1076,17 +1213,7 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 )
                 story.append(Paragraph("Este relatório é uma auditoria preliminar baseada em simulação por inteligência artificial estruturada e leitura estática de conformidade do edital. As notas e recomendações não garantem aprovação do projeto perante a comissão oficial.", disclaimer_style))
                 
-                def add_footer(canvas, doc):
-                    canvas.saveState()
-                    canvas.setFont('Helvetica', 8)
-                    canvas.setFillColor(colors.HexColor('#64748b'))
-                    import datetime
-                    date_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-                    canvas.drawString(54, 30, f"Gerado por EditalAudit AI em {date_str}")
-                    canvas.drawRightString(A4[0] - 54, 30, f"Página {doc.page}")
-                    canvas.restoreState()
-                    
-                doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)
+                doc.build(story, onFirstPage=add_reportlab_footer, onLaterPages=add_reportlab_footer)
                 pdf_bytes = pdf_buffer.getvalue()
                 pdf_buffer.close()
                 
@@ -1109,8 +1236,6 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json_response(500, {"error": f"Erro ao gerar PDF da auditoria: {str(e)}"})
 
         elif self.path == '/api/generate-revisor-report-pdf':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 project_title = str(data.get('project_title') or 'Projeto Cultural')
@@ -1204,17 +1329,7 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 )
                 story.append(Paragraph("Este documento é um relatório consolidado de revisão analítica e não constitui aprovação ou homologação oficial da proposta.", disclaimer_style))
                 
-                def add_revisor_footer(canvas, doc):
-                    canvas.saveState()
-                    canvas.setFont('Helvetica', 8)
-                    canvas.setFillColor(colors.HexColor('#64748b'))
-                    import datetime
-                    date_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-                    canvas.drawString(54, 30, f"Gerado por EditalAudit AI em {date_str}")
-                    canvas.drawRightString(A4[0] - 54, 30, f"Página {doc.page}")
-                    canvas.restoreState()
-                    
-                doc.build(story, onFirstPage=add_revisor_footer, onLaterPages=add_revisor_footer)
+                doc.build(story, onFirstPage=add_reportlab_footer, onLaterPages=add_reportlab_footer)
                 pdf_bytes = pdf_buffer.getvalue()
                 pdf_buffer.close()
                 
@@ -1237,8 +1352,6 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json_response(500, {"error": f"Erro ao gerar PDF da revisão: {str(e)}"})
 
         elif self.path == '/api/generate-finance-pdf':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 project_title = str(data.get('project_title') or 'Projeto Cultural')
@@ -1468,17 +1581,7 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 )
                 story.append(Paragraph("Este documento foi consolidado pelas 3 Etapas de Auditoria com base na legislação de fomento cultural (Lei Rouanet, Lei Aldir Blanc, IN MinC).", disclaimer_style))
                 
-                def add_finance_footer(canvas, doc):
-                    canvas.saveState()
-                    canvas.setFont('Helvetica', 8)
-                    canvas.setFillColor(colors.HexColor('#64748b'))
-                    import datetime
-                    date_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-                    canvas.drawString(54, 30, f"Gerado por EditalAudit AI em {date_str}")
-                    canvas.drawRightString(A4[0] - 54, 30, f"Página {doc.page}")
-                    canvas.restoreState()
-                    
-                doc.build(story, onFirstPage=add_finance_footer, onLaterPages=add_finance_footer)
+                doc.build(story, onFirstPage=add_reportlab_footer, onLaterPages=add_reportlab_footer)
                 pdf_bytes = pdf_buffer.getvalue()
                 pdf_buffer.close()
                 
@@ -1501,8 +1604,6 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json_response(500, {"error": f"Erro ao gerar PDF do financeiro: {str(e)}"})
 
         elif self.path == '/api/export-finance-xlsx':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 import openpyxl
@@ -1563,6 +1664,15 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     it for it in raw_items 
                     if isinstance(it, dict) and "Subtotal" not in str(it.get('subtotal', '')) and "Item de Despesa" not in str(it.get('item', ''))
                 ]
+                if not items:
+                    items = [{
+                        'rubrica': 'Serviços Especializados',
+                        'destino': 'outros serviços de terceiros',
+                        'item': 'Item orçamentário a detalhar na proposta definitiva',
+                        'unidade': 'unidade',
+                        'qtd': 1,
+                        'valorUnit': 0.0
+                    }]
                 rider_items = data.get('riderItems', [])
 
                 # ABA 1: Planilha Orçamentária (Modelo de Referência Flexível para Editais)
@@ -1725,8 +1835,8 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
 
                 sum_rows = [
                     ("Orçamento Geral Consolidado", f"='Planilha Orçamentária 3 Etapas'!K{tot_r}", "Teto Conforme Edital", "✓ 100% Dentro do Teto Solicitado", currency_fmt),
-                    ("Custos Administrativos (Teto 15%)", f"='Planilha Orçamentária 3 Etapas'!I6", "Teto Máximo 15% (IN MinC)", "✓ Conforme (<= 15%)", currency_fmt),
-                    ("Comunicação & Divulgação (Teto 10%)", f"='Planilha Orçamentária 3 Etapas'!I8", "Teto Máximo 10% (Fomento)", "✓ Conforme (<= 10%)", currency_fmt),
+                    ("Custos Administrativos (Teto 15%)", "='Planilha Orçamentária 3 Etapas'!I6", "Teto Máximo 15% (IN MinC)", "✓ Conforme (<= 15%)", currency_fmt),
+                    ("Comunicação & Divulgação (Teto 10%)", "='Planilha Orçamentária 3 Etapas'!I8", "Teto Máximo 10% (Fomento)", "✓ Conforme (<= 10%)", currency_fmt),
                     ("Acessibilidade PCD Obrigatória", "Intérprete LIBRAS + Audiodescrição", "Obrigatório (Lei 13.146/15)", "✓ Atendido Integralmente", None),
                     ("Encargos & Tributos (ISS/INSS)", f"='Planilha Orçamentária 3 Etapas'!J{tot_r}", "Retenções Fiscais na Fonte", "✓ Provisionado no Orçamento", currency_fmt),
                 ]
@@ -1929,31 +2039,38 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 traceback.print_exc()
                 self.send_json_response(500, {"error": f"Erro ao gerar XLSX do financeiro: {str(e)}"})
         
+        # NÃO CONECTADO AO FRONTEND ATUAL (Persistência real via StateIntegrityManager IndexedDB). Reservado para uso futuro / exportações batch.
         elif self.path == '/api/save-audit-report':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
-                with open('relatorio_auditoria.json', 'w', encoding='utf-8') as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-                self.send_json_response(200, {"success": True, "message": "Relatório salvo no backend."})
-            except Exception as e:
-                self.send_json_response(500, {"error": f"Erro ao salvar relatório no backend: {str(e)}"})
-
-        elif self.path == '/api/load-audit-report':
-            try:
-                if os.path.exists('relatorio_auditoria.json'):
-                    with open('relatorio_auditoria.json', 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                    self.send_json_response(200, data)
+                submissions_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "submissions")
+                os.makedirs(submissions_dir, exist_ok=True)
+                
+                raw_sub_id = data.get('submission_id')
+                ts = int(time.time() * 1000)
+                if not raw_sub_id:
+                    clean_sub_id = f"sub_{ts}_{uuid.uuid4().hex[:8]}"
+                    file_name = f"{clean_sub_id}.json"
                 else:
-                    self.send_json_response(404, {"error": "Relatório não encontrado no backend."})
+                    clean_sub_id = re.sub(r'[^\w\-]', '_', str(raw_sub_id))
+                    file_name = f"sub_{clean_sub_id}_{ts}.json"
+                
+                file_path = os.path.join(submissions_dir, file_name)
+                
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                    
+                self.send_json_response(200, {
+                    "success": True, 
+                    "message": "Proposta submetida e armazenada com sucesso.",
+                    "submission_id": clean_sub_id,
+                    "filename": file_name,
+                    "saved_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat()
+                })
             except Exception as e:
-                self.send_json_response(500, {"error": f"Erro ao carregar relatório: {str(e)}"})
+                self.send_json_response(500, {"error": f"Erro ao persistir submissão: {str(e)}"})
 
         elif self.path == '/api/analyze-edital-context':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 edital_text = data.get('editalRefText', '')
@@ -2077,8 +2194,6 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem blocos 
                     self.send_json_response(500, {"error": f"Erro na análise do edital: {str(e)}"})
 
         elif self.path == '/api/generate-proposal-unified':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 cover = data.get('cover', {})
@@ -2252,8 +2367,6 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos
                     self.send_json_response(500, {"error": f"Erro na geração unificada: {str(e)}"})
 
         elif self.path == '/api/export-anki':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 deck_name = data.get('deck_name', 'Baralho_Concursos_SRS')
@@ -2270,8 +2383,6 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos
                 self.send_json_response(500, {"error": f"Erro ao gerar pacote Anki: {str(ex)}"})
 
         elif self.path == '/api/llm/generate':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 provider = 'gemini'
@@ -2419,7 +2530,7 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos
                 traceback.print_exc()
                 try:
                     error_body = e.read().decode('utf-8')
-                except:
+                except Exception as ex:
                     error_body = str(e)
                 if e.code == 429:
                     self.send_json_response(429, {"error": "Limite de requisições do Gemini excedido (HTTP 429). Por favor, aguarde alguns instantes."})

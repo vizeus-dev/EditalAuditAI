@@ -1,5 +1,6 @@
 # test_validacao_elegibilidade.py
 # -*- coding: utf-8 -*-
+# Groundwork para futura validação de prazo de submissão em tempo real — não usado no fluxo atual, que é auditoria assíncrona sem prazo de inscrição.
 """
 Suíte de Testes Automatizados: Validação de Elegibilidade Jurídica, Orçamentária e Territorial
 Valida critérios eliminatórios e classificatórios conforme diretrizes de editais de fomento.

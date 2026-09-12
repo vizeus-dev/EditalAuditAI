@@ -1294,6 +1294,12 @@ function setupFileHandlers() {
     if (btnAnalyze) {
         btnAnalyze.addEventListener('click', async () => {
             if (btnAnalyze.disabled) return;
+            const editalText = (workspaceState && workspaceState.editalRefText) || (document.getElementById('edital-ref-text') && document.getElementById('edital-ref-text').value) || '';
+            const hasFiles = (workspaceState && workspaceState.annexes && workspaceState.annexes.length > 0) || (workspaceState && workspaceState.editalRefName);
+            if (!editalText.trim() && !hasFiles) {
+                showToast('Forneça o edital antes de analisar.', 'warning');
+                return;
+            }
             try {
                 btnAnalyze.disabled = true;
                 const originalHTML = btnAnalyze.innerHTML;
@@ -1560,158 +1566,9 @@ function getRelevantAlertsAndAdjustments(sectionId) {
     return relevant;
 }
 
-async function callGeminiToComplementSection(sectionId, currentContent, relevantIssues, extraInstrucoes, stream = true) {
-    const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
-        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : ''}`).join('\n---\n')
-        : "Nenhum anexo extra.";
-
-    // Cross-Referencing: Get other sections already generated (limited to prevent token bloat)
-    let crossRefContext = "";
-    const generatedSections = Object.entries(workspaceState.documentContent)
-        .filter(([key, val]) => key !== sectionId && val && val.trim().length > 10);
-
-    if (generatedSections.length > 0) {
-        crossRefContext = "\n[OUTRAS SEÇÕES JÁ GERADAS/ALINHADAS NO EDITOR (REFERÊNCIA CRUZADA OBRIGATÓRIA)]:\n";
-        let accumulatedLength = 0;
-        for (const [key, val] of generatedSections) {
-            let sectionText = stripHtmlForPayload(val);
-            if (sectionText.length > 1500) {
-                sectionText = sectionText.substring(0, 1500) + "\n... [TRECHO CORTADO PARA ECONOMIA DE CONTEXTO] ...";
-            }
-            if (accumulatedLength + sectionText.length > 8000) {
-                crossRefContext += `### Seção: ${key.toUpperCase()}\n... [OMITIDO PARA CONSERVAR CONTEXTO] ...\n\n`;
-                continue;
-            }
-            crossRefContext += `### Seção: ${key.toUpperCase()}\n${sectionText}\n\n`;
-            accumulatedLength += sectionText.length;
-        }
-    }
-
-    const prompt = `Você é o Redator Especialista de Projetos Culturais e Auditor de Compliance.
-    Sua missão é analisar a seção "${sectionId.toUpperCase()}" do nosso projeto cultural e complementá-la ou ajustá-la APENAS com o que estiver faltando para cumprir o edital ou resolver as inconsistências/alertas de conformidade apontados abaixo.
-    
-    ${getEditalProfilePromptContext()}
-
-    REGRAS CRÍTICAS DE FORMATAÇÃO E SAÍDA (LEIA COM ATENÇÃO MÁXIMA):
-    - Escreva apenas o conteúdo desta seção em Português do Brasil.
-    - Se a seção já estiver totalmente em conformidade e não precisar de correções, retorne exatamente o conteúdo atual da seção (com as devidas tags HTML).
-    - Se for necessário acrescentar ou alterar algo, reescreva a seção inteira integrando as melhorias de forma fluida e profissional.
-    - Comece diretamente com as tags HTML estruturadas de cabeçalho da seção (por exemplo: <h3> ou <h4>).
-    - Não envolva a resposta em blocos markdown do tipo \`\`\`html. Retorne o texto pronto para inserção direta no editor.
-    - Não inclua saudações ou explicações do tipo "Ajustei a seção para incluir...".
-    
-    [CONTEÚDO ATUAL DA SEÇÃO]:
-    ${stripHtmlForPayload(currentContent)}
-    
-    [ALERTAS E INCONSISTÊNCIAS DE COMPLIANCE APONTADOS PELA AUDITORIA]:
-    ${relevantIssues.join('\n')}
-    
-    [TÍTULO DO PROJETO]: ${workspaceState.cover.title || 'Não definido'}
-    [PROPONENTE]: ${workspaceState.cover.proponent || 'Não definido'}
-    [INSTITUIÇÃO / EDITAL]: ${workspaceState.cover.institution || 'Não definido'}
-    [CIDADE / UF]: ${workspaceState.cover.city || 'Não definido'}
-    [ORÇAMENTO TETO]: R$ ${workspaceState.cover.budget || 'Não definido'}
-    
-    [EDITAL DE REFERÊNCIA (REGRAS DO PROJETO)]:
-    ${workspaceState.editalRefText ? filterRelevantEditalText(workspaceState.editalRefText, sectionId) : "Sem edital ativo."}
-    
-    [ANEXOS ADICIONAIS DO EDITAL]:
-    ${annexesContext}
-    
-    ${crossRefContext}
-    
-    [ANOTAÇÕES & PONTOS DE ATENÇÃO DO PROPONENTE (ABA DE INGESTÃO)]:
-    ${workspaceState.ingestaoNotes || "Nenhuma anotação adicional."}
-
-    [DIRETRIZES ADICIONAIS DO PROPONENTE]:
-    ${extraInstrucoes || "Nenhuma diretriz adicional."}
-    `;
-
-    const responseText = await callLLMGateway(prompt, null, 'heavy', null, stream);
-    return responseText.trim();
-}
-
 async function runChainedSequentialGeneration(extraInstrucoes = "", webSearchContext = "", buttonEl) {
     showToast("⚡ Gerando proposta completa em 1 única chamada consolidada (Gemini 2.0 Flash)...", "info");
     return await generateBasicProposal();
-}
-
-async function callGeminiForSectionChained(sectionId, extraInstrucoes = "", webSearchContext = "", stream = true) {
-    const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
-        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : ''}`).join('\n---\n')
-        : "Nenhum anexo extra.";
-
-    // Cross-Referencing: Get other sections already generated (limited to prevent token bloat)
-    let crossRefContext = "";
-    const generatedSections = Object.entries(workspaceState.documentContent)
-        .filter(([key, val]) => key !== sectionId && val && val.trim().length > 10);
-
-    if (generatedSections.length > 0) {
-        crossRefContext = "\n[OUTRAS SEÇÕES JÁ GERADAS/ALINHADAS NO EDITOR (REFERÊNCIA CRUZADA OBRIGATÓRIA)]:\n";
-        let accumulatedLength = 0;
-        for (const [key, val] of generatedSections) {
-            let sectionText = stripHtmlForPayload(val);
-            if (sectionText.length > 1500) {
-                sectionText = sectionText.substring(0, 1500) + "\n... [TRECHO CORTADO PARA ECONOMIA DE CONTEXTO] ...";
-            }
-            if (accumulatedLength + sectionText.length > 8000) {
-                crossRefContext += `### Seção: ${key.toUpperCase()}\n... [OMITIDO PARA CONSERVAR CONTEXTO] ...\n\n`;
-                continue;
-            }
-            crossRefContext += `### Seção: ${key.toUpperCase()}\n${sectionText}\n\n`;
-            accumulatedLength += sectionText.length;
-        }
-    }
-
-    const sectionMetadata = {
-        justificativa: "Elabore uma justificativa longa e detalhada que defenda o mérito cultural, a relevância social para o território e o impacto na comunidade.",
-        objetivos: "Estruture o objetivo geral e os objetivos específicos como itens claros de realizações físicas e pedagógicas do projeto.",
-        metodologia: "Descreva a metodologia detalhando passo-a-passo as etapas de Pré-produção (captação, contratos), Execução (oficinas, apresentações) e Pós-produção (desmobilização, prestação de contas).",
-        cronograma: "Formate obrigatoriamente como uma tabela HTML (<table>, <tr>, <td>) organizada por meses (Mês 1 a Mês 6), descrevendo detalhadamente as atividades em cada fase.",
-        orcamento: "Formate obrigatoriamente como uma tabela HTML (<table>, <tr>, <td>) com colunas: Item, Quantidade, Unidade, Valor Unitário (R$), Valor Total (R$). Garanta conformidade fiscal de PF/MEI/Cooperativa e o limite de 15% para custos administrativos e 10% para divulgação.",
-        acessibilidade: "Descreva em detalhes o plano de acessibilidade física (rampas, banheiros PCD) e comunicacional (Libras presencial, audiodescrição em vídeos) e as políticas de democratização (ingressos gratuitos/populares)."
-    };
-
-    const prompt = `Você é o Redator Especialista de Projetos Culturais. Sua missão é escrever a seção "${sectionId.toUpperCase()}" de forma extremamente detalhada, formal e completa para o nosso projeto cultural.
-    
-    REGRAS CRÍTICAS DE FORMATAÇÃO E SAÍDA (LEIA COM ATENÇÃO MÁXIMA):
-    - Escreva apenas o conteúdo desta seção em Português do Brasil.
-    - Comece diretamente com as tags HTML estruturadas de cabeçalho da seção (por exemplo: <h3> ou <h4>).
-    - Não envolva a resposta em blocos markdown do tipo \`\`\`html ou \`\`\`json. Retorne o texto pronto para inserção direta no editor.
-    - Evite explicações externas ou saudações de IA (como "Aqui está a seção...").
-    
-    DIRETRIZES DA SEÇÃO:
-    ${sectionMetadata[sectionId]}
-    
-    [TÍTULO DO PROJETO]: ${workspaceState.cover.title || 'Não definido'}
-    [PROPONENTE]: ${workspaceState.cover.proponent || 'Não definido'}
-    [INSTITUIÇÃO / EDITAL]: ${workspaceState.cover.institution || 'Não definido'}
-    [CIDADE / UF]: ${workspaceState.cover.city || 'Não definido'}
-    [ORÇAMENTO TETO DO PROJETO]: R$ ${workspaceState.cover.budget || 'Não definido'}
-    
-    [EDITAL DE REFERÊNCIA (REGRAS DO PROJETO)]:
-    ${workspaceState.editalRefText ? filterRelevantEditalText(workspaceState.editalRefText, sectionId) : "Sem edital ativo."}
-    
-    [ANEXOS ADICIONAIS DO EDITAL]:
-    ${annexesContext}
-    
-    [PESQUISA WEB DO EDITAL]:
-    ${webSearchContext || "Nenhuma informação extra."}
-    
-    [RASCUNHO INICIAL DO USUÁRIO]:
-    ${workspaceState.proposalDraftText ? workspaceState.proposalDraftText.substring(0, 25000) : "Sem rascunho."}
-    
-    [ANOTAÇÕES & PONTOS DE ATENÇÃO DO PROPONENTE (ABA DE INGESTÃO)]:
-    ${workspaceState.ingestaoNotes || "Nenhuma anotação adicional."}
-    
-    ${crossRefContext}
-    
-    [INSTRUÇÕES ADICIONAIS DO USUÁRIO]:
-    ${extraInstrucoes || "Nenhuma instrução adicional."}
-    `;
-
-    const responseText = await callLLMGateway(prompt, null, 'heavy', null, stream);
-    return responseText.trim();
 }
 
 async function generateBasicProposal() {
@@ -1862,159 +1719,6 @@ async function generateBasicProposal() {
     }
 }
 
-function getSimulatedBasicProposal() {
-    return new Promise(resolve => {
-        setTimeout(() => {
-            const title = workspaceState.cover.title || "Projeto Cultural e Social";
-            const budget = workspaceState.cover.budget || 150000;
-            const city = workspaceState.cover.city || "Linhares - ES";
-            const proponent = workspaceState.cover.proponent || "Associação de Cultura e Arte";
-
-            const draft = (workspaceState.proposalDraftText || "").toLowerCase();
-            const edital = (workspaceState.editalRefText || "").toLowerCase();
-            const annexesText = (workspaceState.annexes || []).map(a => a.content || "").join("\n").toLowerCase();
-            const combinedText = draft + "\n" + edital + "\n" + annexesText;
-
-            const hasWorkshops = /oficina|curso|workshop|palestra/i.test(combinedText);
-            const isMusic = /música|musical|gravação|disco/i.test(combinedText);
-            const hasHiFi = /ssl|interface|monitor|microfone/i.test(combinedText);
-            const hasSisGen = /povos originários|indígena|rapé|ayahuasca|patrimônio genético/i.test(combinedText);
-
-            let justificativa = `<h3>1. Justificativa e Relevância</h3>
-<p>O projeto cultural <strong>"${title}"</strong>, proposto por <strong>${proponent}</strong>, justifica-se plenamente diante do cenário cultural do município de ${city}. Esta iniciativa busca descentralizar as ações artísticas e valorizar a memória regional, de acordo com as regras estabelecidas pelo edital de referência.</p>
-<p>Com forte impacto social e comunitário, o projeto foca no resgate histórico e na difusão de patrimônios imateriais. A contratação de profissionais regionais movimentará a cadeia criativa e gerará novas parcerias no território de execução.</p>`;
-
-            if (hasSisGen) {
-                justificativa += `<p><em>Nota Regulatória Especial (SisGen):</em> Em conformidade com a Lei 13.123/2015, por envolver elementos tradicionais/originários, o projeto prevê as devidas salvaguardas de patrimônio genético.</p>`;
-            }
-
-            let objetivos = `<h3>2. Objetivos Geral e Específicos</h3>
-<p><strong>Objetivo Geral:</strong> Realizar o projeto <strong>"${title}"</strong>, garantindo fruição artística de qualidade e acessibilidade universal para a comunidade de ${city}.</p>
-<p><strong>Objetivos Específicos:</strong></p>
-<ul>
-    <li>Realizar apresentações públicas com entrada 100% gratuita;</li>
-    <li>Fomentar a economia criativa local contratando artistas e prestadores de serviços da região;</li>
-    <li>Oferecer workshops pedagógicos e oficinas gratuitas de formação de público para a comunidade escolar;</li>
-    <li>Assegurar acessibilidade sensoriais e físicas plenas em todas as ações executadas.</li>
-</ul>`;
-
-            let metodologia = `<h3>3. Metodologia e Plano de Trabalho</h3>
-<p>O plano técnico para execução operacional do projeto está estruturado em 3 fases estratégicas e exequíveis:</p>
-<p><strong>Pré-produção (Mês 1 ao Mês 2):</strong> Planejamento executivo, montagem da equipe técnica, curadoria, regularidade fiscal do proponente (FGTS, CND) e assinatura das cartas de anuência.</p>
-<p><strong>Execução (Mês 3 ao Mês 5):</strong> Realização de ensaios, montagem da infraestrutura de som e luz, divulgação na mídia e realização das oficinas formativas e apresentações gratuitas.</p>
-<p><strong>Pós-produção (Mês 6):</strong> Coleta de relatórios fotográficos, listas de presença assinadas, compilação de clipping de imprensa e prestação de contas física e financeira final.</p>`;
-
-            if (isMusic && !hasHiFi) {
-                metodologia += `<p><em>Rider Técnico:</em> O projeto prevê a locação de equipamentos de som de alta fidelidade e interfaces de referência profissional (ex: SSL/monitores) para gravação/execução acústica de qualidade.</p>`;
-            }
-
-            let cronograma = `<h3>4. Cronograma de Atividades</h3>
-<table style="width:100%; border-collapse:collapse; border:1px solid #ddd; font-size:11px;">
-    <thead>
-        <tr style="background:#f1f5f9;">
-            <th>Etapa Operacional / Atividades</th>
-            <th style="text-align:center;">Mês 1</th>
-            <th style="text-align:center;">Mês 2</th>
-            <th style="text-align:center;">Mês 3</th>
-            <th style="text-align:center;">Mês 4</th>
-            <th style="text-align:center;">Mês 5</th>
-            <th style="text-align:center;">Mês 6</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr><td>[Pré-produção] Planejamento e Contratos</td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td><td></td><td></td><td></td><td></td></tr>
-        <tr><td>[Pré-produção] Coleta de Anuências e FGTS/CND</td><td></td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td><td></td><td></td><td></td><td></td></tr>
-        <tr><td>[Execução] Divulgação e Inscrições</td><td></td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td><td></td><td></td></tr>
-        <tr><td>[Execução] Oficinas e Ações Formativas</td><td></td><td></td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td><td></td><td></td></tr>
-        <tr><td>[Execução] Apresentações e Ações Artísticas</td><td></td><td></td><td></td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td><td></td></tr>
-        <tr><td>[Pós-produção] Desmobilização e Clipagem</td><td></td><td></td><td></td><td></td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td></tr>
-        <tr><td>[Pós-produção] Prestação de Contas Final</td><td></td><td></td><td></td><td></td><td></td><td style="text-align:center; font-weight:bold; color:var(--color-success);">X</td></tr>
-    </tbody>
-</table>`;
-
-            const totalBudget = budget;
-            const cArt = totalBudget * 0.40;
-            const cProd = totalBudget * 0.15;
-            const cAdm = totalBudget * 0.15;
-            const cDiv = totalBudget * 0.10;
-            const cAcc = totalBudget * 0.10;
-            const cAud = totalBudget * 0.10;
-
-            let orcamento = `<h3>5. Planilha Orçamentária</h3>
-<table style="width:100%; border-collapse:collapse; border:1px solid #ddd; font-size:11px;">
-    <thead>
-        <tr style="background:#f1f5f9;">
-            <th>Item de Despesa / Rubrica</th>
-            <th style="text-align:center;">Qtd</th>
-            <th style="text-align:center;">Unidade</th>
-            <th style="text-align:right;">Unitário (R$)</th>
-            <th style="text-align:right;">Total (R$)</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr><td>1. Coordenação Geral / Diretor de Produção (Administração)</td><td style="text-align:center;">1</td><td style="text-align:center;">Serviço</td><td style="text-align:right;">R$ ${cProd.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="text-align:right;">R$ ${cProd.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>
-        <tr><td>2. Cachês de Artistas e Palestrantes (PF - inclui tributos)</td><td style="text-align:center;">4</td><td style="text-align:center;">Mês</td><td style="text-align:right;">R$ ${(cArt / 4).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="text-align:right;">R$ ${cArt.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>
-        <tr><td>3. Intérpretes de Libras e Audiodescrição (Acessibilidade)</td><td style="text-align:center;">2</td><td style="text-align:center;">Serviço</td><td style="text-align:right;">R$ ${(cAcc / 2).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="text-align:right;">R$ ${cAcc.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>
-        <tr><td>4. Divulgação e Assessoria de Imprensa (Marketing - 10%)</td><td style="text-align:center;">1</td><td style="text-align:center;">Verba</td><td style="text-align:right;">R$ ${cDiv.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="text-align:right;">R$ ${cDiv.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>
-        <tr><td>5. Taxa de Administração e Impostos RPA (INSS/IRRF - 15%)</td><td style="text-align:center;">1</td><td style="text-align:center;">Verba</td><td style="text-align:right;">R$ ${cAdm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="text-align:right;">R$ ${cAdm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>
-        <tr><td>6. Serviços de Contabilidade e Auditoria de Contas</td><td style="text-align:center;">1</td><td style="text-align:center;">Serviço</td><td style="text-align:right;">R$ ${cAud.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="text-align:right;">R$ ${cAud.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>
-    </tbody>
-    <tfoot>
-        <tr style="font-weight:bold; background:#e2e8f0;">
-            <td colspan="4">Valor Total do Projeto</td>
-            <td style="text-align:right; color:var(--color-primary);">R$ ${totalBudget.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-        </tr>
-    </tfoot>
-</table>`;
-
-            let acessibilidade = `<h3>6. Plano de Acessibilidade e Cotas</h3>
-<p><strong>Acessibilidade PCD Sensorial e Física:</strong> O projeto garante acessibilidade física através de rampas e sanitários adaptados. Para a acessibilidade comunicacional, as apresentações e vídeos contarão com intérprete de LIBRAS e audiodescrição em consonância com a Lei 13.146/2015 e NBR 9050.</p>
-<p><strong>Cotas e Ações Afirmativas:</strong> Reserva de 20% das vagas para pessoas autodeclaradas negras ou indígenas e fomento ao protagonismo feminino e vulnerabilizado.</p>`;
-
-            let publico = `<h3>7. Público-Alvo e Beneficiários</h3>
-<p>Público composto por estudantes da rede pública, idosos, jovens e comunidade do município de ${city}, com estimativa de atendimento direto de 1.500 pessoas de forma 100% gratuita.</p>`;
-
-            let contrapartida = `<h3>8. Contrapartida Social e Legado</h3>
-<p>Oferecimento de oficinas pedagógicas gratuitas de formação de público de 12 horas e doação de 20% do acervo impresso/digital produzido para bibliotecas públicas municipais.</p>`;
-
-            let comunicacao = `<h3>9. Plano de Comunicação e Divulgação</h3>
-<p>Estratégia multicanal incluindo assessoria de imprensa local, tráfego pago segmentado regionalmente em redes sociais e confecção de peças de divulgação digital com acessibilidade.</p>`;
-
-            let ficha_tecnica = `<h3>10. Ficha Técnica e Capacidade</h3>
-<p>Equipe principal composta por Diretor Geral, Coordenador de Produção, Intérprete de LIBRAS, Audiodescritor, Designer Gráfico, Assessor de Imprensa e Contador Especializado.</p>`;
-
-            let monitoramento = `<h3>11. Monitoramento e Matriz Lógica</h3>
-<p>Acompanhamento por indicadores de desempenho (nº de participantes, lista de presença assinada), pesquisa de satisfação do público e clipping de reportagens publicadas.</p>`;
-
-            let compliance = `<h3>12. Compliance e Marcos Legais</h3>
-<p>Regularidade fiscal comprovada (CNDT, FGTS e Certidão da Receita Federal), termo de compromisso de direitos autorais no ECAD e salvaguarda do SisGen se aplicável.</p>`;
-
-            let sustentabilidade = `<h3>13. Sustentabilidade e ESG</h3>
-<p>Práticas sustentáveis com eliminação de descartáveis plásticos, gestão de resíduos sólidos e preferência por material promocional 100% digital.</p>`;
-
-            let rider = `<h3>14. Rider Técnico e Logística</h3>
-<p>Sistema de som P.A. 4.000W RMS, mesa de som digital 16 canais, microfones sem fio UHF, refletores LED cênicos e camarim com acessibilidade arquitetônica.</p>`;
-
-            resolve({
-                justificativa,
-                objetivos,
-                metodologia,
-                cronograma,
-                orcamento,
-                acessibilidade,
-                publico,
-                contrapartida,
-                comunicacao,
-                ficha_tecnica,
-                monitoramento,
-                compliance,
-                sustentabilidade,
-                rider
-            });
-        }, 300);
-    });
-}
-
 async function processAnnexFile(file) {
     try {
         const text = await extractTextFromFile(file);
@@ -2066,6 +1770,14 @@ function sanitizeExtractedText(rawText) {
 async function extractTextFromFile(file) {
     if (!file) throw new Error("Nenhum arquivo fornecido.");
 
+    const MAX_FILE_SIZE = 35 * 1024 * 1024; // 35 MB
+    if (file.size > MAX_FILE_SIZE) {
+        if (typeof showToast === 'function') {
+            showToast("O arquivo excede o limite máximo permitido de 35 MB.", "warning");
+        }
+        throw new Error(`O arquivo excede o limite máximo permitido de 35 MB (${(file.size / (1024 * 1024)).toFixed(1)} MB).`);
+    }
+
     const fileName = file.name || "";
     const fileExt = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
     const mimeType = (file.type || "").toLowerCase();
@@ -2073,6 +1785,9 @@ async function extractTextFromFile(file) {
     // Rejeitar explicitamente arquivos binários não textuais
     const rejectedExtensions = ['.exe', '.bin', '.dll', '.zip', '.rar', '.7z', '.tar', '.gz', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.mp3', '.mp4', '.avi', '.mov', '.wav', '.m4a'];
     if (rejectedExtensions.includes(fileExt) || mimeType.startsWith('image/') || mimeType.startsWith('audio/') || mimeType.startsWith('video/')) {
+        if (typeof showToast === 'function') {
+            showToast(`Tipo de arquivo não suportado (${fileExt || mimeType || 'binário'}). Envie PDF, DOCX ou TXT.`, "warning");
+        }
         throw new Error(`Tipo de arquivo não suportado (${fileExt || mimeType || 'binário'}). Por favor, envie documentos em formato PDF, DOCX ou TXT.`);
     }
 
@@ -2085,6 +1800,28 @@ async function extractTextFromFile(file) {
         reader.onload = async (e) => {
             const buffer = e.target.result;
             try {
+                // Validação de Magic Bytes dos primeiros 4 bytes
+                if (buffer && buffer.byteLength >= 4) {
+                    const header = new Uint8Array(buffer, 0, 4);
+                    // PDF Magic Bytes: %PDF- (0x25, 0x50, 0x44, 0x46)
+                    const isPdfMagic = header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46;
+                    // DOCX / ZIP Magic Bytes: PK\x03\x04 (0x50, 0x4B, 0x03, 0x04)
+                    const isDocxMagic = header[0] === 0x50 && header[1] === 0x4B && header[2] === 0x03 && header[3] === 0x04;
+
+                    if (isPdf && !isPdfMagic) {
+                        if (typeof showToast === 'function') {
+                            showToast("Arquivo corrompido ou formato inválido: assinatura mágica do PDF (%PDF-) não confere.", "error");
+                        }
+                        throw new Error("Arquivo corrompido ou formato inválido: o arquivo não possui a assinatura válida de PDF (%PDF-).");
+                    }
+                    if (isDocx && !isDocxMagic) {
+                        if (typeof showToast === 'function') {
+                            showToast("Arquivo corrompido ou formato inválido: assinatura mágica do DOCX (PK\x03\x04) não confere.", "error");
+                        }
+                        throw new Error("Arquivo corrompido ou formato inválido: o arquivo não possui a assinatura válida de DOCX (PK\x03\x04).");
+                    }
+                }
+
                 let extractedText = "";
                 if (isPdf) {
                     extractedText = await readPdfText(buffer);
@@ -2115,14 +1852,18 @@ async function extractTextFromFile(file) {
 }
 
 async function readPdfText(arrayBuffer) {
-    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    const pdfjsLib = window.pdfjsLib || window['pdfjs-dist/build/pdf'];
     if (!pdfjsLib) throw new Error("Biblioteca PDF.js não carregada.");
 
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
 
     // Safety timeout de 30 segundos para PDFs gigantes ou travados
     const pdfPromise = (async () => {
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const loadingTask = pdfjsLib.getDocument({ 
+            data: arrayBuffer,
+            isEvalSupported: false,
+            disableFontFace: false
+        });
         const pdf = await loadingTask.promise;
         let text = "";
         let totalPages = pdf.numPages;
@@ -2202,7 +1943,7 @@ function renderAnnexesList() {
                 <span style="font-size:0.8rem; font-weight:700;">${annex.name}</span>
                 <span style="font-size:0.65rem; color:var(--text-muted);">${sizeStr}</span>
             </div>
-            <button class="btn-remove-file" data-index="${index}" style="font-size:1.1rem; padding:0; border:none; background:transparent; cursor:pointer; color:var(--color-error);" title="Remover">&times;</button>
+            <button class="btn-remove-file" data-index="${index}" aria-label="Remover anexo ${annex.name}" style="font-size:1.1rem; padding:0; border:none; background:transparent; cursor:pointer; color:var(--color-error);" title="Remover">&times;</button>
         `;
         list.appendChild(item);
     });
@@ -2844,56 +2585,6 @@ async function runSequentialRedactor() {
     }
 }
 
-// REDAÇÃO COMPLETA COM IA
-async function generateFullRedaction() {
-    const btn = document.getElementById('btn-generate-full-redaction');
-    if (!btn) return;
-
-    // --- PROTEÇÃO DOUBLE-CLICK (BUG #5) ---
-    if (_isProcessingAPI) {
-        showToast("Aguarde o processamento atual terminar.", "warning");
-        return;
-    }
-    _isProcessingAPI = true;
-
-    btn.disabled = true;
-    btn.textContent = "🚀 Agente Redator: Escrevendo proposta completa...";
-
-    const instrucoes = document.getElementById('redacao-completa-instrucoes');
-    const extraInstrucoes = instrucoes ? instrucoes.value.trim() : '';
-
-    try {
-        // --- GERAR REDAÇÃO COMPLETA VIA SEQUÊNCIA ENCADEADA ---
-        await runChainedSequentialGeneration(extraInstrucoes, "", btn);
-        addHistoricalMemory("Geração de redação completa integrada para todas as 6 seções.");
-        showToast("✓ Redação completa gerada e inserida no Editor!", "success");
-    } catch (err) {
-        showToast("Erro ao gerar redação completa: " + err.message, "error");
-    } finally {
-        _isProcessingAPI = false;
-        btn.disabled = false;
-        btn.textContent = "🚀 Gerar Redação Completa";
-    }
-}
-
-function getSimulatedFullRedaction(extraInstrucoes) {
-    return new Promise(resolve => {
-        setTimeout(() => {
-            const title = workspaceState.cover.title || 'Projeto Cultural';
-            const city = workspaceState.cover.city || 'Cidade - UF';
-            const budget = workspaceState.cover.budget || 50000;
-
-            resolve({
-                justificativa: `<p>O projeto <strong>"${title}"</strong> justifica-se pela necessidade de ampliar o acesso à cultura na cidade de ${city}, promovendo a descentralização das atividades artísticas e formativas. A proposta está plenamente alinhada com as diretrizes do edital vigente, que busca fomentar ações culturais em territórios de vulnerabilidade social.</p><p>Além disso, o projeto contribui diretamente para a valorização do patrimônio cultural imaterial da região, incentivando a participação de artistas locais e a formação de novos públicos para as artes.${extraInstrucoes ? ' ' + extraInstrucoes : ''}</p>`,
-                objetivos: `<p><strong>Objetivo Geral:</strong> Realizar o projeto cultural "${title}" visando democratizar o acesso à cultura e fortalecer o circuito artístico regional de ${city}.</p><p><strong>Objetivos Específicos:</strong></p><ul><li>Promover 5 apresentações artísticas gratuitas em espaços públicos;</li><li>Realizar 3 oficinas de capacitação técnica com 20 vagas cada;</li><li>Beneficiar diretamente mais de 600 espectadores e participantes;</li><li>Contratar no mínimo 70% de mão de obra artística e técnica local;</li><li>Gerar material de registro audiovisual para acervo público.</li></ul>`,
-                metodologia: `<p>A execução do projeto obedecerá a três fases estruturadas:</p><p><strong>1. Pré-produção (Mês 1-2):</strong> Reuniões de alinhamento, curadoria artística, contratação de fornecedores, solicitação de alvarás, inscrições para oficinas e campanha de divulgação.</p><p><strong>2. Execução (Mês 3-5):</strong> Desenvolvimento das oficinas formativas, montagem de estrutura física e sonora, realização do circuito de apresentações artísticas em praças e espaços públicos municipais.</p><p><strong>3. Pós-produção (Mês 6):</strong> Desmobilização das equipes, compilação de relatórios, registro documental, clipping de imprensa e envio da prestação de contas ao órgão de fomento.</p>`,
-                cronograma: `<table style="width:100%; border-collapse: collapse; font-size: 10pt;"><tr style="background:#f1f5f9;"><th style="border:1px solid #ccc; padding:6px;">Atividade</th><th style="border:1px solid #ccc; padding:6px;">Mês 1</th><th style="border:1px solid #ccc; padding:6px;">Mês 2</th><th style="border:1px solid #ccc; padding:6px;">Mês 3</th><th style="border:1px solid #ccc; padding:6px;">Mês 4</th><th style="border:1px solid #ccc; padding:6px;">Mês 5</th><th style="border:1px solid #ccc; padding:6px;">Mês 6</th></tr><tr><td style="border:1px solid #ccc; padding:6px;">Planejamento e equipe</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Contratações</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Divulgação e inscrições</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Oficinas Formativas</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Circuito de Eventos</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px;"></td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Prestação de Contas</td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px;"></td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">✔</td></tr></table>`,
-                orcamento: `<table style="width:100%; border-collapse: collapse; font-size: 10pt;"><tr style="background:#f1f5f9;"><th style="border:1px solid #ccc; padding:6px;">Rubrica</th><th style="border:1px solid #ccc; padding:6px;">Qtd</th><th style="border:1px solid #ccc; padding:6px;">Unid.</th><th style="border:1px solid #ccc; padding:6px;">Valor Unit.</th><th style="border:1px solid #ccc; padding:6px;">Total</th></tr><tr><td style="border:1px solid #ccc; padding:6px;">Coordenação de Produção</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">6</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">meses</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.35 / 6).toFixed(2)}</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.35).toFixed(2)}</td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Cachê de Artistas</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">5</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">eventos</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.4 / 5).toFixed(2)}</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.4).toFixed(2)}</td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Taxa Administrativa (15%)</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">1</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">verba</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.15).toFixed(2)}</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.15).toFixed(2)}</td></tr><tr><td style="border:1px solid #ccc; padding:6px;">Divulgação e Mídias (10%)</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">1</td><td style="border:1px solid #ccc; padding:6px; text-align:center;">verba</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.10).toFixed(2)}</td><td style="border:1px solid #ccc; padding:6px; text-align:right;">R$ ${(budget * 0.10).toFixed(2)}</td></tr></table>`
-            });
-        });
-    });
-}
-
 async function callGeminiForRedator(section, promptText, webSearchContext = "") {
     if (!workspaceState.editalProfile && workspaceState.editalRefText && typeof ensureEditalProfile === 'function') {
         await ensureEditalProfile();
@@ -3286,6 +2977,12 @@ function setupRevisor() {
     const btnGotoSupervisor = document.getElementById('btn-goto-supervisor');
     if (btnGotoSupervisor) {
         btnGotoSupervisor.addEventListener('click', () => {
+            switchTab('supervisor');
+        });
+    }
+    const btnGotoSupervisorAlt = document.getElementById('btn-goto-supervisor-alt');
+    if (btnGotoSupervisorAlt) {
+        btnGotoSupervisorAlt.addEventListener('click', () => {
             switchTab('supervisor');
         });
     }
@@ -5132,126 +4829,6 @@ async function downloadSupervisorPDF() {
     showToast("✓ Parecer do Supervisor aberto para impressão/download!", "success");
 }
 
-async function callGeminiForAuditoria() {
-    const propContext = `
-    1. Justificativa: ${workspaceState.documentContent.justificativa}
-    2. Objetivos: ${workspaceState.documentContent.objetivos}
-    3. Metodologia: ${workspaceState.documentContent.metodologia}
-    4. Cronograma: ${workspaceState.documentContent.cronograma}
-    5. Orçamento: ${workspaceState.documentContent.orcamento}
-    6. Acessibilidade: ${workspaceState.documentContent.acessibilidade}
-    `;
-
-    const annexesContext = workspaceState.annexes && workspaceState.annexes.length > 0
-        ? workspaceState.annexes.map(a => `Nome do Anexo: ${a.name}\nConteúdo: ${a.content ? a.content.substring(0, 25000) : ''}`).join('\n---\n')
-        : "Nenhum anexo extra fornecido.";
-
-    let subAgentsContext = "";
-    if (workspaceState.revisorAgentsResults) {
-        const activeResults = [];
-        for (const [agentKey, res] of Object.entries(workspaceState.revisorAgentsResults)) {
-            if (res) {
-                const agentName = REVISORES_METADATA[agentKey] ? REVISORES_METADATA[agentKey].name : agentKey;
-                activeResults.push(`- **Sub-Agente ${agentName}** (Nota: ${res.nota}/100):\n  ${res.parecer}`);
-            }
-        }
-        if (activeResults.length > 0) {
-            subAgentsContext = "PARECERES DE COMPLIANCE E ORÇAMENTO DOS SUB-AGENTES ESPECIALISTAS:\n" + activeResults.join("\n\n");
-        }
-    }
-
-    const memoriesContext = workspaceState.historicalMemories && workspaceState.historicalMemories.length > 0
-        ? workspaceState.historicalMemories.map(m => `- [${m.date}] ${m.activity}`).join('\n')
-        : "Nenhuma memória anterior.";
-
-    const prompt = `Você é o Auditor Geral de Editais Culturais, atuando como um Arquiteto de Sistemas Multi-Agentes e Parecerista Master do Ministério da Cultura. Sua missão é consolidar as análises efetuadas por todos os sub-agentes especialistas sobre a proposta cultural e cruzá-las de forma exaustiva com o Edital de Referência Vigente e os anexos adicionais fornecidos, produzindo um Relatório de Auditoria Diagnóstica estruturado, visualmente claro e dividido em painéis de pontuação, simulando a avaliação real de uma banca de fomento cultural.
-
-    [NOTAS E PARECERES DOS SUB-AGENTES ESPECIALISTAS]:
-    ${subAgentsContext || "Nenhuma análise anterior dos sub-agentes disponível."}
-
-    [MEMÓRIA E HISTÓRICO DE AUDITORIA (APRENDIZADO)]:
-    ${memoriesContext}
-    
-    [ANEXOS ADICIONAIS DO EDITAL]:
-    ${annexesContext}
-    
-    [PROPOSTA DO PROJETO ABNT]:
-    ${propContext}
-    
-    [EDITAL DE REFERÊNCIA VIGENTE]:
-    ${workspaceState.editalRefText ? filterRelevantEditalText(workspaceState.editalRefText, null, 40000) : "Nenhuma referência inserida."}
-    
-    Você deve obrigatoriamente realizar o diagnóstico crítico da proposta e calcular a pontuação simulada:
-    - Pontuação Técnica: Máximo de 100 pontos, divididos em 5 critérios (20 pontos cada):
-      1. Adequação ao Objeto, Matriz Lógica e Coerência (até 20 pontos)
-      2. Metodologia, Plano de Trabalho e Acessibilidade (até 20 pontos)
-      3. Exequibilidade Técnica (Experiência e Parcerias) (até 20 pontos)
-      4. Orçamento, Economicidade e Limites de Custos (Auditoria Financeira) (até 20 pontos)
-      5. Plano de Monitoramento, Indicadores e Avaliação (até 20 pontos)
-    - Pontuação de Priorização / Mérito: Máximo de 30 pontos, divididos em 3 critérios (10 pontos cada):
-      6. Governança Participativa e Transparência (até 10 pontos)
-      7. Caracterização do Público Prioritário e Coordenação Vulnerabilizada (até 10 pontos)
-      8. Atuação Prévia no Território e Localização Geográfica do Impacto (até 10 pontos)
-    
-    A Nota Simulada Final será a soma da Pontuação Técnica (0-100) com a Pontuação de Priorização (0-30), totalizando de 0 a 130 pontos.
-
-    Você deve gerar obrigatoriamente um relatório descritivo estruturado de auditoria na chave "relatorio_analitico", formatado em HTML elegante e rico (com classes e estilos CSS inline para um visual premium de painel de controle de banca). O relatório deve conter obrigatoriamente as seguintes 10 seções:
-    
-    1. Cabeçalho Executivo (Dashboard de Notas): Um painel elegante exibindo o nome da proposta, o proponente, o valor solicitado, o prazo de execução e o edital base. Exiba em destaque a "Nota Simulada" total (soma da técnica e priorização), mostrando explicitamente a divisão (ex: "Nota Final: X/130 | Pontuação Técnica: Y/100 | Pontuação de Priorização: Z/30"). Use um fundo elegante (como azul escuro ou cinza claro moderno) e texto bem espaçado.
-    
-    2. Aviso de Simulação (Disclaimer): Um bloco de alerta com estilo de aviso (background amarelo/laranja claro, borda dourada, ícone de atenção) informando de forma clara que as notas são uma simulação crítica baseada nos anexos do edital e avaliam apenas o estado atual da proposta.
-    
-    3. Painel de Ajustes e Impacto (O que foi otimizado): Uma tabela em HTML demonstrando as alterações feitas pela IA na proposta original, qual critério do edital essa mudança impactou positivamente, e a estimativa de evolução da nota (ex: de 50 para 70 pontos).
-    
-    4. Matriz de Pontuação Técnica (Obrigatório em Editais): Uma tabela HTML avaliando os 5 critérios técnicos listados acima, contendo a nota máxima (20), a nota simulada atribuída, e uma justificativa detalhada e analítica para cada um.
-    
-    5. Matriz de Pontuação de Priorização / Mérito: Uma segunda tabela HTML avaliando os 3 critérios de priorização listados acima, contendo a nota máxima (10), a nota simulada atribuída, e a respectiva justificativa de impacto social e afirmativo.
-    
-    6. Riscos Eliminatórios (Red Flags): Um painel de alerta crítico (background vermelho claro, borda vermelha escura) listando qualquer documentação ausente ou inconformidade que cause desclassificação imediata do projeto, independentemente da nota (ex: falta de Atas de Anuência, problemas de Habilitação do CNPJ ou certidões fiscais). Se não houver, escreva que nenhum risco eliminatório foi detectado após cruzamento de dados.
-    
-    7. Fragilidades e Pendências (Com Ações Sugeridas): Uma lista de pontos fracos detectados na proposta atual. Para cada fragilidade identificada, forneça obrigatoriamente uma "Ação" clara, objetiva e executável para o proponente corrigir o problema.
-    
-    8. Pontos Fortes a Preservar: Uma lista destacando os diferenciais competitivos do projeto que não devem ser alterados (ex: acessibilidade real inovadora, patrimônio cultural permanente gerado, ou forte governança participativa).
-    
-    9. Avaliação Crítica Final (Veredito): Um parágrafo narrativo formal resumindo a viabilidade técnica geral da proposta, posicionando-se de forma clara se o projeto é competitivo, classificável ou se necessita de revisões estruturais profundas antes da submissão.
-    
-    10. Lista de Ação Priorizada (Checklist Final): Uma tabela estilo checklist ordenada por impacto decrescente (do Eliminatório até os pequenos ajustes). Deve conter a pendência, o nível de impacto na nota e um espaço visual de "Status" (ex: "[ ] A Fazer") para controle do proponente.
-
-    DIRETRIZ DE DESIGN: Use cores elegantes (verde para pontos fortes e conformidades, amarelo/laranja para alertas e disclaimers, vermelho para riscos eliminatórios). Use tabelas HTML modernas (com border-collapse, cellpadding, cores de cabeçalho, bordas finas).
-
-    Você DEVE retornar estritamente um JSON estruturado de acordo com o esquema abaixo (não envolva em blocos markdown \`\`\`json):
-    {
-        "nota_final": 95,
-        "nota_tecnica": 85,
-        "nota_priorizacao": 10,
-        "relatorio_analitico": "CONTEÚDO DO RELATÓRIO FORMATADO EM HTML COM AS 10 SEÇÕES...",
-        "criterios": [
-            {"criterio": "Adequação ao Objeto, Matriz Lógica e Coerência", "nota_maxima": 20, "nota_atribuida": 18, "justificativa": "..."},
-            {"criterio": "Metodologia, Plano de Trabalho e Acessibilidade", "nota_maxima": 20, "nota_atribuida": 17, "justificativa": "..."},
-            {"criterio": "Exequibilidade Técnica (Experiência e Parcerias)", "nota_maxima": 20, "nota_atribuida": 19, "justificativa": "..."},
-            {"criterio": "Orçamento, Economicidade e Limites de Custos", "nota_maxima": 20, "nota_atribuida": 15, "justificativa": "..."},
-            {"criterio": "Plano de Monitoramento, Indicadores e Avaliação", "nota_maxima": 20, "nota_atribuida": 16, "justificativa": "..."},
-            {"criterio": "Governança Participativa e Transparência", "nota_maxima": 10, "nota_atribuida": 8, "justificativa": "..."},
-            {"criterio": "Caracterização do Público Prioritário e Coordenação Vulnerabilizada", "nota_maxima": 10, "nota_atribuida": 7, "justificativa": "..."},
-            {"criterio": "Atuação Prévia no Território e Impacto Territorial", "nota_maxima": 10, "nota_atribuida": 5, "justificativa": "..."}
-        ],
-        "ajustes": [
-            {"alteracao": "Descrição da alteração recomendada", "fator": "Fator de Impacto / Critério"}
-        ],
-        "alertas": [
-            {"tipo": "Categoria do alerta", "descricao": "Descrição detalhada", "sugestao": "Recomendação", "nivel": "ALTA/MEDIA/BAIXA"}
-        ]
-      }
-    `;
-}
-
-async function callGeminiConsolidatedAudit() {
-    // Delegação total para o aiController — sem orquestrador intermediário.
-    // O aiController.runAudit coleta o contexto bruto e envia direto para o Gemini
-    // com o System Prompt denso dos 14 agentes.
-    syncDOMContentToState();
-    return await window.aiController.runAudit(workspaceState);
-}
 function getSimulatedAuditorData() {
     return new Promise(resolve => {
         setTimeout(() => {
@@ -5571,8 +5148,10 @@ function renderAuditorResults(rawAuditData) {
         criterios = data.agentes.map(ag => {
             const meta = (typeof REVISORES_METADATA !== 'undefined' && REVISORES_METADATA[ag.id]) || { name: ag.id, criterio: ag.id, nota_maxima: 100 };
             return {
-                criterio: meta.name || ag.id,
-                nota_maxima: 100,
+                id: ag.id,
+                name: ag.name || ag.title || meta.name || ag.id,
+                criterio: ag.criterio || ag.name || ag.title || meta.criterio || meta.name || ag.id,
+                nota_maxima: meta.nota_maxima || 100,
                 nota_atribuida: ag.nota !== undefined ? ag.nota : 75,
                 justificativa: (ag.erros && ag.erros[0]) || (ag.recomendacoes && ag.recomendacoes[0]) || "Avaliação de conformidade pelo motor determinístico."
             };
@@ -5602,6 +5181,8 @@ function renderAuditorResults(rawAuditData) {
         const areaColors = ['#6366f1', '#f59e0b', '#10b981', '#8b5cf6', '#3b82f6', '#ec4899', '#14b8a6', '#f43f5e', '#6366f1', '#f59e0b', '#10b981', '#8b5cf6', '#3b82f6', '#ec4899'];
 
         criterios.forEach((c, idx) => {
+            const meta = (typeof REVISORES_METADATA !== 'undefined' && c.id && REVISORES_METADATA[c.id]) || {};
+            const critName = c.criterio || c.name || meta.criterio || meta.name || c.id || `Critério ${idx + 1}`;
             const ratio = (c.nota_maxima > 0) ? (c.nota_atribuida / c.nota_maxima) : 0;
             const statusLabel = ratio >= 0.8 ? 'Aprovado' : ratio >= 0.5 ? 'Revisão Necessária' : 'Reprovado';
             const statusColor = ratio >= 0.8 ? 'var(--color-success)' : ratio >= 0.5 ? 'var(--color-warning)' : 'var(--color-error)';
@@ -5613,7 +5194,7 @@ function renderAuditorResults(rawAuditData) {
             card.style.cssText = `background: var(--bg-card); border: 1px solid var(--border-color); border-left: 4px solid ${color}; border-radius: var(--radius-md); padding: 1rem;`;
             card.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                    <span style="font-weight:700; font-size:0.85rem;">${icon} ${c.criterio}</span>
+                    <span style="font-weight:700; font-size:0.85rem;">${icon} ${critName}</span>
                     <span style="font-size:1.2rem; font-weight:800; color:${color};">${c.nota_atribuida !== null ? c.nota_atribuida : 'N/A'}/${c.nota_maxima}</span>
                 </div>
                 <div style="background: var(--bg-input); border-radius: 4px; height: 8px; margin-bottom: 0.5rem;">
@@ -7305,6 +6886,39 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido.`;
     return localData;
 }
 
+/**
+ * Lazy loader utilitário para a biblioteca SheetJS (xlsx.full.min.js).
+ * Carrega a dependência sob demanda apenas quando o usuário dispara a exportação XLSX.
+ */
+let _xlsxLoadingPromise = null;
+function ensureXlsxLibraryLoaded() {
+    if (typeof XLSX !== 'undefined') {
+        return Promise.resolve(window.XLSX);
+    }
+    if (_xlsxLoadingPromise) {
+        return _xlsxLoadingPromise;
+    }
+    _xlsxLoadingPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'src/xlsx.full.min.js?v=23';
+        script.async = true;
+        script.onload = () => {
+            if (typeof XLSX !== 'undefined') {
+                console.log('[FINANCE-XLSX] Biblioteca SheetJS carregada dinamicamente com sucesso.');
+                resolve(window.XLSX);
+            } else {
+                reject(new Error('SheetJS (XLSX) não inicializado após injeção do script.'));
+            }
+        };
+        script.onerror = () => {
+            _xlsxLoadingPromise = null;
+            reject(new Error('Falha ao carregar biblioteca SheetJS local (src/xlsx.full.min.js).'));
+        };
+        document.head.appendChild(script);
+    });
+    return _xlsxLoadingPromise;
+}
+
 async function downloadFinancePlan(customPlanData = null) {
     let planData = customPlanData || workspaceState.lastConsolidatedFinancePlan;
     if (!planData && !customPlanData) {
@@ -7385,7 +6999,13 @@ async function downloadFinancePlan(customPlanData = null) {
         console.warn("[FINANCE-XLSX] Backend indisponível, utilizando motor SheetJS local:", netErr);
     }
 
-    // 2. Fallback Offline via SheetJS (xlsx.full.min.js)
+    // 2. Fallback Offline via SheetJS (xlsx.full.min.js com Lazy Loading)
+    try {
+        await ensureXlsxLibraryLoaded();
+    } catch (lazyErr) {
+        console.warn("[FINANCE-XLSX] Não foi possível carregar o SheetJS sob demanda:", lazyErr);
+    }
+
     if (typeof XLSX !== 'undefined') {
         try {
             const wb = XLSX.utils.book_new();

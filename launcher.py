@@ -3,7 +3,6 @@ import sys
 import time
 import json
 import urllib.request
-import urllib.error
 import subprocess
 import shutil
 
@@ -165,18 +164,18 @@ def open_app_window():
 
     for p in chrome_paths:
         if p and os.path.exists(p):
-            print(f"[>] Abrindo em Modo Aplicativo Desktop (Chrome)...")
+            print("[>] Abrindo em Modo Aplicativo Desktop (Chrome)...")
             subprocess.Popen([p, f"--app={BASE_URL}", "--disable-extensions"])
             return
 
     for p in edge_paths:
         if p and os.path.exists(p):
-            print(f"[>] Abrindo em Modo Aplicativo Desktop (Edge)...")
+            print("[>] Abrindo em Modo Aplicativo Desktop (Edge)...")
             subprocess.Popen([p, f"--app={BASE_URL}"])
             return
 
     # Fallback para navegador padrão
-    print(f"[>] Abrindo no navegador padrão...")
+    print("[>] Abrindo no navegador padrão...")
     if os.name == 'nt':
         os.startfile(BASE_URL)
     else:

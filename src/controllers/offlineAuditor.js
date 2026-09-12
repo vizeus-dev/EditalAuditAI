@@ -157,6 +157,19 @@ window.offlineAuditor = {
         // --- 6. GERAÇÃO DO RELATÓRIO GERAL EM HTML ESTRUTURADO ---
         const relatorioHTML = this.buildOfflineHTMLReport(cover, notaFinalCalculada, notaTecnicaFinal, notaPriorizacaoLocal, budgetAnalysis, agentesResults, alertasLocais);
 
+        // Array normalizado de critérios para paridade total com motor online e dashboard
+        const criteriosNormalizados = agentDefinitions.map(agent => {
+            const agRes = agentesResults.find(a => a.id === agent.id) || {};
+            return {
+                id: agent.id,
+                name: agent.title,
+                criterio: agent.title,
+                nota_maxima: 100,
+                nota_atribuida: agRes.nota !== undefined ? agRes.nota : 75,
+                justificativa: (agRes.erros && agRes.erros[0]) || (agRes.recomendacoes && agRes.recomendacoes[0]) || "Avaliação de conformidade pelo motor determinístico local."
+            };
+        });
+
         const auditResponseObj = {
             relatorio_geral: relatorioHTML,
             nota_final: notaFinalCalculada,
@@ -164,6 +177,7 @@ window.offlineAuditor = {
             nota_priorizacao: Math.round(notaPriorizacaoLocal * 10) / 10,
             total_orcamento: budgetAnalysis.totalValue || budgetAnalysis.totalProjeto,
             custos_administrativos_percentual: Math.round(budgetAnalysis.adminPercent * 10) / 10,
+            criterios: criteriosNormalizados,
             agentes: agentesResults,
             alertas: alertasLocais,
             ajustes: this._generateDynamicAdjustments(agentesResults, budgetAnalysis, workspaceState),
@@ -253,6 +267,8 @@ window.offlineAuditor = {
 
         return {
             id: agent.id,
+            name: agent.title,
+            criterio: agent.title,
             nota: score,
             confianca: confianca,
             parecer: parecerHTML,

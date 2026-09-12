@@ -38,7 +38,7 @@
     /* ── Typography ── */
     --text-primary: #E8ECF4;
     --text-secondary: #8B95A8;
-    --text-muted: #525E72;
+    --text-muted: #94A3B8;
     --text-inverted: #0B0F17;
 
     /* ── Neon Accents ── */
@@ -110,7 +110,7 @@ body.dark-mode {
 
     --text-primary: #E8ECF4;
     --text-secondary: #8B95A8;
-    --text-muted: #525E72;
+    --text-muted: #94A3B8;
     --text-inverted: #0B0F17;
 
     --color-primary: #00D4FF;
@@ -149,7 +149,7 @@ body.light-mode {
 
     --text-primary: hsl(222, 47%, 12%);
     --text-secondary: hsl(215, 20%, 40%);
-    --text-muted: hsl(215, 14%, 62%);
+    --text-muted: hsl(215, 16%, 42%);
     --text-inverted: hsl(0, 0%, 100%);
 
     --color-primary: hsl(195, 100%, 42%);
@@ -4473,4 +4473,246 @@ main,
 .toast-container {
     position: relative;
     z-index: 1;
+}
+
+/* ============================================
+   RESPONSIVIDADE MOBILE (< 768px e 390px Viewports)
+   ============================================ */
+@media (max-width: 768px) {
+    /* 1. Cabeçalho Adaptável */
+    header {
+        height: auto !important;
+        min-height: 56px;
+        padding: 0.6rem 0.75rem !important;
+        flex-wrap: wrap !important;
+        gap: 0.5rem !important;
+        position: sticky;
+        top: 0;
+    }
+
+    .logo {
+        gap: 0.4rem;
+    }
+
+    .logo-text {
+        font-size: 1.1rem;
+    }
+
+    .axis-selector-wrapper {
+        width: 100%;
+        order: 3;
+    }
+
+    .axis-selector-wrapper select,
+    #axis-select {
+        width: 100% !important;
+        max-width: 100% !important;
+        font-size: 0.8rem;
+        padding: 0.4rem 1.5rem 0.4rem 0.6rem;
+    }
+
+    .header-actions {
+        width: auto;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        align-items: center;
+        justify-content: flex-end;
+    }
+
+    .api-config {
+        padding: 0.25rem 0.5rem;
+        max-width: 160px;
+    }
+
+    .api-config input {
+        width: 90px;
+        font-size: 0.75rem;
+    }
+
+    #offline-status-badge {
+        font-size: 0.65rem !important;
+        padding: 0.2rem 0.4rem !important;
+    }
+
+    /* 2. Layout Principal Empilhado (100% Largura) */
+    main,
+    .workspace-split-layout {
+        display: flex !important;
+        flex-direction: column !important;
+        height: auto !important;
+        min-height: 100vh;
+        width: 100% !important;
+        overflow-x: hidden !important;
+    }
+
+    .editor-column,
+    .tabs-column {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 100% !important;
+        flex: none !important;
+        padding: 0.5rem !important;
+        box-sizing: border-box !important;
+        border-right: none !important;
+    }
+
+    /* 3. Editor ABNT e Barra de Ferramentas */
+    .abnt-editor-toolbar {
+        padding: 0.5rem !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .toolbar-row-1 {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .toolbar-info {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+    }
+
+    .toolbar-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+        width: 100%;
+    }
+
+    .toolbar-actions .btn,
+    .toolbar-actions .toolbar-action-btn {
+        font-size: 0.7rem !important;
+        padding: 0.3rem 0.5rem !important;
+        flex: 1 1 auto;
+        text-align: center;
+    }
+
+    .toolbar-row-2 {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+    }
+
+    .abnt-page-body {
+        padding: 0.5rem !important;
+        overflow-y: visible !important;
+        height: auto !important;
+    }
+
+    .abnt-page-sheet {
+        min-height: auto !important;
+        padding: 1.25rem 0.75rem !important;
+        font-size: 11pt !important;
+    }
+
+    /* 4. Abas de Trabalho e Navegação Horizontal */
+    .workspace-tabs {
+        overflow-x: auto !important;
+        white-space: nowrap !important;
+        padding: 0.4rem 0.25rem !important;
+        display: flex !important;
+        flex-direction: row !important;
+        gap: 0.3rem !important;
+        -webkit-overflow-scrolling: touch;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .w-tab-btn {
+        font-size: 0.75rem !important;
+        padding: 0.45rem 0.65rem !important;
+        white-space: nowrap !important;
+        flex-shrink: 0;
+    }
+
+    .w-tab-pane {
+        padding: 0.75rem 0.25rem !important;
+    }
+
+    /* 5. Grids, Cards e Tabelas Responsivas */
+    #audit-areas-detail,
+    .audit-details-grid,
+    .revisores-grid,
+    .revisor-agents-grid,
+    .qualitative-grid,
+    .diff-container {
+        grid-template-columns: 1fr !important;
+        gap: 0.75rem !important;
+    }
+
+    .audit-summary-card {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 1rem !important;
+    }
+
+    .score-main-card {
+        width: 100% !important;
+        min-width: 100% !important;
+    }
+
+    .banca-table,
+    table {
+        display: block !important;
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+        border-collapse: collapse;
+    }
+
+    .toast-container {
+        left: 12px !important;
+        right: 12px !important;
+        bottom: 12px !important;
+        max-width: calc(100% - 24px) !important;
+    }
+
+    .toast {
+        min-width: unset !important;
+        max-width: 100% !important;
+    }
+}
+
+/* ============================================================
+   Citation Pills & Badges Normativos (Lei 14.133 / TCU / Edital)
+   ============================================================ */
+.citation-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    border-radius: var(--radius-sm, 6px);
+    margin: 2px 4px;
+    line-height: 1.4;
+    vertical-align: middle;
+}
+.citation-pill-verified {
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    color: #38bdf8;
+}
+.citation-pill-legal {
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    color: #a5b4fc;
+}
+.citation-pill-tcu {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #fcd34d;
+}
+.citation-pill-inference {
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+}
+.citation-pill-unverified {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
 }

@@ -1,6 +1,5 @@
 import urllib.request
 import pypdf
-import os
 
 def download_and_parse():
     pdf_url = "https://fbb.org.br/wp-content/uploads/2026/05/Edital-Rio-Doce-Participativo-e-Comunitario-Chamada-Publica-no-2026-011-Retificado-1.pdf"

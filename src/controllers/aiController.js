@@ -40,6 +40,16 @@ window.aiController = {
         );
 
         clean = clean.replace(
+            /\[⚖️\s*(?:LEI|NORMA):\s*['"“]?([^\]'"]+)['"“]?\s*\]/gi,
+            '<span class="citation-pill citation-pill-legal" title="Fundamentação Legal (Lei 14.133/2021 ou Lei 14.903/2024)">⚖️ <strong>Norma:</strong> $1</span>'
+        );
+
+        clean = clean.replace(
+            /\[🏛️\s*TCU:\s*['"“]?([^\]'"]+)['"“]?\s*\]/gi,
+            '<span class="citation-pill citation-pill-tcu" title="Jurisprudência do Tribunal de Contas da União">🏛️ <strong>TCU:</strong> $1</span>'
+        );
+
+        clean = clean.replace(
             /\[⚠️\s*CITA[ÇC][ÃA]O\s*N[ÃA]O\s*VERIFICADA[^\]]*:\s*['"“]?([^\]'"]+)['"“]?\s*\]/gi,
             '<span class="citation-pill citation-pill-unverified" title="Trecho não encontrado no texto original do Edital">⚠️ <strong>Não verificado:</strong> "$1"</span>'
         );
@@ -1250,6 +1260,7 @@ DIRETRIZES DE SUPERVISÃO:
             revisorAgentsResults[ag.id] = {
                 id: ag.id,
                 name: meta.name,
+                criterio: meta.criterio || meta.name || ag.id,
                 nota: ag.nota,
                 notRequired: ag.notRequired === true,
                 confianca: ag.confianca || "ALTA",
@@ -1273,8 +1284,9 @@ DIRETRIZES DE SUPERVISÃO:
 
         const criterios = Object.entries(REVISORES_METADATA).map(([id, meta]) => {
             const agRes = revisorAgentsResults[id];
+            const criterioName = (agRes && agRes.criterio) || meta.criterio || meta.name || id;
             if (agRes && agRes.notRequired) {
-                return { criterio: meta.criterio, nota_maxima: meta.nota_maxima, nota_atribuida: null, notRequired: true, justificativa: "Seção não exigida pelo edital." };
+                return { id, criterio: criterioName, nota_maxima: meta.nota_maxima || 100, nota_atribuida: null, notRequired: true, justificativa: "Seção não exigida pelo edital." };
             }
             const nota_atribuida = agRes ? agRes.nota : (geminiJson.criterios ? (geminiJson.criterios.find(c => c.id === id) || {}).nota : 75);
             const agenteFull = agentesArray.find(a => a.id === id) || {};
@@ -1282,7 +1294,7 @@ DIRETRIZES DE SUPERVISÃO:
                 ? agenteFull.erros[0]
                 : (agenteFull.recomendacoes && agenteFull.recomendacoes.length > 0 ? agenteFull.recomendacoes[0] : "Avaliado pelo Gemini.");
 
-            return { criterio: meta.criterio, nota_maxima: meta.nota_maxima, nota_atribuida, justificativa };
+            return { id, criterio: criterioName, nota_maxima: meta.nota_maxima || 100, nota_atribuida, justificativa };
         });
 
         // Garantir que a nota de priorização esteja entre 0 e 30

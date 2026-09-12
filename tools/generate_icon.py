@@ -1,4 +1,3 @@
-import os
 from PIL import Image, ImageDraw
 
 def create_high_tech_icon(output_path="app_icon.ico"):

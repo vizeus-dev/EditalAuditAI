@@ -1,14 +1,18 @@
 /**
  * auditorDB.js — Banco de Dados Local do Navegador (IndexedDB API Nativa)
  *
- * Provê autonomia offline e expande a memória local do app "Auditor Geral de Editais".
- * Armazena regras universais de leis/cotas/orçamento, acervo de editais e minutas de resposta.
- * Zero dependências externas.
+ * Provê autonomia offline e expande a memória local do SaaS "EditalAudit AI".
+ * Gerencia 3 Object Stores especializadas com índices secundários para consultas de alta performance:
+ *  1. RegrasUniversais (Legislações, limites de fomento, tetos orçamentários, acessibilidade e cotas)
+ *  2. HistoricoEditais (Histórico e laudos de auditorias com pontuações simuladas)
+ *  3. TemplatesRespostas (Modelos ABNT de minutas de respostas e seções padrão)
+ *
+ * Zero dependências externas — 100% Nativo W3C IndexedDB API.
  */
 
 window.auditorDB = {
     dbName: 'AuditorDB_v1',
-    dbVersion: 1,
+    dbVersion: 2,
     db: null,
     isReady: false,
 
@@ -36,8 +40,8 @@ window.auditorDB = {
             request.onsuccess = (event) => {
                 this.db = event.target.result;
                 this.isReady = true;
-                console.log('[AuditorDB] Banco IndexedDB conectado com sucesso.');
-                
+                console.log('[AuditorDB] Banco IndexedDB conectado com sucesso (v' + this.dbVersion + ').');
+
                 // Garantir dados iniciais (Seed)
                 this.seedInitialData()
                     .then(() => resolve(this.db))
@@ -49,22 +53,49 @@ window.auditorDB = {
 
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
-                console.log('[AuditorDB] Criando/Atualizando estrutura do banco local...');
+                const tx = event.target.transaction;
+                console.log('[AuditorDB] Criando/Atualizando estrutura do banco local e índices secundários...');
 
                 // 1. Store: RegrasUniversais (keyPath: id)
+                let storeRegras;
                 if (!db.objectStoreNames.contains('RegrasUniversais')) {
-                    db.createObjectStore('RegrasUniversais', { keyPath: 'id' });
+                    storeRegras = db.createObjectStore('RegrasUniversais', { keyPath: 'id' });
+                } else {
+                    storeRegras = tx.objectStore('RegrasUniversais');
+                }
+                if (!storeRegras.indexNames.contains('categoria')) {
+                    storeRegras.createIndex('categoria', 'categoria', { unique: false });
+                }
+                if (!storeRegras.indexNames.contains('fomento')) {
+                    storeRegras.createIndex('fomento', 'fomento', { unique: false });
                 }
 
                 // 2. Store: HistoricoEditais (keyPath: id)
+                let storeHistory;
                 if (!db.objectStoreNames.contains('HistoricoEditais')) {
-                    const storeHistory = db.createObjectStore('HistoricoEditais', { keyPath: 'id' });
+                    storeHistory = db.createObjectStore('HistoricoEditais', { keyPath: 'id' });
+                } else {
+                    storeHistory = tx.objectStore('HistoricoEditais');
+                }
+                if (!storeHistory.indexNames.contains('updatedAt')) {
                     storeHistory.createIndex('updatedAt', 'updatedAt', { unique: false });
+                }
+                if (!storeHistory.indexNames.contains('editalTitle')) {
+                    storeHistory.createIndex('editalTitle', 'editalTitle', { unique: false });
+                }
+                if (!storeHistory.indexNames.contains('notaFinal')) {
+                    storeHistory.createIndex('notaFinal', 'notaFinal', { unique: false });
                 }
 
                 // 3. Store: TemplatesRespostas (keyPath: id)
+                let storeTemplates;
                 if (!db.objectStoreNames.contains('TemplatesRespostas')) {
-                    db.createObjectStore('TemplatesRespostas', { keyPath: 'id' });
+                    storeTemplates = db.createObjectStore('TemplatesRespostas', { keyPath: 'id' });
+                } else {
+                    storeTemplates = tx.objectStore('TemplatesRespostas');
+                }
+                if (!storeTemplates.indexNames.contains('sectionKey')) {
+                    storeTemplates.createIndex('sectionKey', 'sectionKey', { unique: false });
                 }
             };
         });
@@ -79,6 +110,8 @@ window.auditorDB = {
         const defaultRules = [
             {
                 id: 'tetos_orcamentarios',
+                categoria: 'financeiro',
+                fomento: 'universal',
                 title: 'Tetos Financeiros e Limites Orçamentários Padrão',
                 adminCapPercent: 15,
                 marketingCapPercent: 10,
@@ -91,6 +124,8 @@ window.auditorDB = {
             },
             {
                 id: 'acessibilidade_pcd',
+                categoria: 'acessibilidade',
+                fomento: 'universal',
                 title: 'Marcos de Acessibilidade Física e Comunicacional (Lei 13.146/2015 & NBR 9050)',
                 keywords: ['libras', 'audiodescrição', 'rampa', 'braille', 'legenda', 'pcd', 'acessibilidade'],
                 obrigatoriedades: [
@@ -101,6 +136,8 @@ window.auditorDB = {
             },
             {
                 id: 'cotas_sociais',
+                categoria: 'social',
+                fomento: 'universal',
                 title: 'Políticas de Ações Afirmativas e Cotas Sociais/Étnicas',
                 keywords: ['cotas', 'negros', 'indígenas', 'mulheres', 'pcd', 'lgbtqia+', 'vulnerabilidade'],
                 obrigatoriedades: [
@@ -111,6 +148,8 @@ window.auditorDB = {
             },
             {
                 id: 'compliance_legal',
+                categoria: 'juridico',
+                fomento: 'universal',
                 title: 'Certidões Negativas e Marcos Regulatórios',
                 certidoes: ['CNDT', 'FGTS', 'Receita Federal/PGFN', 'CND Estadual', 'CND Municipal'],
                 leis: ['Lei Rouanet (14.477/2022)', 'LPG (Lei Paulo Gustavo)', 'PAB (Lei Aldir Blanc)', 'ECAD', 'SisGen'],
@@ -122,6 +161,8 @@ window.auditorDB = {
             },
             {
                 id: 'criterios_priorizacao',
+                categoria: 'criterios',
+                fomento: 'universal',
                 title: 'Critérios de Desempate e Priorização Técnica',
                 pontuacaoMaxima: 30,
                 pesos: {
@@ -139,21 +180,25 @@ window.auditorDB = {
         const defaultTemplates = [
             {
                 id: 'justificativa',
+                sectionKey: 'justificativa',
                 titulo: 'Modelo ABNT — Justificativa e Relevância Cultural',
                 textoBase: 'O presente projeto cultural justifica-se pela urgente necessidade de valorização do patrimônio imaterial e promoção da fruição artística na comunidade. A iniciativa atende diretamente às diretrizes de democratização do acesso à cultura, fortalecendo a economia criativa local e promovendo impacto social mensurável.'
             },
             {
                 id: 'objetivos',
+                sectionKey: 'objetivos',
                 titulo: 'Modelo ABNT — Objetivos Gerais e Específicos',
                 textoBase: 'OBJETIVO GERAL: Realizar 10 ações culturais gratuitas no município alvo com acessibilidade plena.\nOBJETIVOS ESPECÍFICOS:\n1. Capacitar 50 jovens em oficinas de formação artística.\n2. Contratar 100% de equipe técnica qualificada local.\n3. Garantir transmissão com intérprete de LIBRAS em todas as apresentações.'
             },
             {
                 id: 'acessibilidade',
+                sectionKey: 'acessibilidade',
                 titulo: 'Modelo ABNT — Plano de Acessibilidade Integral',
                 textoBase: 'Em consonância com a Lei 13.146/2015, o projeto adotará medidas de acessibilidade comunicacional (presença de intérprete de LIBRAS e material divulgado com audiodescrição) e acessibilidade arquitetônica em espaço dotado de rampas e sanitários adaptados.'
             },
             {
                 id: 'orcamento',
+                sectionKey: 'orcamento',
                 titulo: 'Modelo ABNT — Planilha e Justificativa de Custos',
                 textoBase: 'A planilha financeira foi calculada estritamente com base nos preços praticados no mercado regional. Os custos administrativos correspondem a menos de 15% do orçamento total e as despesas com divulgação respeitam o teto de 10%, incluindo encargos tributários de ISS (5%) e INSS.'
             }
@@ -228,6 +273,46 @@ window.auditorDB = {
     },
 
     /**
+     * Busca um único registro utilizando índice secundário
+     */
+    getByIndex: function (storeName, indexName, key) {
+        return new Promise((resolve, reject) => {
+            if (!this.db) return resolve(null);
+            try {
+                const tx = this.db.transaction(storeName, 'readonly');
+                const store = tx.objectStore(storeName);
+                const index = store.index(indexName);
+                const request = index.get(key);
+
+                request.onsuccess = () => resolve(request.result || null);
+                request.onerror = (e) => reject(e.target.error);
+            } catch (err) {
+                reject(err);
+            }
+        });
+    },
+
+    /**
+     * Retorna todos os registros correspondentes a um valor em índice secundário
+     */
+    getAllByIndex: function (storeName, indexName, key) {
+        return new Promise((resolve, reject) => {
+            if (!this.db) return resolve([]);
+            try {
+                const tx = this.db.transaction(storeName, 'readonly');
+                const store = tx.objectStore(storeName);
+                const index = store.index(indexName);
+                const request = index.getAll(key);
+
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = (e) => reject(e.target.error);
+            } catch (err) {
+                reject(err);
+            }
+        });
+    },
+
+    /**
      * Salva o resultado de uma auditoria no histórico local
      */
     saveAuditHistory: async function (editalTitle, auditResult, workspaceSnapshot) {
@@ -240,8 +325,8 @@ window.auditorDB = {
             notaPriorizacao: auditResult.nota_priorizacao || 0,
             auditResult: auditResult,
             workspaceSnapshot: {
-                cover: workspaceSnapshot.cover,
-                documentContent: workspaceSnapshot.documentContent
+                cover: (workspaceSnapshot && workspaceSnapshot.cover) || {},
+                documentContent: (workspaceSnapshot && workspaceSnapshot.documentContent) || {}
             },
             updatedAt: new Date().toISOString()
         };
