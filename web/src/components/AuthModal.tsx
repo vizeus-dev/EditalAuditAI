@@ -61,7 +61,11 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     try {
       const res = await signInWithGoogle();
       if (res.error) {
-        setErrorMsg(res.error);
+        if (res.error.includes('provider is not enabled') || res.error.includes('validation_failed')) {
+          setErrorMsg('⚠️ O login com Google ainda não foi ativado no painel Supabase. Por favor, acesse com E-mail e Senha abaixo ou ative o Google em Authentication > Providers.');
+        } else {
+          setErrorMsg(res.error);
+        }
       } else {
         onClose();
       }
