@@ -1877,7 +1877,7 @@ def main():
     host = os.environ.get('HOST', '0.0.0.0')
     server_address = (host, PORT)
     httpd = ThreadingHTTPServer(server_address, CustomHTTPRequestHandler)
-    print(f"Servidor EditalAudit AI rodando em http://{host}:{PORT}/")
+    print(f"Servidor EditalAudit AI rodando em http://{host}:{PORT}/", flush=True)
     
     # Inicia o auto-reloader de código
     start_auto_reloader()
