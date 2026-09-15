@@ -2,6 +2,7 @@ import os
 import re
 import json
 import socket
+import threading
 import urllib.request
 import urllib.error
 import time
@@ -268,252 +269,312 @@ class LLMProvider:
     def generate(self, prompt, model, api_key, system_instruction=None, ollama_url=None, response_schema=None):
         raise NotImplementedError
 
+class GeminiKeyPool:
+    """
+    Gerenciador inteligente de pool de chaves Google Gemini:
+    - Tier 1 (Gratuito): Round-Robin através das chaves gratuitas (GEMINI_FREE_KEYS, 60 RPM combinadas).
+    - Tier 2 (Pago): Fallback automático para a chave paga (GEMINI_PAID_KEY) se as gratuitas atingirem 429 ou esgotarem cota.
+    - Suporte nativo a BYOK: se o usuário fornecer sua própria chave, ela é priorizada.
+    """
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._free_index = 0
+
+    def get_candidate_keys(self, caller_key=None):
+        candidate_keys = []
+        if caller_key and str(caller_key).strip():
+            candidate_keys.append(str(caller_key).strip())
+            return candidate_keys
+
+        try:
+            from services.backend.config import GEMINI_FREE_KEYS, GEMINI_PAID_KEY, GEMINI_API_KEY
+        except Exception:
+            GEMINI_FREE_KEYS = [k.strip() for k in os.environ.get('GEMINI_FREE_KEYS', '').split(',') if k.strip()]
+            GEMINI_PAID_KEY = os.environ.get('GEMINI_PAID_KEY', '').strip()
+            GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '').strip()
+
+        with self._lock:
+            if GEMINI_FREE_KEYS:
+                n = len(GEMINI_FREE_KEYS)
+                rotated = [GEMINI_FREE_KEYS[(self._free_index + i) % n] for i in range(n)]
+                self._free_index = (self._free_index + 1) % n
+                for k in rotated:
+                    if k and k not in candidate_keys:
+                        candidate_keys.append(k)
+            elif GEMINI_API_KEY and GEMINI_API_KEY not in candidate_keys:
+                candidate_keys.append(GEMINI_API_KEY)
+
+            if GEMINI_PAID_KEY and GEMINI_PAID_KEY not in candidate_keys:
+                candidate_keys.append(GEMINI_PAID_KEY)
+
+        return candidate_keys
+
+
 class GeminiProvider(LLMProvider):
     MAX_PROMPT_CHARS = 300000  # ~75k tokens safety limit
     API_TIMEOUT = 180  # seconds — generous window for complex financial and regulatory calculations
+
+    def __init__(self):
+        self.key_pool = GeminiKeyPool()
+
     def generate(self, prompt, model, api_key, system_instruction=None, ollama_url=None, response_schema=None):
-        # Default to gemini-3.5-flash if model not supplied or using deprecated/legacy model strings
         deprecated_models = {"gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-2.5-flash"}
-        primary_model = model if (model and model not in deprecated_models) else "gemini-3.5-flash"
-        
+        primary_model = model if (model and model not in deprecated_models) else "gemini-3.6-flash"
+
         # --- TRUNCAMENTO DE SEGURANÇA ---
         if len(prompt) > self.MAX_PROMPT_CHARS:
             print(f"[GEMINI][WARN] Prompt truncado de {len(prompt)} para {self.MAX_PROMPT_CHARS} chars.")
             prompt = prompt[:self.MAX_PROMPT_CHARS] + "\n\n[TEXTO TRUNCADO POR LIMITE DE SEGURANÇA]"
-        
+
         contents = [{"parts": [{"text": prompt}]}]
         if system_instruction:
-            # Truncate system instruction too
             si_text = system_instruction[:8000] if len(system_instruction) > 8000 else system_instruction
             system_instruction_payload = {"parts": [{"text": si_text}]}
         else:
             system_instruction_payload = None
-            
+
         payload = {"contents": contents}
         if system_instruction_payload:
             payload["systemInstruction"] = system_instruction_payload
-            
-        # Setup generation config with JSON schema if requested
+
         generation_config = {"maxOutputTokens": 65536}
         if response_schema:
             generation_config["responseMimeType"] = "application/json"
             generation_config["responseSchema"] = response_schema
         payload["generationConfig"] = generation_config
-            
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": api_key
-        }
+
         req_data = json.dumps(payload).encode('utf-8')
-        
-        # Models to try: primary first, fallback to active gemini-3.x models
+
+        # Modelos a tentar em cascata
         models_to_try = [primary_model]
-        for fallback in ["gemini-3.5-flash", "gemini-3.1-flash-lite"]:
+        for fallback in ["gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-3.5-flash", "gemini-3.1-flash-lite"]:
             if fallback not in models_to_try:
                 models_to_try.append(fallback)
-                
+
+        keys_to_try = self.key_pool.get_candidate_keys(caller_key=api_key)
+        if not keys_to_try:
+            keys_to_try = [""]
+
         last_error = None
-        max_retries = 3
-        
-        for current_model in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent"
-            model_failed = False
-            
-            for attempt in range(max_retries):
-                print(f"[GEMINI][DEBUG] Tentando modelo: {current_model} | Tentativa: {attempt+1}/{max_retries} | Payload: {len(req_data)} bytes | Prompt: {len(prompt)} chars")
-                req = urllib.request.Request(url, data=req_data, headers=headers, method='POST')
-                try:
-                    with urllib.request.urlopen(req, timeout=self.API_TIMEOUT) as response:
-                        res_json = json.loads(response.read().decode('utf-8'))
-                        text = res_json['candidates'][0]['content']['parts'][0]['text']
-                        print(f"[GEMINI][OK] Resposta recebida com modelo {current_model}: {len(text)} chars")
-                        return text
-                except socket.timeout:
-                    if attempt < max_retries - 1:
-                        sleep_time = 2 ** attempt
-                        print(f"[GEMINI][WARN] Timeout de conexão. Aguardando {sleep_time}s...")
-                        time.sleep(sleep_time)
-                        continue
-                    last_error = TimeoutError(f"A API do Gemini não respondeu em {self.API_TIMEOUT}s com o modelo {current_model}.")
-                    model_failed = True
-                    break
-                except urllib.error.HTTPError as e:
-                    last_error = e
-                    try:
-                        err_body = e.read().decode('utf-8', errors='ignore')
-                        print(f"[GEMINI][ERROR] HTTPError body para {current_model}: {err_body}")
-                    except Exception:
-                        err_body = ""
-                    # Retry on rate limit (429) or server errors (503, 504)
-                    if e.code in [429, 503, 504]:
-                        if attempt < max_retries - 1:
-                            retry_after = e.headers.get("Retry-After")
-                            if retry_after:
-                                try:
-                                    sleep_time = int(retry_after)
-                                except ValueError:
-                                    sleep_time = 2 ** (attempt + 1)
-                            else:
-                                sleep_time = 2 ** (attempt + 1)
-                            print(f"[GEMINI][WARN] Erro HTTP {e.code}. Aguardando {sleep_time}s antes de tentar novamente...")
-                            time.sleep(sleep_time)
-                            continue
-                    elif e.code == 404:
-                        print(f"[GEMINI][WARN] Modelo {current_model} retornou 404 (Não Encontrado). Tentando próximo modelo da fila...")
-                    else:
-                        print(f"[GEMINI][ERROR] Erro HTTP {e.code} com modelo {current_model}. Tentando próximo modelo...")
-                    model_failed = True
-                    break
-                except urllib.error.URLError as e:
-                    last_error = e
-                    if isinstance(e.reason, socket.timeout):
-                        if attempt < max_retries - 1:
-                            sleep_time = 2 ** attempt
-                            print(f"[GEMINI][WARN] Timeout de conexão (URLError). Aguardando {sleep_time}s...")
-                            time.sleep(sleep_time)
-                            continue
-                        last_error = TimeoutError(f"Timeout de conexão com Gemini ({self.API_TIMEOUT}s) no modelo {current_model}.")
-                    else:
-                        print(f"[GEMINI][ERROR] Erro de URL {e.reason} com modelo {current_model}.")
-                    model_failed = True
+        max_retries = 2
+
+        for key_idx, current_key in enumerate(keys_to_try):
+            api_key = current_key
+            headers = {
+                "Content-Type": "application/json",
+                "x-goog-api-key": api_key
+            }
+            key_failed_rate_limit = False
+
+            for current_model in models_to_try:
+                if key_failed_rate_limit:
                     break
 
-            if model_failed:
-                continue
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent"
+                model_failed = False
+
+                for attempt in range(max_retries):
+                    masked_key = current_key[:6] + "..." + current_key[-4:] if len(current_key) > 10 else "***"
+                    print(f"[GEMINI][DEBUG] Modelo: {current_model} | Chave: [{key_idx+1}/{len(keys_to_try)}] {masked_key} | Tentativa: {attempt+1}/{max_retries}")
+                    req = urllib.request.Request(url, data=req_data, headers=headers, method='POST')
+                    try:
+                        with urllib.request.urlopen(req, timeout=self.API_TIMEOUT) as response:
+                            res_json = json.loads(response.read().decode('utf-8'))
+                            text = res_json['candidates'][0]['content']['parts'][0]['text']
+                            print(f"[GEMINI][OK] Resposta recebida com modelo {current_model} ({len(text)} chars)")
+                            return text
+                    except socket.timeout:
+                        if attempt < max_retries - 1:
+                            sleep_time = 2 ** attempt
+                            print(f"[GEMINI][WARN] Timeout de conexão. Aguardando {sleep_time}s...")
+                            time.sleep(sleep_time)
+                            continue
+                        last_error = TimeoutError(f"A API do Gemini não respondeu em {self.API_TIMEOUT}s com o modelo {current_model}.")
+                        model_failed = True
+                        break
+                    except urllib.error.HTTPError as e:
+                        last_error = e
+                        try:
+                            err_body = e.read().decode('utf-8', errors='ignore')
+                            print(f"[GEMINI][ERROR] HTTPError body para {current_model}: {err_body}")
+                        except Exception:
+                            err_body = ""
+                        # Se erro de cota ou rate-limit (429 ou 403 com quota), rotaciona imediatamente para próxima chave do pool
+                        if e.code == 429 or (e.code == 403 and "quota" in err_body.lower()):
+                            print(f"[GEMINI][POOL] Chave atingiu cota/rate-limit (HTTP {e.code}). Rotacionando para próxima chave do pool...")
+                            key_failed_rate_limit = True
+                            break
+                        elif e.code in [503, 504]:
+                            if attempt < max_retries - 1:
+                                retry_after = e.headers.get("Retry-After")
+                                sleep_time = int(retry_after) if retry_after and retry_after.isdigit() else 2 ** (attempt + 1)
+                                print(f"[GEMINI][WARN] Erro de servidor {e.code}. Aguardando {sleep_time}s...")
+                                time.sleep(sleep_time)
+                                continue
+                        elif e.code == 404:
+                            print(f"[GEMINI][WARN] Modelo {current_model} retornou 404 (Não Encontrado). Tentando próximo modelo...")
+                        else:
+                            print(f"[GEMINI][ERROR] Erro HTTP {e.code} com modelo {current_model}.")
+                        model_failed = True
+                        break
+                    except urllib.error.URLError as e:
+                        last_error = e
+                        if isinstance(e.reason, socket.timeout):
+                            if attempt < max_retries - 1:
+                                sleep_time = 2 ** attempt
+                                print(f"[GEMINI][WARN] Timeout de conexão (URLError). Aguardando {sleep_time}s...")
+                                time.sleep(sleep_time)
+                                continue
+                            last_error = TimeoutError(f"Timeout de conexão com Gemini ({self.API_TIMEOUT}s) no modelo {current_model}.")
+                        else:
+                            print(f"[GEMINI][ERROR] Erro de URL {e.reason} com modelo {current_model}.")
+                        model_failed = True
+                        break
+
+                if model_failed:
+                    continue
 
         if last_error:
             raise last_error
 
     def stream_generate(self, prompt, model, api_key, system_instruction=None, response_schema=None):
         deprecated_models = {"gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-2.5-flash"}
-        primary_model = model if (model and model not in deprecated_models) else "gemini-3.5-flash"
-            
+        primary_model = model if (model and model not in deprecated_models) else "gemini-3.6-flash"
+
         # --- TRUNCAMENTO DE SEGURANÇA ---
         if len(prompt) > self.MAX_PROMPT_CHARS:
             print(f"[GEMINI][WARN] Prompt truncado de {len(prompt)} para {self.MAX_PROMPT_CHARS} chars.")
             prompt = prompt[:self.MAX_PROMPT_CHARS] + "\n\n[TEXTO TRUNCADO POR LIMITE DE SEGURANÇA]"
-            
+
         contents = [{"parts": [{"text": prompt}]}]
         if system_instruction:
             si_text = system_instruction[:8000] if len(system_instruction) > 8000 else system_instruction
             system_instruction_payload = {"parts": [{"text": si_text}]}
         else:
             system_instruction_payload = None
-            
+
         payload = {"contents": contents}
         if system_instruction_payload:
             payload["systemInstruction"] = system_instruction_payload
-            
-        # Setup generation config with JSON schema if requested
+
         generation_config = {"maxOutputTokens": 65536}
         if response_schema:
             generation_config["responseMimeType"] = "application/json"
             generation_config["responseSchema"] = response_schema
         payload["generationConfig"] = generation_config
-            
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": api_key
-        }
+
         req_data = json.dumps(payload).encode('utf-8')
-        
-        # Models to try: primary first, fallback to active gemini-3.x models
+
         models_to_try = [primary_model]
-        for fallback in ["gemini-3.5-flash", "gemini-3.1-flash-lite"]:
+        for fallback in ["gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-3.5-flash", "gemini-3.1-flash-lite"]:
             if fallback not in models_to_try:
                 models_to_try.append(fallback)
-                
+
+        keys_to_try = self.key_pool.get_candidate_keys(caller_key=api_key)
+        if not keys_to_try:
+            keys_to_try = [""]
+
         last_error = None
-        max_retries = 3
-        
-        for current_model in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:streamGenerateContent"
-            model_failed = False
-            
-            for attempt in range(max_retries):
-                print(f"[GEMINI-STREAM][DEBUG] Tentando modelo: {current_model} | Tentativa: {attempt+1}/{max_retries} | Payload: {len(req_data)} bytes | Prompt: {len(prompt)} chars")
-                req = urllib.request.Request(url, data=req_data, headers=headers, method='POST')
-                try:
-                    with urllib.request.urlopen(req, timeout=self.API_TIMEOUT) as response:
-                        decoder = json.JSONDecoder()
-                        buffer = ""
-                        for line in response:
-                            buffer += line.decode('utf-8', errors='ignore')
-                            
-                            while True:
-                                buffer = buffer.lstrip(' \n\r\t,[')
-                                if not buffer:
-                                    break
-                                
-                                try:
-                                    obj, idx = decoder.raw_decode(buffer)
-                                    buffer = buffer[idx:]
-                                    
-                                    if 'error' in obj:
-                                        err_detail = obj['error']
-                                        err_msg = f"API Gemini Erro ({err_detail.get('code', '?')}): {err_detail.get('message', 'Erro desconhecido')}"
-                                        raise Exception(err_msg)
-                                    if 'candidates' in obj and obj['candidates']:
-                                        cand = obj['candidates'][0]
-                                        if 'content' in cand and 'parts' in cand['content'] and cand['content']['parts']:
-                                            text = cand['content']['parts'][0].get('text', '')
-                                            if text:
-                                                yield text
-                                except json.JSONDecodeError:
-                                    break
-                        return # Success, exit
-                except socket.timeout:
-                    if attempt < max_retries - 1:
-                        sleep_time = 2 ** attempt
-                        print(f"[GEMINI-STREAM][WARN] Timeout de conexão. Aguardando {sleep_time}s...")
-                        time.sleep(sleep_time)
-                        continue
-                    last_error = TimeoutError(f"A API do Gemini não respondeu em {self.API_TIMEOUT}s com o modelo {current_model} (stream).")
-                    model_failed = True
-                    break
-                except urllib.error.HTTPError as e:
-                    last_error = e
-                    try:
-                        err_body = e.read().decode('utf-8', errors='ignore')
-                        print(f"[GEMINI-STREAM][ERROR] HTTPError body para {current_model}: {err_body}")
-                    except Exception:
-                        err_body = ""
-                    if e.code in [429, 503, 504]:
-                        if attempt < max_retries - 1:
-                            retry_after = e.headers.get("Retry-After")
-                            if retry_after:
-                                try:
-                                    sleep_time = int(retry_after)
-                                except ValueError:
-                                    sleep_time = 2 ** (attempt + 1)
-                            else:
-                                sleep_time = 2 ** (attempt + 1)
-                            print(f"[GEMINI-STREAM][WARN] Erro HTTP {e.code}. Aguardando {sleep_time}s antes de tentar novamente...")
-                            time.sleep(sleep_time)
-                            continue
-                    elif e.code == 404:
-                        print(f"[GEMINI-STREAM][WARN] Modelo {current_model} retornou 404. Tentando próximo da fila...")
-                    else:
-                        print(f"[GEMINI-STREAM][ERROR] Erro HTTP {e.code} com modelo {current_model} (stream).")
-                    model_failed = True
-                    break
-                except urllib.error.URLError as e:
-                    last_error = e
-                    if isinstance(e.reason, socket.timeout):
-                        if attempt < max_retries - 1:
-                            sleep_time = 2 ** attempt
-                            print(f"[GEMINI-STREAM][WARN] Timeout de conexão (URLError). Aguardando {sleep_time}s...")
-                            time.sleep(sleep_time)
-                            continue
-                        last_error = TimeoutError(f"Timeout de conexão com Gemini ({self.API_TIMEOUT}s) no modelo {current_model} (stream).")
-                    else:
-                        print(f"[GEMINI-STREAM][ERROR] Erro de URL {e.reason} com modelo {current_model} (stream).")
-                    model_failed = True
+        max_retries = 2
+
+        for key_idx, current_key in enumerate(keys_to_try):
+            api_key = current_key
+            headers = {
+                "Content-Type": "application/json",
+                "x-goog-api-key": api_key
+            }
+            key_failed_rate_limit = False
+
+            for current_model in models_to_try:
+                if key_failed_rate_limit:
                     break
 
-            if model_failed:
-                continue
-                    
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:streamGenerateContent"
+                model_failed = False
+
+                for attempt in range(max_retries):
+                    masked_key = current_key[:6] + "..." + current_key[-4:] if len(current_key) > 10 else "***"
+                    print(f"[GEMINI-STREAM][DEBUG] Modelo: {current_model} | Chave: [{key_idx+1}/{len(keys_to_try)}] {masked_key} | Tentativa: {attempt+1}/{max_retries}")
+                    req = urllib.request.Request(url, data=req_data, headers=headers, method='POST')
+                    try:
+                        with urllib.request.urlopen(req, timeout=self.API_TIMEOUT) as response:
+                            decoder = json.JSONDecoder()
+                            buffer = ""
+                            for line in response:
+                                buffer += line.decode('utf-8', errors='ignore')
+
+                                while True:
+                                    buffer = buffer.lstrip(' \n\r\t,[')
+                                    if not buffer:
+                                        break
+
+                                    try:
+                                        obj, idx = decoder.raw_decode(buffer)
+                                        buffer = buffer[idx:]
+
+                                        if 'error' in obj:
+                                            err_detail = obj['error']
+                                            err_msg = f"API Gemini Erro ({err_detail.get('code', '?')}): {err_detail.get('message', 'Erro desconhecido')}"
+                                            raise Exception(err_msg)
+                                        if 'candidates' in obj and obj['candidates']:
+                                            cand = obj['candidates'][0]
+                                            if 'content' in cand and 'parts' in cand['content'] and cand['content']['parts']:
+                                                text = cand['content']['parts'][0].get('text', '')
+                                                if text:
+                                                    yield text
+                                    except json.JSONDecodeError:
+                                        break
+                            return # Success, exit stream
+                    except socket.timeout:
+                        if attempt < max_retries - 1:
+                            sleep_time = 2 ** attempt
+                            print(f"[GEMINI-STREAM][WARN] Timeout de conexão. Aguardando {sleep_time}s...")
+                            time.sleep(sleep_time)
+                            continue
+                        last_error = TimeoutError(f"A API do Gemini não respondeu em {self.API_TIMEOUT}s com o modelo {current_model} (stream).")
+                        model_failed = True
+                        break
+                    except urllib.error.HTTPError as e:
+                        last_error = e
+                        try:
+                            err_body = e.read().decode('utf-8', errors='ignore')
+                            print(f"[GEMINI-STREAM][ERROR] HTTPError body para {current_model}: {err_body}")
+                        except Exception:
+                            err_body = ""
+                        if e.code == 429 or (e.code == 403 and "quota" in err_body.lower()):
+                            print(f"[GEMINI-STREAM][POOL] Chave atingiu cota/rate-limit (HTTP {e.code}). Rotacionando para próxima chave do pool...")
+                            key_failed_rate_limit = True
+                            break
+                        if e.code in [503, 504]:
+                            if attempt < max_retries - 1:
+                                retry_after = e.headers.get("Retry-After")
+                                sleep_time = int(retry_after) if retry_after and retry_after.isdigit() else 2 ** (attempt + 1)
+                                print(f"[GEMINI-STREAM][WARN] Erro HTTP {e.code}. Aguardando {sleep_time}s...")
+                                time.sleep(sleep_time)
+                                continue
+                        elif e.code == 404:
+                            print(f"[GEMINI-STREAM][WARN] Modelo {current_model} retornou 404. Tentando próximo da fila...")
+                        else:
+                            print(f"[GEMINI-STREAM][ERROR] Erro HTTP {e.code} com modelo {current_model} (stream).")
+                        model_failed = True
+                        break
+                    except urllib.error.URLError as e:
+                        last_error = e
+                        if isinstance(e.reason, socket.timeout):
+                            if attempt < max_retries - 1:
+                                sleep_time = 2 ** attempt
+                                print(f"[GEMINI-STREAM][WARN] Timeout de conexão (URLError). Aguardando {sleep_time}s...")
+                                time.sleep(sleep_time)
+                                continue
+                            last_error = TimeoutError(f"Timeout de conexão com Gemini ({self.API_TIMEOUT}s) no modelo {current_model} (stream).")
+                        else:
+                            print(f"[GEMINI-STREAM][ERROR] Erro de URL {e.reason} com modelo {current_model} (stream).")
+                        model_failed = True
+                        break
+
+                if model_failed:
+                    continue
+
         if last_error:
             raise last_error
 

@@ -27,6 +27,12 @@ PORT = int(os.environ.get('PORT', 8085))
 ASAAS_API_KEY = os.environ.get('ASAAS_API_KEY', '')
 ASAAS_BASE_URL = os.environ.get('ASAAS_BASE_URL', 'https://api.asaas.com/v3')
 
+# Pool de Chaves Google Gemini (Tiered Pool: Free Round-Robin + Paid Fallback)
+GEMINI_FREE_KEYS = [k.strip() for k in os.environ.get('GEMINI_FREE_KEYS', '').split(',') if k.strip()]
+GEMINI_PAID_KEY = os.environ.get('GEMINI_PAID_KEY', '').strip()
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '').strip() or (GEMINI_FREE_KEYS[0] if GEMINI_FREE_KEYS else '')
+
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",

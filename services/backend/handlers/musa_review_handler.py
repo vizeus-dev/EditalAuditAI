@@ -405,8 +405,10 @@ def evaluate_musa_deep_review(
     # Gera referências e fontes de enriquecimento
     sources = enrich_context_from_web(norm_key, institution=inst, project_title=project_title)
 
-    # 1. Tenta avaliação com LLM se houver gateway e credenciais viáveis
+    # 1. Tenta avaliação com LLM se houver gateway, credenciais e conteúdo mínimo a analisar
     try:
+        if provider == "offline" or len(content_clean) < 40:
+            raise ValueError("Modo offline ou conteúdo insuficiente para IA (< 40 caracteres)")
         edital_slice = ""
         if edital_text:
             edital_slice = get_surgical_context_for_parecerista(edital_text, norm_key, max_chars=8000)
