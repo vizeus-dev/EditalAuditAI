@@ -72,19 +72,24 @@ window.LocalCrossEngine = {
          * Extrai valores da planilha orçamentária e calcula todos os indicadores.
          */
         audit: function (doc, cover, profile, editalText) {
+            doc = doc || {};
+            cover = cover || {};
+            profile = profile || {};
+            editalText = editalText || "";
+
             const orcamentoHtml = doc.orcamento || "";
-            const totalDeclarado = Number(cover.budget) || 0;
+            const totalDeclarado = (cover.budget !== undefined && cover.budget !== null) ? (Number(cover.budget) || 0) : 0;
 
             // Extrair itens do editor (reutiliza parseBudgetItemsFromEditor do app.js)
             let items = [];
             if (typeof parseBudgetItemsFromEditor === 'function') {
-                items = parseBudgetItemsFromEditor(orcamentoHtml);
+                items = parseBudgetItemsFromEditor(orcamentoHtml) || [];
             } else {
-                items = this._fallbackParseItems(orcamentoHtml);
+                items = this._fallbackParseItems(orcamentoHtml) || [];
             }
 
             // --- Cálculos Fundamentais ---
-            const totalCalculado = items.reduce((sum, it) => sum + (it.total || 0), 0);
+            const totalCalculado = items.reduce((sum, it) => sum + (Number(it.total) || 0), 0);
             const totalProjeto = totalCalculado > 0 ? totalCalculado : totalDeclarado;
 
             // --- Classificação de Rubricas ---
@@ -106,33 +111,35 @@ window.LocalCrossEngine = {
 
                 // Classificação
                 let category = 'operacional';
-                if (adminKeywords.test(label)) { category = 'administrativo'; adminTotal += (it.total || 0); }
-                else if (comKeywords.test(label)) { category = 'comunicacao'; comTotal += (it.total || 0); }
-                else if (accessKeywords.test(label)) { category = 'acessibilidade'; accessTotal += (it.total || 0); }
-                else if (taxKeywords.test(label)) { category = 'tributario'; taxTotal += (it.total || 0); }
+                if (adminKeywords.test(label)) { category = 'administrativo'; adminTotal += (Number(it.total) || 0); }
+                else if (comKeywords.test(label)) { category = 'comunicacao'; comTotal += (Number(it.total) || 0); }
+                else if (accessKeywords.test(label)) { category = 'acessibilidade'; accessTotal += (Number(it.total) || 0); }
+                else if (taxKeywords.test(label)) { category = 'tributario'; taxTotal += (Number(it.total) || 0); }
 
                 // Detecção de inconsistências
-                if (it.total !== undefined && it.qtd && it.valorUnit) {
-                    const expectedTotal = it.qtd * it.valorUnit;
-                    if (Math.abs(expectedTotal - it.total) > 1) {
+                const q = Number(it.qtd) || 0;
+                const vu = Number(it.valorUnit) || 0;
+                if (it.total !== undefined && q > 0 && vu > 0) {
+                    const expectedTotal = q * vu;
+                    if (Math.abs(expectedTotal - (Number(it.total) || 0)) > 1) {
                         inconsistencies.push({
                             item: it.item || `Item ${idx + 1}`,
                             expected: expectedTotal,
-                            actual: it.total,
+                            actual: Number(it.total) || 0,
                             type: 'soma_incorreta'
                         });
                     }
                 }
 
-                if (it.total < 0) {
+                if (it.total !== undefined && Number(it.total) < 0) {
                     inconsistencies.push({
                         item: it.item || `Item ${idx + 1}`,
                         type: 'valor_negativo',
-                        value: it.total
+                        value: Number(it.total)
                     });
                 }
 
-                if (it.valorUnit !== undefined && isNaN(it.valorUnit)) {
+                if (it.valorUnit !== undefined && isNaN(Number(it.valorUnit))) {
                     inconsistencies.push({
                         item: it.item || `Item ${idx + 1}`,
                         type: 'celula_nao_numerica',
@@ -155,10 +162,10 @@ window.LocalCrossEngine = {
             }
 
             // --- Percentuais ---
-            const adminPercent = totalProjeto > 0 ? (adminTotal / totalProjeto) * 100 : 0;
-            const comPercent = totalProjeto > 0 ? (comTotal / totalProjeto) * 100 : 0;
-            const accessPercent = totalProjeto > 0 ? (accessTotal / totalProjeto) * 100 : 0;
-            const taxPercent = totalProjeto > 0 ? (taxTotal / totalProjeto) * 100 : 0;
+            const adminPercent = (totalProjeto > 0 && !isNaN(adminTotal)) ? (adminTotal / totalProjeto) * 100 : 0;
+            const comPercent = (totalProjeto > 0 && !isNaN(comTotal)) ? (comTotal / totalProjeto) * 100 : 0;
+            const accessPercent = (totalProjeto > 0 && !isNaN(accessTotal)) ? (accessTotal / totalProjeto) * 100 : 0;
+            const taxPercent = (totalProjeto > 0 && !isNaN(taxTotal)) ? (taxTotal / totalProjeto) * 100 : 0;
 
             // --- Tetos do Edital ---
             const tetoAdmin = profile.tetoGestao || this._extractCeiling(editalText, 'admin') || 15;
@@ -316,11 +323,11 @@ window.LocalCrossEngine = {
             // Verificar se encargos existem mas são insuficientes
             if (hasINSS && totalProjeto > 0) {
                 const encargosTotal = items
-                    .filter(i => /inss|encargo|patronal|tribut/i.test(`${i.rubrica} ${i.item}`))
-                    .reduce((s, i) => s + (i.total || 0), 0);
+                    .filter(i => /inss|encargo|patronal|tribut/i.test(`${i.rubrica || ''} ${i.item || ''}`))
+                    .reduce((s, i) => s + (Number(i.total) || 0), 0);
                 const pfTotal = items
-                    .filter(i => /rpa|cachê|autônomo/i.test(`${i.rubrica} ${i.item} ${i.especificacao}`))
-                    .reduce((s, i) => s + (i.total || 0), 0);
+                    .filter(i => /rpa|cachê|autônomo/i.test(`${i.rubrica || ''} ${i.item || ''} ${i.especificacao || ''}`))
+                    .reduce((s, i) => s + (Number(i.total) || 0), 0);
 
                 if (pfTotal > 0 && encargosTotal < pfTotal * 0.15) {
                     missing.push({
@@ -337,8 +344,8 @@ window.LocalCrossEngine = {
         /** Verifica se itens de acessibilidade estão orçados */
         _checkAccessibilityBudget: function (items, doc) {
             const missing = [];
-            const accessText = (doc.acessibilidade || '').toLowerCase();
-            const budgetText = items.map(i => `${i.rubrica} ${i.item} ${i.especificacao}`).join(' ').toLowerCase();
+            const accessText = ((doc && doc.acessibilidade) || '').toLowerCase();
+            const budgetText = items.map(i => `${i.rubrica || ''} ${i.item || ''} ${i.especificacao || ''}`).join(' ').toLowerCase();
 
             // Se acessibilidade menciona Libras mas orçamento não tem
             if (/libras|intérprete|interprete|sinais/i.test(accessText) && !/libras|intérprete|interprete|sinais/i.test(budgetText)) {

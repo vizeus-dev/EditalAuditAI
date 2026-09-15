@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EditalAudit AI — Design Brief & System Preview (OpenDesign)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0b0f19;
+      --bg-secondary: #111827;
+      --bg-surface: #1e293b;
+      --bg-card: rgba(30, 41, 59, 0.7);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-active: rgba(59, 130, 246, 0.5);
+
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+
+      --accent-primary: #3b82f6;
+      --accent-primary-hover: #2563eb;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-full: 9999px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      padding: 2.5rem 1.5rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 3rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .badge-protocol {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--accent-primary);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      padding: 0.25rem 0.65rem;
+      border-radius: var(--radius-full);
+      margin-bottom: 0.75rem;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      margin-top: 0.35rem;
+    }
+
+    .meta-dials {
+      display: flex;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .dial-chip {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      padding: 0.25rem 0.6rem;
+      border-radius: var(--radius-sm);
+    }
+
+    .preview-section {
+      margin-bottom: 3.5rem;
+    }
+
+    .section-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #ffffff;
+    }
+
+    .section-title span.num {
+      color: var(--accent-primary);
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+    }
+
+    /* 1. Color Palette Swatches */
+    .swatches-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 1rem;
+    }
+
+    .swatch-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .swatch-color {
+      height: 70px;
+      width: 100%;
+    }
+
+    .swatch-info {
+      padding: 0.75rem;
+    }
+
+    .swatch-role {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+
+    .swatch-hex {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* 2. Typography Specimens */
+    .typography-specimens {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .specimen-item {
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1.25rem;
+    }
+
+    .specimen-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .specimen-label {
+      font-size: 0.75rem;
+      color: var(--accent-primary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-family: var(--font-mono);
+      margin-bottom: 0.5rem;
+      display: block;
+    }
+
+    .display-sample {
+      font-size: 2.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+
+    .body-sample {
+      font-size: 1rem;
+      line-height: 1.6;
+      color: var(--text-primary);
+    }
+
+    .mono-sample {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.5;
+    }
+
+    /* 3. Spacing Ruler */
+    .spacing-ruler-container {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+    }
+
+    .ruler-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 1rem;
+      gap: 1rem;
+    }
+
+    .ruler-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .ruler-label {
+      width: 140px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+
+    .ruler-bar-track {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 4px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      padding: 2px;
+    }
+
+    .ruler-bar-fill {
+      background: var(--accent-primary);
+      height: 100%;
+      border-radius: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    /* 4. Component Preview */
+    .components-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .component-box {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+    }
+
+    .component-box-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Interactive Buttons */
+    .btn-row {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    button {
+      cursor: pointer;
+      font-family: var(--font-body);
+      font-size: 0.875rem;
+      font-weight: 600;
+      padding: 0.55rem 1.15rem;
+      border-radius: var(--radius-sm);
+      border: none;
+      transition: transform 0.1s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    button:active:not(:disabled) {
+      transform: scale(0.98) translateY(1px);
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent-primary) !important;
+      outline-offset: 2px !important;
+    }
+
+    .btn-primary {
+      background-color: var(--accent-primary);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--accent-primary-hover);
+    }
+
+    .btn-secondary {
+      background: rgba(30, 41, 59, 0.8);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-secondary:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Card Component Live */
+    .parecerista-card {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 1rem;
+    }
+
+    .parecerista-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .parecerista-name {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .status-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+    }
+
+    .badge-conforme {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .badge-alerta {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent-amber);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .parecerista-summary {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.75rem;
+      line-height: 1.5;
+    }
+
+    .tabular-score-row {
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid var(--border-color);
+      padding-top: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+    }
+
+    .score-label {
+      color: var(--text-muted);
+    }
+
+    .score-value {
+      color: var(--accent-primary);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Live Input */
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .input-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .text-input {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 0.875rem;
+      padding: 0.55rem 0.85rem;
+      border-radius: var(--radius-sm);
+      width: 100%;
+    }
+
+    .text-input:focus {
+      border-color: var(--accent-primary);
+      outline: none;
+    }
+
+    /* Mini A4 Sheet Simulator */
+    .a4-simulator-box {
+      background: #06090f;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 1.25rem;
+      display: flex;
+      justify-content: center;
+    }
+
+    .a4-mini-sheet {
+      background: #ffffff;
+      color: #111827;
+      width: 200px;
+      height: 280px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+      padding: 1rem;
+      font-family: Arial, sans-serif;
+      font-size: 0.45rem;
+      line-height: 1.4;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .a4-mini-title {
+      font-weight: bold;
+      text-align: center;
+      text-transform: uppercase;
+      font-size: 0.55rem;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 0.25rem;
+    }
+
+    .a4-mini-line {
+      background: #e2e8f0;
+      height: 4px;
+      border-radius: 1px;
+    }
+
+    .a4-mini-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.35rem;
+      font-size: 0.4rem;
+    }
+
+    .a4-mini-table td {
+      border: 1px solid #cbd5e1;
+      padding: 2px 4px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    footer {
+      border-top: 1px solid var(--border-color);
+      padding-top: 1.5rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <span class="badge-protocol">OpenDesign Master Protocol • Technical Brief</span>
+      <h1>EditalAudit AI — Design System Preview</h1>
+      <p class="subtitle">Contrato de Interface para Auditoria Editalícia & Elaboração ABNT (Leis 14.133/21 e 14.903/24)</p>
+    </div>
+    <div class="meta-dials">
+      <span class="dial-chip">VARIANCE: 5</span>
+      <span class="dial-chip">MOTION: 3</span>
+      <span class="dial-chip">DENSITY: 4</span>
+    </div>
+  </header>
+
+  <!-- 1. Color Palette Swatches -->
+  <section class="preview-section">
+    <h2 class="section-title"><span class="num">01.</span> Paleta de Cores e Tokens Semânticos</h2>
+    <div class="swatches-grid">
+      <div class="swatch-card">
+        <div class="swatch-color" style="background-color: #0b0f19;"></div>
+        <div class="swatch-info">
+          <span class="swatch-role">Background</span>
+          <span class="swatch-hex">#0b0f19</span>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-color" style="background-color: #111827;"></div>
+        <div class="swatch-info">
+          <span class="swatch-role">Secondary</span>
+          <span class="swatch-hex">#111827</span>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-color" style="background-color: #1e293b;"></div>
+        <div class="swatch-info">
+          <span class="swatch-role">Surface</span>
+          <span class="swatch-hex">#1e293b</span>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-color" style="background-color: #3b82f6;"></div>
+        <div class="swatch-info">
+          <span class="swatch-role">Accent Cobalt</span>
+          <span class="swatch-hex">#3b82f6</span>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-color" style="background-color: #2563eb;"></div>
+        <div class="swatch-info">
+          <span class="swatch-role">Accent Hover</span>
+          <span class="swatch-hex">#2563eb</span>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-color" style="background-color: #10b981;"></div>
+        <div class="swatch-info">
+          <span class="swatch-role">Conforme</span>
+          <span class="swatch-hex">#10b981</span>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-color" style="background-color: #f59e0b;"></div>
+        <div class="swatch-info">
+          <span class="swatch-role">Alerta Glosa</span>
+          <span class="swatch-hex">#f59e0b</span>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-color" style="background-color: #f43f5e;"></div>
+        <div class="swatch-info">
+          <span class="swatch-role">Inabilitação</span>
+          <span class="swatch-hex">#f43f5e</span>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-color" style="background-color: #f8fafc; border: 1px solid #334155;"></div>
+        <div class="swatch-info">
+          <span class="swatch-role">Text Primary</span>
+          <span class="swatch-hex">#f8fafc</span>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-color" style="background-color: #94a3b8;"></div>
+        <div class="swatch-info">
+          <span class="swatch-role">Text Sec.</span>
+          <span class="swatch-hex">#94a3b8</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Typography Specimens -->
+  <section class="preview-section">
+    <h2 class="section-title"><span class="num">02.</span> Espécimes Tipográficos</h2>
+    <div class="typography-specimens">
+      <div class="specimen-item">
+        <span class="specimen-label">Display & Títulos de Seção • Inter Bold (700)</span>
+        <div class="display-sample">Parecer Conclusivo da Banca M.U.S.A.</div>
+      </div>
+      <div class="specimen-item">
+        <span class="specimen-label">Corpo de Texto da Interface • Inter Regular & Medium (400 / 500)</span>
+        <div class="body-sample">
+          O projeto cultural sob análise demonstra aderência integral aos parâmetros de acessibilidade estipulados no Edital n.º 04/2026, com destinação expressa de cota orçamentária para audiodescrição e interpretação em LIBRAS.
+        </div>
+      </div>
+      <div class="specimen-item">
+        <span class="specimen-label">Dados Tabulares & Auditoria Contábil • JetBrains Mono (400 / 600 Tabular-Nums)</span>
+        <div class="mono-sample">
+          TOTAL_GLOSA: R$ 0,00 | SCORE_GLOBAL: 98.5/100 | NBR_14724_COMPLIANT: TRUE | LATENCY: 142ms
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Spacing Ruler -->
+  <section class="preview-section">
+    <h2 class="section-title"><span class="num">03.</span> Régua de Espaçamento & Densidade</h2>
+    <div class="spacing-ruler-container">
+      <div class="ruler-row">
+        <span class="ruler-label">Base Gap (8px)</span>
+        <div class="ruler-bar-track">
+          <div class="ruler-bar-fill" style="width: 8px;"></div>
+        </div>
+      </div>
+      <div class="ruler-row">
+        <span class="ruler-label">Content Pad (16px)</span>
+        <div class="ruler-bar-track">
+          <div class="ruler-bar-fill" style="width: 32px;">16</div>
+        </div>
+      </div>
+      <div class="ruler-row">
+        <span class="ruler-label">Card Pad (24px)</span>
+        <div class="ruler-bar-track">
+          <div class="ruler-bar-fill" style="width: 64px;">24</div>
+        </div>
+      </div>
+      <div class="ruler-row">
+        <span class="ruler-label">Section Gap (48px)</span>
+        <div class="ruler-bar-track">
+          <div class="ruler-bar-fill" style="width: 140px;">48</div>
+        </div>
+      </div>
+      <div class="ruler-row">
+        <span class="ruler-label">Block Gap (72px)</span>
+        <div class="ruler-bar-track">
+          <div class="ruler-bar-fill" style="width: 220px;">72</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Component Preview -->
+  <section class="preview-section">
+    <h2 class="section-title"><span class="num">04.</span> Preview de Componentes Vivos</h2>
+    <div class="components-grid">
+      <!-- Buttons Box -->
+      <div class="component-box">
+        <div class="component-box-title">
+          <span>Ações & Feedback Tátil (:active)</span>
+          <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent-primary);">WCAG 2.1 AA</span>
+        </div>
+        <div class="btn-row" style="margin-bottom: 1.25rem;">
+          <button class="btn-primary">Auditar Certame</button>
+          <button class="btn-secondary">Exportar PDF ABNT</button>
+        </div>
+        <div class="input-group">
+          <label class="input-label" for="minuta-input">Objeto da Proposta</label>
+          <input type="text" id="minuta-input" class="text-input" value="Circulação Teatral em Territórios Periféricos" />
+        </div>
+      </div>
+
+      <!-- Card Box -->
+      <div class="component-box">
+        <div class="component-box-title">
+          <span>Card de Avaliação de Parecerista</span>
+          <span class="status-badge badge-conforme">Aprovado</span>
+        </div>
+        <div class="parecerista-card">
+          <div class="parecerista-header">
+            <span class="parecerista-name">Dra. Heloísa Ramos (Jurídico)</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">Parecer #01</span>
+          </div>
+          <p class="parecerista-summary">
+            Conformidade plena com os artigos 40 e 44 da Lei 14.133/2021. Habilitação jurídica sem qualquer vício formal.
+          </p>
+          <div class="tabular-score-row">
+            <span class="score-label">Pontuação Atribuída</span>
+            <span class="score-value">100 / 100</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- A4 Sheet Preview Box -->
+      <div class="component-box">
+        <div class="component-box-title">
+          <span>Folha A4 NBR 14724 (Simulador Físico)</span>
+          <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted);">Proporção 1:√2</span>
+        </div>
+        <div class="a4-simulator-box">
+          <div class="a4-mini-sheet">
+            <div class="a4-mini-title">Proposta Cultural ABNT</div>
+            <div class="a4-mini-line" style="width: 90%;"></div>
+            <div class="a4-mini-line" style="width: 75%;"></div>
+            <div class="a4-mini-line" style="width: 85%;"></div>
+            <table class="a4-mini-table">
+              <tr>
+                <td>Item</td>
+                <td>Qtd</td>
+                <td>Valor</td>
+              </tr>
+              <tr>
+                <td>Cachê Artístico</td>
+                <td>4</td>
+                <td>R$ 12.000,00</td>
+              </tr>
+              <tr>
+                <td>Audiodescrição</td>
+                <td>1</td>
+                <td>R$ 3.500,00</td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>EditalAudit AI • Operação e Persistência 100% Locais</div>
+    <div>Zero Git Push Enforced • Suíte 122/122 Testes Verdes</div>
+  </footer>
+
+</body>
+</html>

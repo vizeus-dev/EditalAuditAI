@@ -48,10 +48,20 @@ Este repositório opera sob a orquestração de **3 Agentes Especialistas**, dis
    - É estritamente proibido executar qualquer comando `git push` ou sincronização externa.
    - Todas as otimizações, relatórios e logs permanecem confinados nas pastas locais (`docs/`, `tools/`, `services/`, `src/`).
 2. **Suíte de Testes Mandatória (100% de Aprovação):**
-   - Nenhuma alteração é aceita sem que a suíte completa de testes (`.\.venv\Scripts\python.exe -m unittest discover tests`) passe com 75/75 testes aprovados (0 falhas, 0 erros).
+   - Nenhuma alteração é aceita sem que a suíte completa de testes (`.\.venv\Scripts\python.exe -m unittest discover tests`) passe com 131/131 testes aprovados (0 falhas, 0 erros).
 3. **Padrão Matt Pocock & Tipagem Estrutural:**
    - Tipagem explícita com JSDoc no frontend e type hints em Python (`typing`, `timezone`, `datetime`).
    - Proibição de asserções inseguras (`any` / casting cego). Validação defensiva em limites de entrada.
 4. **Resiliência Offline-First:**
    - Toda a auditoria matemática roda no motor determinístico local (`LocalCrossEngine.js`).
    - O backend e a API LLM atuam de forma desacoplada com timeouts estritos e fallbacks seguros.
+5. **Gating Mandatório de Memória Ativa no Obsidian Vault (`vault/`) & Anti-Alucinação:**
+   - **Função Compulsória de Check-in Pré-Ação:** Antes de executar QUALQUER ação, modificar arquivos, diagnosticar bugs, criar planos de implementação ou propor arquitetura, o agente DEVE OBRIGATORIAMENTE executar a leitura da memória persistente em `vault/`:
+     1. Ler `vault/00 - Dashboard/00 - Painel Geral do Projeto EditalAudit.md` (MOC e status do sistema).
+     2. Ler `vault/06 - Memória Ativa e Registros/Diario de Bordo e Aprendizados.md` (últimos aprendizados e padrões técnicos).
+     3. Consultar a ADR relevante em `vault/03 - Decisões Arquiteturais (ADRs)/` se a tarefa envolver mudanças estruturais.
+   - **Zero Alucinação & Grounding:** Proibido inventar caminhos de arquivos, bibliotecas, comandos ou regras sem evidência concreta no Vault ou no código ativo. Toda resposta deve conter links diretos para os arquivos reais (`file:///...`).
+   - **Máxima Objetividade:** Respostas concisas, técnicas e direcionadas ao ponto central, sem prolixidade ou clichês de IA.
+   - **Função Compulsória de Check-out Pós-Ação:** Ao concluir qualquer alteração significativa, o agente deve obrigatoriamente registrar o novo padrão em `vault/06 - Memória Ativa e Registros/Diario de Bordo e Aprendizados.md`.
+
+

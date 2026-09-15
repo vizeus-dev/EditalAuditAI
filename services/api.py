@@ -1,3 +1,4 @@
+import os
 import re
 import json
 import socket
@@ -10,21 +11,30 @@ import hashlib
 # 1. Semantic Cache & Similarity Utilities (FinOps)
 # ----------------------------------------------------
 class SemanticCache:
-    def __init__(self):
+    def __init__(self, max_size=50):
         self.cache = [] # List of dicts: {"prompt_hash": str, "prompt": str, "response": str}
+        self.max_size = max_size
 
     def lookup(self, prompt, threshold=0.85):
         # First check direct hash matching (instant)
         prompt_hash = hashlib.md5(prompt.encode('utf-8')).hexdigest()
-        for item in self.cache:
+        for i, item in enumerate(self.cache):
             if item["prompt_hash"] == prompt_hash:
                 print("[CACHE] Direct match hit.")
-                return item["response"]
+                # LRU: Move accessed item to end
+                hit = self.cache.pop(i)
+                self.cache.append(hit)
+                return hit["response"]
         
         return None
 
     def store(self, prompt, response):
         prompt_hash = hashlib.md5(prompt.encode('utf-8')).hexdigest()
+        # Evict existing identical key if present
+        self.cache = [it for it in self.cache if it["prompt_hash"] != prompt_hash]
+        # Evict oldest if reaching capacity (LRU)
+        if len(self.cache) >= self.max_size:
+            self.cache.pop(0)
         self.cache.append({
             "prompt_hash": prompt_hash,
             "prompt": prompt,
@@ -508,65 +518,173 @@ class GeminiProvider(LLMProvider):
             raise last_error
 
 
+class GroqProvider(LLMProvider):
+    MAX_PROMPT_CHARS = 120000
+    API_TIMEOUT = 60
+
+    def generate(self, prompt, model, api_key, system_instruction=None, ollama_url=None, response_schema=None):
+        api_key = api_key or os.environ.get('GROQ_API_KEY', '')
+        if not api_key:
+            raise ValueError("Chave de API do Groq não configurada (GROQ_API_KEY).")
+
+        model_name = model or "llama-3.3-70b-versatile"
+        if len(prompt) > self.MAX_PROMPT_CHARS:
+            prompt = prompt[:self.MAX_PROMPT_CHARS] + "\n\n[TEXTO TRUNCADO POR SEGURANÇA]"
+
+        messages = []
+        if system_instruction:
+            messages.append({"role": "system", "content": system_instruction})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": 0.2
+        }
+        if response_schema:
+            payload["response_format"] = {"type": "json_object"}
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        req_data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions", data=req_data, headers=headers, method='POST')
+
+        with urllib.request.urlopen(req, timeout=self.API_TIMEOUT) as response:
+            res_json = json.loads(response.read().decode('utf-8'))
+            return res_json['choices'][0]['message']['content']
+
+    def stream_generate(self, prompt, model, api_key, system_instruction=None, response_schema=None):
+        api_key = api_key or os.environ.get('GROQ_API_KEY', '')
+        if not api_key:
+            raise ValueError("Chave de API do Groq não configurada (GROQ_API_KEY).")
+
+        model_name = model or "llama-3.3-70b-versatile"
+        messages = []
+        if system_instruction:
+            messages.append({"role": "system", "content": system_instruction})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": 0.2,
+            "stream": True
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        req_data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions", data=req_data, headers=headers, method='POST')
+
+        with urllib.request.urlopen(req, timeout=self.API_TIMEOUT) as response:
+            for line in response:
+                line_str = line.decode('utf-8').strip()
+                if line_str.startswith("data: ") and line_str != "data: [DONE]":
+                    try:
+                        chunk_json = json.loads(line_str[6:])
+                        delta = chunk_json['choices'][0].get('delta', {})
+                        content = delta.get('content', '')
+                        if content:
+                            yield content
+                    except Exception:
+                        pass
+
+
 # ----------------------------------------------------
 # 4. Gateway Manager (LLM Gateway Router)
 # ----------------------------------------------------
 class LLMGateway:
     def __init__(self):
         self.providers = {
-            "gemini": GeminiProvider()
+            "gemini": GeminiProvider(),
+            "groq": GroqProvider()
         }
         self.cache = SemanticCache()
 
     def generate(self, provider_name, model, api_key, prompt, system_instruction=None, 
                  ollama_url=None, use_cache=True, response_schema=None, threshold=0.85):
+        provider_key = (provider_name or "gemini").lower()
         
-        provider = self.providers.get("gemini")
-            
         if use_cache:
-            # Check cache with prompt + model + provider combined to avoid mixing context
-            cache_key = f"[gemini:{model}] System: {system_instruction or ''}\nPrompt: {prompt}"
+            cache_key = f"[{provider_key}:{model}] System: {system_instruction or ''}\nPrompt: {prompt}"
             cached_response = self.cache.lookup(cache_key, threshold=threshold)
             if cached_response:
                 return cached_response
 
-        # Execute generation
-        response_text = provider.generate(
-            prompt=prompt,
-            model=model,
-            api_key=api_key,
-            system_instruction=system_instruction,
-            ollama_url=ollama_url,
-            response_schema=response_schema
-        )
+        provider = self.providers.get(provider_key, self.providers["gemini"])
+        try:
+            response_text = provider.generate(
+                prompt=prompt,
+                model=model,
+                api_key=api_key,
+                system_instruction=system_instruction,
+                ollama_url=ollama_url,
+                response_schema=response_schema
+            )
+        except Exception as e:
+            groq_key = os.environ.get('GROQ_API_KEY')
+            if provider_key == "gemini" and groq_key and ("429" in str(e) or "quota" in str(e).lower() or "limit" in str(e).lower()):
+                print(f"[GATEWAY][FALLBACK] Gemini atingiu rate-limit/erro ({e}). Executando fallback automático para Groq...")
+                groq_provider = self.providers["groq"]
+                response_text = groq_provider.generate(
+                    prompt=prompt,
+                    model="llama-3.3-70b-versatile",
+                    api_key=groq_key,
+                    system_instruction=system_instruction,
+                    ollama_url=ollama_url,
+                    response_schema=response_schema
+                )
+            else:
+                raise e
         
         if use_cache:
-            cache_key = f"[gemini:{model}] System: {system_instruction or ''}\nPrompt: {prompt}"
+            cache_key = f"[{provider_key}:{model}] System: {system_instruction or ''}\nPrompt: {prompt}"
             self.cache.store(cache_key, response_text)
             
         return response_text
 
     def stream_generate(self, provider_name, model, api_key, prompt, system_instruction=None, 
                         ollama_url=None, use_cache=True, response_schema=None, threshold=0.85):
-        provider = self.providers.get("gemini")
+        provider_key = (provider_name or "gemini").lower()
         if use_cache:
-            cache_key = f"[gemini:{model}] System: {system_instruction or ''}\nPrompt: {prompt}"
+            cache_key = f"[{provider_key}:{model}] System: {system_instruction or ''}\nPrompt: {prompt}"
             cached_response = self.cache.lookup(cache_key, threshold=threshold)
             if cached_response:
                 yield cached_response
                 return
 
+        provider = self.providers.get(provider_key, self.providers["gemini"])
         full_text = ""
-        for chunk in provider.stream_generate(
-            prompt=prompt,
-            model=model,
-            api_key=api_key,
-            system_instruction=system_instruction,
-            response_schema=response_schema
-        ):
-            full_text += chunk
-            yield chunk
+        try:
+            for chunk in provider.stream_generate(
+                prompt=prompt,
+                model=model,
+                api_key=api_key,
+                system_instruction=system_instruction,
+                response_schema=response_schema
+            ):
+                full_text += chunk
+                yield chunk
+        except Exception as e:
+            groq_key = os.environ.get('GROQ_API_KEY')
+            if provider_key == "gemini" and groq_key and not full_text and ("429" in str(e) or "quota" in str(e).lower() or "limit" in str(e).lower()):
+                print(f"[GATEWAY][STREAM-FALLBACK] Gemini stream falhou ({e}). Fallback automático para Groq...")
+                groq_provider = self.providers["groq"]
+                for chunk in groq_provider.stream_generate(
+                    prompt=prompt,
+                    model="llama-3.3-70b-versatile",
+                    api_key=groq_key,
+                    system_instruction=system_instruction,
+                    response_schema=response_schema
+                ):
+                    full_text += chunk
+                    yield chunk
+            else:
+                raise e
             
         if use_cache and full_text:
-            cache_key = f"[gemini:{model}] System: {system_instruction or ''}\nPrompt: {prompt}"
+            cache_key = f"[{provider_key}:{model}] System: {system_instruction or ''}\nPrompt: {prompt}"
             self.cache.store(cache_key, full_text)

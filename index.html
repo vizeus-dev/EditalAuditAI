@@ -42,6 +42,7 @@
                 </label>
                 <span class="theme-icon">☀️</span>
             </div>
+            <div id="user-auth-pill" style="display: flex; align-items: center;"></div>
             <div id="offline-status-badge"
                 style="display: flex; align-items: center; gap: 0.3rem; background: rgba(34, 197, 94, 0.12); color: #16a34a; padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; border: 1px solid rgba(34, 197, 94, 0.3);"
                 title="Banco local IndexedDB ativo para autonomia offline 100%">⚡ Offline-First (IndexedDB)</div>
@@ -53,6 +54,40 @@
             </div>
         </div>
     </header>
+
+    <!-- BARRA DE MÚLTIPLAS INSTÂNCIAS (GERENCIADOR DE PROJETOS SIMULTÂNEOS) -->
+    <div class="multi-instance-bar" id="multi-instance-bar">
+        <div class="instance-tabs-wrapper">
+            <button class="btn btn-cyber-emerald btn-sm btn-new-instance" id="btn-new-instance" title="Criar nova proposta / edital independente">
+                <span>➕</span> Novo Projeto
+            </button>
+            <div class="instance-tabs-list" id="instance-tabs-list" role="tablist">
+                <!-- Abas dinâmicas renderizadas por app.js -->
+            </div>
+        </div>
+        <div class="instance-actions-toolbar">
+            <button class="btn btn-secondary btn-sm" id="btn-cloud-projects" onclick="window.cloudSyncController.openCloudProjectsModal()" title="Meus editais salvos na nuvem">
+                📁 Meus Editais
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-share-project" onclick="window.cloudSyncController.openShareModal()" title="Compartilhar edital ativo com link seguro">
+                🔗 Compartilhar
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-duplicate-instance" title="Duplicar proposta ativa para adaptar a outro edital">
+                📋 Duplicar Projeto
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-save-all-instances" title="Salvar todas as instâncias no banco local">
+                💾 Salvar Tudo
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-export-instance-json" title="Exportar projeto ativo em JSON">
+                📥 Exportar (.json)
+            </button>
+            <label class="btn btn-secondary btn-sm" style="cursor: pointer; margin: 0;" title="Importar arquivo de projeto em JSON">
+                📂 Importar (.json)
+                <input type="file" id="input-import-instance-json" accept=".json" style="display: none;">
+            </label>
+        </div>
+    </div>
+
     <main class="workspace-split-layout">
 
         <!-- COLUNA ESQUERDA: EDITOR PERSISTENTE -->
@@ -74,6 +109,8 @@
                             </label>
                         </div>
                         <div class="toolbar-actions">
+                            <button class="btn btn-primary toolbar-action-btn btn-glow-pulse" id="btn-toolbar-elaborate"
+                                title="Ir direto para a elaboração e redação com IA">⚡ Elaborar com IA</button>
                             <button class="btn btn-secondary toolbar-action-btn" id="btn-undo-proposal"
                                 title="Voltar à Versão Anterior no Editor">⏮️ Versão Anterior</button>
                             <button class="btn btn-secondary toolbar-action-btn" id="btn-redo-proposal"
@@ -225,19 +262,19 @@
         <!-- COLUNA DIREITA: TABS INTERFACES -->
         <section class="tabs-column">
             <nav class="workspace-tabs">
-                <button class="w-tab-btn active" data-tab="setup">📂 Ingestão</button>
-                <button class="w-tab-btn" data-tab="auditor">⚖️ Auditoria</button>
-                <button class="w-tab-btn" data-tab="revisor">🕵️ Revisão</button>
-                <button class="w-tab-btn" data-tab="supervisor">🧠 Supervisor</button>
-                <button class="w-tab-btn" data-tab="redator">✍️ Redação</button>
-                <button class="w-tab-btn" data-tab="finalizacao">🏆 Finalização</button>
-                <button class="w-tab-btn" data-tab="biblioteca">📚 Biblioteca</button>
+                <button class="w-tab-btn active" data-tab="redator">✍️ Studio de Elaboração</button>
+                <button class="w-tab-btn" data-tab="setup">📂 Ingestão & Referências</button>
+                <button class="w-tab-btn" data-tab="revisor">🕵️ Revisão & Pareceres</button>
+                <button class="w-tab-btn" data-tab="supervisor">🧠 Planejamento & Diretrizes</button>
+                <button class="w-tab-btn" data-tab="auditor">⚖️ Auditoria & Conformidade</button>
+                <button class="w-tab-btn" data-tab="finalizacao">🏆 Finalização & Exportação</button>
+                <button class="w-tab-btn" data-tab="biblioteca">📚 Biblioteca de Modelos</button>
             </nav>
 
             <div class="workspace-tab-contents">
 
                 <!-- TAB 1: INGESTÃO E SETUP -->
-                <div class="w-tab-pane active" id="pane-setup">
+                <div class="w-tab-pane" id="pane-setup">
                     <div class="pane-header">
                         <h2>Upload & Ingestão de Referências</h2>
                         <p>Configure a memória interna dos agentes enviando o edital vigente, regulamentos e anexos.</p>
@@ -885,11 +922,36 @@
                 </div>
 
                 <!-- TAB 5: REDATOR -->
-                <div class="w-tab-pane" id="pane-redator">
+                <div class="w-tab-pane active" id="pane-redator">
                     <div class="pane-header">
-                        <h2>Assistente de Redação</h2>
-                        <p>Escreva seções completas utilizando IA orientada pelas diretrizes consolidadas do Supervisor
-                            e referências do edital.</p>
+                        <h2>Studio de Elaboração & Redação com IA</h2>
+                        <p>Ideie, estruture e elabore propostas completas com suporte de inteligência artificial de ponta a ponta.</p>
+                    </div>
+
+                    <!-- CARD MESTRE: CONCEPÇÃO & ELABORAÇÃO RÁPIDA DE PROJETO -->
+                    <div class="card card-elaboracao-hero" style="border: 2px solid var(--color-primary); background: linear-gradient(135deg, rgba(0, 212, 255, 0.08), rgba(99, 102, 241, 0.04)); margin-bottom: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                            <h3 style="margin: 0; color: var(--color-primary); font-size: 1.15rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <span>⚡</span> Concepção & Elaboração de Proposta Completa
+                            </h3>
+                            <span style="font-size: 0.75rem; background: rgba(0, 212, 255, 0.15); color: var(--color-primary); padding: 0.2rem 0.6rem; border-radius: 12px; font-weight: 600; border: 1px solid rgba(0, 212, 255, 0.3);">
+                                Modo Criação Ativo
+                            </span>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem; line-height: 1.5;">
+                            Elabore o projeto inteiro cruzando os regulamentos do certame com suas anotações e objetivos, gerando as 14 seções ABNT e o demonstrativo de custos de forma aprofundada.
+                        </p>
+                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                            <button class="btn btn-primary btn-auto btn-glow-pulse" id="btn-redator-generate-full-cross" style="flex: 1; min-width: 220px;" title="Disparar a geração de todas as seções exigidas cruzando o edital e anotações">
+                                ⚡ Gerar Proposta Completa Cruzada
+                            </button>
+                            <button class="btn btn-secondary btn-auto" id="btn-redator-quick-draft" style="flex: 1; min-width: 180px;" title="Preencher esboço estruturado preliminar">
+                                💡 Estruturar Esboço Rápido
+                            </button>
+                            <button class="btn btn-cyber-purple btn-auto" id="btn-redator-format-abnt-now" style="flex: 1; min-width: 170px;" title="Aplicar formatação ABNT NBR 14724">
+                                🪄 Formatar ABNT IA
+                            </button>
+                        </div>
                     </div>
 
                     <!-- CÁPSULA DE DIRETRIZ DO SUPERVISOR -->
@@ -1142,6 +1204,160 @@
         </section>
     </main>
 
+    <!-- ==========================================================================
+         MODAIS SAAS (AUTENTICAÇÃO, COMPARTILHAMENTO & MEUS EDITAIS)
+         ========================================================================== -->
+
+    <!-- Modal de Autenticação Supabase -->
+    <div id="authModal" class="modal-backdrop-custom" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+        <div class="modal-card-custom" onclick="event.stopPropagation()">
+            <div class="modal-header-custom">
+                <div>
+                    <h3 id="auth-modal-title" class="modal-title-custom">Acessar Portal EditalAudit</h3>
+                    <div id="auth-modal-subtitle" class="modal-subtitle-custom">Sincronize seus editais e desbloqueie o copiloto em nuvem</div>
+                </div>
+                <button class="btn-close-custom" onclick="window.cloudSyncController.closeAuthModal()" aria-label="Fechar">✕</button>
+            </div>
+            <div class="auth-tabs-custom" role="tablist">
+                <button type="button" class="auth-tab-btn-custom active" id="tab-btn-login" onclick="setAuthTab('login')">Entrar</button>
+                <button type="button" class="auth-tab-btn-custom" id="tab-btn-register" onclick="setAuthTab('register')">Criar Conta</button>
+            </div>
+            <div class="auth-body-custom">
+                <button type="button" class="btn-google-custom" onclick="window.cloudSyncController.signInWithGoogle()">
+                    <svg width="18" height="18" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                    </svg>
+                    Continuar com o Google
+                </button>
+                <div class="auth-divider-custom"><span>ou com seu e-mail</span></div>
+                <form id="auth-email-form" onsubmit="handleAuthSubmit(event)">
+                    <div id="register-name-field" class="auth-input-group" style="display: none; margin-bottom: 0.75rem;">
+                        <label for="auth-name-input">Nome Completo:</label>
+                        <input type="text" id="auth-name-input" placeholder="Seu nome ou Razão Social">
+                    </div>
+                    <div class="auth-input-group" style="margin-bottom: 0.75rem;">
+                        <label for="auth-email-input">E-mail Corporativo ou Pessoal:</label>
+                        <input type="email" id="auth-email-input" required placeholder="seu.email@exemplo.com">
+                    </div>
+                    <div class="auth-input-group" style="margin-bottom: 1rem;">
+                        <label for="auth-password-input">Senha de Acesso:</label>
+                        <input type="password" id="auth-password-input" required placeholder="••••••••">
+                    </div>
+                    <div id="auth-feedback-msg" style="display: none; font-size: 0.8rem; padding: 0.5rem; border-radius: 6px; margin-bottom: 0.75rem;"></div>
+                    <button type="submit" id="btn-auth-submit" class="btn btn-cyber-emerald" style="width: 100%; justify-content: center; padding: 0.65rem;">
+                        Entrar na Plataforma
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Compartilhamento Público -->
+    <div id="shareModal" class="modal-backdrop-custom" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+        <div class="modal-card-custom" onclick="event.stopPropagation()">
+            <div class="modal-header-custom">
+                <div>
+                    <h3 id="share-modal-title" class="modal-title-custom">Compartilhar Auditoria & Proposta</h3>
+                    <div class="modal-subtitle-custom">Gere um link seguro somente-leitura para clientes ou sua equipe</div>
+                </div>
+                <button class="btn-close-custom" onclick="window.cloudSyncController.closeShareModal()" aria-label="Fechar">✕</button>
+            </div>
+            <div style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+                <p style="margin: 0; font-size: 0.85rem; color: #cbd5e1; line-height: 1.4;">
+                    Qualquer pessoa com este link poderá visualizar a análise dos 14 pareceristas, a folha A4 e a planilha de auditoria sem poder editar seu projeto.
+                </p>
+                <div style="display: flex; gap: 0.5rem;">
+                    <input type="text" id="share-link-input" readonly style="flex: 1; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.12); padding: 0.65rem; border-radius: 8px; color: #00d4ff; font-family: var(--font-code); font-size: 0.8rem;">
+                    <button class="btn btn-cyber-emerald btn-sm" onclick="copyShareLink()">📋 Copiar</button>
+                </div>
+                <div id="share-copy-toast" style="display: none; font-size: 0.8rem; color: #10b981; font-weight: 600;">
+                    ✓ Link copiado para a área de transferência!
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal/Drawer de Meus Editais na Nuvem -->
+    <div id="cloudProjectsModal" class="modal-backdrop-custom" role="dialog" aria-modal="true" aria-labelledby="cloud-projects-title">
+        <div class="modal-card-custom" style="max-width: 600px;" onclick="event.stopPropagation()">
+            <div class="modal-header-custom">
+                <div>
+                    <h3 id="cloud-projects-title" class="modal-title-custom">📁 Meus Editais & Propostas</h3>
+                    <div class="modal-subtitle-custom">Seus projetos salvos localmente e sincronizados na nuvem</div>
+                </div>
+                <button class="btn-close-custom" onclick="window.cloudSyncController.closeCloudProjectsModal()" aria-label="Fechar">✕</button>
+            </div>
+            <div style="padding: 1.25rem;">
+                <div id="cloud-projects-list" style="max-height: 380px; overflow-y: auto;">
+                    <!-- Renderizado dinamicamente por cloudSyncController.js -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Compra de Créditos Avulsos via Pix (Asaas Pay-Per-Use) -->
+    <div id="buyCreditsModal" class="modal-backdrop-custom" role="dialog" aria-modal="true" aria-labelledby="buy-credits-title">
+        <div class="modal-card-custom" style="max-width: 520px;" onclick="event.stopPropagation()">
+            <div class="modal-header-custom">
+                <div>
+                    <h3 id="buy-credits-title" class="modal-title-custom">💳 Adicionar Créditos de Auditoria</h3>
+                    <div class="modal-subtitle-custom">Pague apenas pelo que usar via Pix instantâneo (Sem mensalidade)</div>
+                </div>
+                <button class="btn-close-custom" onclick="window.cloudSyncController.closeBuyCreditsModal()" aria-label="Fechar">✕</button>
+            </div>
+            <div style="padding: 1.5rem;">
+                <!-- Passo 1: Escolha do Pacote -->
+                <div id="pix-step-select">
+                    <p style="font-size: 0.85rem; color: #94a3b8; margin-top: 0; margin-bottom: 1rem;">
+                        Escolha a opção ideal para seu projeto. Cada crédito desbloqueia a análise completa de um edital com os 14 pareceristas M.U.S.A. e exportação ABNT:
+                    </p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
+                        <div class="pix-package-card" onclick="window.cloudSyncController.generatePixCharge('single')" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 10px; padding: 1.2rem; cursor: pointer; text-align: center; transition: all 0.2s ease;">
+                            <div style="font-size: 1.5rem; margin-bottom: 0.4rem;">🎯</div>
+                            <h4 style="margin: 0 0 0.4rem 0; font-size: 1rem; color: #f8fafc;">1 Análise Avulsa</h4>
+                            <div style="font-size: 1.35rem; font-weight: 800; color: #3b82f6;">R$ 9,90</div>
+                            <span style="font-size: 0.72rem; color: #94a3b8;">Ideal para testar 1 edital</span>
+                            <button class="btn btn-primary btn-sm" style="width: 100%; margin-top: 0.8rem; font-size: 0.8rem;">Pagar com Pix</button>
+                        </div>
+                        <div class="pix-package-card" onclick="window.cloudSyncController.generatePixCharge('pack5')" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(16, 185, 129, 0.5); border-radius: 10px; padding: 1.2rem; cursor: pointer; text-align: center; position: relative; transition: all 0.2s ease;">
+                            <span style="position: absolute; top: -10px; right: 10px; background: #10b981; color: #022c22; font-size: 0.65rem; font-weight: 800; padding: 0.15rem 0.5rem; border-radius: 10px;">20% OFF</span>
+                            <div style="font-size: 1.5rem; margin-bottom: 0.4rem;">🚀</div>
+                            <h4 style="margin: 0 0 0.4rem 0; font-size: 1rem; color: #f8fafc;">Combo 5 Análises</h4>
+                            <div style="font-size: 1.35rem; font-weight: 800; color: #10b981;">R$ 39,90</div>
+                            <span style="font-size: 0.72rem; color: #94a3b8;">R$ 7,98 por edital</span>
+                            <button class="btn btn-cyber-emerald btn-sm" style="width: 100%; margin-top: 0.8rem; font-size: 0.8rem;">Pagar com Pix</button>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; font-size: 0.75rem; color: #64748b;">
+                        <span>🔒 Pagamento seguro via Asaas</span> · <span>⚡ Liberação automática em 2s</span>
+                    </div>
+                </div>
+
+                <!-- Passo 2: QR Code e Código Pix -->
+                <div id="pix-step-payment" style="display: none; text-align: center;">
+                    <div id="pix-amount-display" style="font-size: 1.1rem; font-weight: 700; color: #3b82f6; margin-bottom: 0.8rem;"></div>
+                    <div style="background: #ffffff; padding: 0.8rem; border-radius: 12px; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.4); margin-bottom: 1rem;">
+                        <img id="pix-qr-image" src="" alt="QR Code Pix" style="width: 160px; height: 160px; display: block;">
+                    </div>
+                    <p style="font-size: 0.8rem; color: #94a3b8; margin: 0 0 0.5rem 0;">Ou copie e cole a chave Pix no seu aplicativo de banco:</p>
+                    <div style="display: flex; gap: 0.4rem; margin-bottom: 1rem;">
+                        <input type="text" id="pix-copy-input" readonly style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 0.5rem; color: #38bdf8; font-family: var(--font-code); font-size: 0.75rem;">
+                        <button class="btn btn-secondary btn-sm" onclick="copyPixCode()">📋 Copiar</button>
+                    </div>
+                    <div id="pix-status-indicator" style="font-size: 0.85rem; font-weight: 600; color: #f59e0b; margin-bottom: 1rem;">
+                        ⏳ Aguardando pagamento via Asaas Pix...
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('pix-step-select').style.display='block'; document.getElementById('pix-step-payment').style.display='none';">
+                        ← Voltar para opções
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- CDNs & Dependências Local -->
     <script type="module">
         import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs';
@@ -1149,6 +1365,9 @@
         window['pdfjs-dist/build/pdf'] = pdfjsLib;
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.11.0/mammoth.browser.min.js"></script>
+
+    <!-- Supabase Cloud SDK v2 -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <div id="toast-container" class="toast-container"></div>
 
@@ -1162,10 +1381,110 @@
     <!-- Motor de Busca Web em Tempo Real -->
     <script src="src/controllers/webSearchController.js?v=23"></script>
 
-    <!-- Controlador de IA (Modo Híbrido & Handoff Enriquecido) -->
+    <!-- Controlador de IA & Nuvem Supabase -->
+    <script src="src/controllers/cloudSyncController.js?v=24"></script>
     <script src="src/controllers/aiController.js?v=23"></script>
     <script src="sample_data.js?v=23"></script>
     <script src="app.js?v=23"></script>
+
+    <!-- Funções Auxiliares de UI dos Modais -->
+    <script>
+        let currentAuthTab = 'login';
+        function setAuthTab(tab) {
+            currentAuthTab = tab;
+            const btnLogin = document.getElementById('tab-btn-login');
+            const btnReg = document.getElementById('tab-btn-register');
+            const nameField = document.getElementById('register-name-field');
+            const title = document.getElementById('auth-modal-title');
+            const submitBtn = document.getElementById('btn-auth-submit');
+            const feedback = document.getElementById('auth-feedback-msg');
+            if (feedback) feedback.style.display = 'none';
+
+            if (tab === 'login') {
+                btnLogin.classList.add('active');
+                btnReg.classList.remove('active');
+                nameField.style.display = 'none';
+                title.textContent = 'Acessar Portal EditalAudit';
+                submitBtn.textContent = 'Entrar na Plataforma';
+            } else {
+                btnReg.classList.add('active');
+                btnLogin.classList.remove('active');
+                nameField.style.display = 'flex';
+                title.textContent = 'Criar Conta de Acesso';
+                submitBtn.textContent = 'Cadastrar e Desbloquear Acesso';
+            }
+        }
+
+        async function handleAuthSubmit(e) {
+            e.preventDefault();
+            const email = document.getElementById('auth-email-input').value.trim();
+            const password = document.getElementById('auth-password-input').value;
+            const fullName = document.getElementById('auth-name-input').value.trim();
+            const feedback = document.getElementById('auth-feedback-msg');
+            const submitBtn = document.getElementById('btn-auth-submit');
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Processando...';
+
+            try {
+                if (currentAuthTab === 'login') {
+                    const res = await window.cloudSyncController.signInWithEmail(email, password);
+                    if (!res.success) {
+                        feedback.style.display = 'block';
+                        feedback.style.background = 'rgba(255, 51, 102, 0.15)';
+                        feedback.style.color = '#ff3366';
+                        feedback.textContent = 'Erro ao entrar: ' + (res.error || 'Credenciais inválidas');
+                    } else {
+                        window.cloudSyncController.closeAuthModal();
+                    }
+                } else {
+                    const res = await window.cloudSyncController.signUpWithEmail(email, password, fullName);
+                    if (!res.success) {
+                        feedback.style.display = 'block';
+                        feedback.style.background = 'rgba(255, 51, 102, 0.15)';
+                        feedback.style.color = '#ff3366';
+                        feedback.textContent = 'Erro no cadastro: ' + (res.error || 'Não foi possível cadastrar');
+                    } else {
+                        feedback.style.display = 'block';
+                        feedback.style.background = 'rgba(16, 185, 129, 0.15)';
+                        feedback.style.color = '#10b981';
+                        feedback.textContent = res.message || 'Cadastro realizado com sucesso!';
+                        setTimeout(() => window.cloudSyncController.closeAuthModal(), 1200);
+                    }
+                }
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = currentAuthTab === 'login' ? 'Entrar na Plataforma' : 'Cadastrar e Desbloquear Acesso';
+            }
+        }
+
+        function copyShareLink() {
+            const input = document.getElementById('share-link-input');
+            if (input && input.value) {
+                navigator.clipboard.writeText(input.value).then(() => {
+                    const toast = document.getElementById('share-copy-toast');
+                    if (toast) {
+                        toast.style.display = 'block';
+                        setTimeout(() => { toast.style.display = 'none'; }, 2500);
+                    }
+                });
+            }
+        }
+
+        function copyPixCode() {
+            const input = document.getElementById('pix-copy-input');
+            if (input && input.value) {
+                navigator.clipboard.writeText(input.value).then(() => {
+                    const status = document.getElementById('pix-status-indicator');
+                    if (status) {
+                        const prev = status.textContent;
+                        status.textContent = '✓ Código Pix copiado! Cole no seu banco.';
+                        setTimeout(() => { status.textContent = prev; }, 3000);
+                    }
+                });
+            }
+        }
+    </script>
 </body>
 
 </html>

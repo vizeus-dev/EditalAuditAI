@@ -24,7 +24,7 @@ window.fetch = function (url, options) {
 // State Management
 let workspaceState = {
     activeAxis: 'cultural', // 'cultural', 'licitacao', 'concurso'
-    currentTab: 'setup',
+    currentTab: 'redator',
     editalRefText: '',
     editalRefName: '',
     editalProfile: null,
@@ -92,6 +92,519 @@ let workspaceState = {
     },
     generalHistory: []
 };
+
+// ============================================================
+// MULTI-INSTANCE MANAGER (GERENCIADOR DE PROJETOS SIMULTÂNEOS)
+// ============================================================
+const MULTI_INSTANCE_STORAGE_KEY = 'edital_audit_multi_instances_v1';
+const ACTIVE_INSTANCE_ID_KEY = 'edital_audit_active_instance_id_v1';
+
+let multiInstanceState = {
+    activeInstanceId: 'inst-1',
+    instances: {}
+};
+
+function escapeHtml(str) {
+    if (!str || typeof str !== 'string') return '';
+    return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function createBlankProjectState(name = 'Novo Projeto Cultural') {
+    return {
+        activeAxis: 'cultural',
+        currentTab: 'redator',
+        editalRefText: '',
+        editalRefName: '',
+        editalProfile: null,
+        proposalDraftText: '',
+        proposalDraftName: '',
+        ingestaoNotes: '',
+        annexes: [],
+        cover: {
+            title: name,
+            institution: '',
+            proponent: '',
+            city: '',
+            year: new Date().getFullYear().toString(),
+            budget: 0
+        },
+        documentContent: {
+            justificativa: '',
+            objetivos: '',
+            metodologia: '',
+            cronograma: '',
+            orcamento: '',
+            acessibilidade: '',
+            publico: '',
+            contrapartida: '',
+            comunicacao: '',
+            ficha_tecnica: '',
+            monitoramento: '',
+            compliance: '',
+            sustentabilidade: '',
+            rider: ''
+        },
+        library: [],
+        historicalMemories: [],
+        revisorHistory: {
+            justificativa: [], objetivos: [], metodologia: [], cronograma: [], orcamento: [],
+            acessibilidade: [], publico: [], contrapartida: [], comunicacao: [], ficha_tecnica: [],
+            monitoramento: [], compliance: [], sustentabilidade: [], rider: []
+        },
+        revisorAgentsResults: {},
+        generalHistory: []
+    };
+}
+
+function initMultiInstanceManager() {
+    try {
+        const savedData = localStorage.getItem(MULTI_INSTANCE_STORAGE_KEY);
+        const savedActiveId = localStorage.getItem(ACTIVE_INSTANCE_ID_KEY);
+
+        if (savedData) {
+            const parsed = JSON.parse(savedData);
+            if (parsed && parsed.instances && Object.keys(parsed.instances).length > 0) {
+                multiInstanceState.instances = parsed.instances;
+                if (savedActiveId && multiInstanceState.instances[savedActiveId]) {
+                    multiInstanceState.activeInstanceId = savedActiveId;
+                } else {
+                    multiInstanceState.activeInstanceId = Object.keys(multiInstanceState.instances)[0];
+                }
+            }
+        } else {
+            const legacyState = localStorage.getItem('edital_audit_workspace_state');
+            if (legacyState) {
+                try {
+                    const parsedLegacy = JSON.parse(legacyState);
+                    const title = (parsedLegacy.cover && parsedLegacy.cover.title) ? parsedLegacy.cover.title : 'Projeto Importado';
+                    multiInstanceState.instances['inst-1'] = {
+                        id: 'inst-1',
+                        name: title,
+                        updatedAt: new Date().toISOString(),
+                        state: parsedLegacy
+                    };
+                    multiInstanceState.activeInstanceId = 'inst-1';
+                } catch (e) {
+                    console.warn("Erro ao migrar estado legado:", e);
+                }
+            }
+        }
+
+        if (!multiInstanceState.instances[multiInstanceState.activeInstanceId]) {
+            const firstId = 'inst-' + Date.now();
+            multiInstanceState.activeInstanceId = firstId;
+            multiInstanceState.instances[firstId] = {
+                id: firstId,
+                name: (workspaceState.cover && workspaceState.cover.title) ? workspaceState.cover.title : 'Festival Sons da Terra',
+                updatedAt: new Date().toISOString(),
+                state: JSON.parse(JSON.stringify(workspaceState))
+            };
+        }
+
+        const activeInst = multiInstanceState.instances[multiInstanceState.activeInstanceId];
+        if (activeInst && activeInst.state) {
+            const defaultDocContent = Object.assign({}, workspaceState.documentContent);
+            const defaultCover = Object.assign({}, workspaceState.cover);
+            workspaceState = Object.assign(workspaceState, activeInst.state);
+            workspaceState.documentContent = Object.assign(defaultDocContent, activeInst.state.documentContent || {});
+            workspaceState.cover = Object.assign(defaultCover, activeInst.state.cover || {});
+        }
+
+        saveMultiInstanceState(true);
+        renderMultiInstanceBar();
+    } catch (e) {
+        console.error("[MULTI-INSTANCE] Erro na inicialização:", e);
+    }
+}
+
+let _multiInstanceSaveTimeout = null;
+function saveMultiInstanceState(immediate = false) {
+    if (window._skipSaveWorkspace) return;
+
+    const performSave = () => {
+        try {
+            const activeId = multiInstanceState.activeInstanceId;
+            if (activeId && multiInstanceState.instances[activeId]) {
+                multiInstanceState.instances[activeId].state = JSON.parse(JSON.stringify(workspaceState));
+                const currentTitle = (workspaceState.cover && workspaceState.cover.title) ? workspaceState.cover.title.trim() : '';
+                if (currentTitle) {
+                    multiInstanceState.instances[activeId].name = currentTitle;
+                }
+                multiInstanceState.instances[activeId].updatedAt = new Date().toISOString();
+            }
+
+            localStorage.setItem(MULTI_INSTANCE_STORAGE_KEY, JSON.stringify(multiInstanceState));
+            localStorage.setItem(ACTIVE_INSTANCE_ID_KEY, multiInstanceState.activeInstanceId);
+            renderMultiInstanceBar();
+        } catch (e) {
+            console.warn("[MULTI-INSTANCE] Erro ao persistir:", e);
+        }
+    };
+
+    if (immediate) {
+        if (_multiInstanceSaveTimeout) clearTimeout(_multiInstanceSaveTimeout);
+        performSave();
+    } else {
+        if (_multiInstanceSaveTimeout) clearTimeout(_multiInstanceSaveTimeout);
+        _multiInstanceSaveTimeout = setTimeout(performSave, 400);
+    }
+}
+
+function renderMultiInstanceBar() {
+    const listEl = document.getElementById('instance-tabs-list');
+    if (!listEl) return;
+
+    const instances = Object.values(multiInstanceState.instances);
+    const activeId = multiInstanceState.activeInstanceId;
+
+    listEl.innerHTML = instances.map(inst => {
+        const isActive = inst.id === activeId;
+        const displayName = inst.name || (inst.state && inst.state.cover && inst.state.cover.title) || 'Sem Título';
+        return `
+            <div class="instance-tab-item ${isActive ? 'active' : ''}" data-instance-id="${inst.id}" title="${escapeHtml(displayName)}">
+                <span class="instance-tab-badge">📑</span>
+                <span class="instance-tab-title">${escapeHtml(displayName)}</span>
+                ${instances.length > 1 ? `<button type="button" class="instance-tab-close" data-close-instance="${inst.id}" title="Fechar esta proposta">×</button>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+function switchInstance(targetId) {
+    if (!targetId || targetId === multiInstanceState.activeInstanceId) return;
+    if (!multiInstanceState.instances[targetId]) return;
+
+    saveMultiInstanceState(true);
+
+    multiInstanceState.activeInstanceId = targetId;
+    const nextInst = multiInstanceState.instances[targetId];
+
+    const defaultDocContent = Object.assign({}, workspaceState.documentContent);
+    const defaultCover = Object.assign({}, workspaceState.cover);
+    workspaceState = Object.assign(workspaceState, JSON.parse(JSON.stringify(nextInst.state)));
+    workspaceState.documentContent = Object.assign(defaultDocContent, nextInst.state.documentContent || {});
+    workspaceState.cover = Object.assign(defaultCover, nextInst.state.cover || {});
+
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val !== undefined && val !== null ? val : '';
+    };
+
+    setVal('cover-title', workspaceState.cover ? workspaceState.cover.title : '');
+    setVal('cover-institution', workspaceState.cover ? workspaceState.cover.institution : '');
+    setVal('cover-proponent', workspaceState.cover ? workspaceState.cover.proponent : '');
+    setVal('cover-city', workspaceState.cover ? workspaceState.cover.city : '');
+    setVal('cover-year', workspaceState.cover ? workspaceState.cover.year : '');
+    setVal('cover-budget', workspaceState.cover ? workspaceState.cover.budget : '');
+
+    setVal('edital-ref-text', workspaceState.editalRefText || '');
+    setVal('proposal-draft-text', workspaceState.proposalDraftText || '');
+    setVal('ingestao-notes-text', workspaceState.ingestaoNotes || '');
+
+    const fileRefName = document.getElementById('file-name-edital-ref');
+    const fileRefBadge = document.getElementById('file-badge-edital-ref');
+    if (fileRefName && fileRefBadge) {
+        if (workspaceState.editalRefName) {
+            fileRefName.textContent = workspaceState.editalRefName;
+            fileRefBadge.style.display = 'flex';
+        } else {
+            fileRefBadge.style.display = 'none';
+        }
+    }
+
+    const fileDraftName = document.getElementById('file-name-proposal-draft');
+    const fileDraftBadge = document.getElementById('file-badge-proposal-draft');
+    if (fileDraftName && fileDraftBadge) {
+        if (workspaceState.proposalDraftName) {
+            fileDraftName.textContent = workspaceState.proposalDraftName;
+            fileDraftBadge.style.display = 'flex';
+        } else {
+            fileDraftBadge.style.display = 'none';
+        }
+    }
+
+    const axisSelect = document.getElementById('axis-select');
+    if (axisSelect && workspaceState.activeAxis) {
+        axisSelect.value = workspaceState.activeAxis;
+    }
+
+    syncEditorContentToDOM();
+    updateCoverPreviewDOM();
+    renderAnnexesList();
+    updatePlaceholderStates();
+    renderEditalProfileCard();
+
+    localStorage.setItem(ACTIVE_INSTANCE_ID_KEY, targetId);
+    renderMultiInstanceBar();
+
+    if (typeof showToast === 'function') {
+        showToast(`📂 Projeto aberto: "${nextInst.name}"`, "info");
+    }
+}
+
+function createNewInstance(name) {
+    saveMultiInstanceState(true);
+
+    const count = Object.keys(multiInstanceState.instances).length + 1;
+    const newId = 'inst-' + Date.now();
+    const projName = name || `Projeto ${count} — Novo Edital`;
+
+    const newState = createBlankProjectState(projName);
+    multiInstanceState.instances[newId] = {
+        id: newId,
+        name: projName,
+        updatedAt: new Date().toISOString(),
+        state: newState
+    };
+
+    switchInstance(newId);
+    if (typeof window.activateTab === 'function') {
+        window.activateTab('redator');
+    }
+    if (typeof showToast === 'function') {
+        showToast(`✓ Nova proposta criada: "${projName}"`, "success");
+    }
+}
+
+function duplicateActiveInstance() {
+    saveMultiInstanceState(true);
+
+    const currentInst = multiInstanceState.instances[multiInstanceState.activeInstanceId];
+    if (!currentInst) return;
+
+    const newId = 'inst-' + Date.now();
+    const currentName = currentInst.name || 'Projeto';
+    const copyName = `(Cópia) ${currentName}`;
+
+    const clonedState = JSON.parse(JSON.stringify(workspaceState));
+    if (clonedState.cover) {
+        clonedState.cover.title = copyName;
+    }
+
+    multiInstanceState.instances[newId] = {
+        id: newId,
+        name: copyName,
+        updatedAt: new Date().toISOString(),
+        state: clonedState
+    };
+
+    switchInstance(newId);
+    if (typeof showToast === 'function') {
+        showToast(`✓ Proposta duplicada com sucesso! Você agora está editando: "${copyName}"`, "success");
+    }
+}
+
+function closeInstance(idToClose) {
+    const keys = Object.keys(multiInstanceState.instances);
+    if (keys.length <= 1) {
+        if (typeof showToast === 'function') {
+            showToast("Você precisa ter pelo menos 1 proposta aberta.", "warning");
+        }
+        return;
+    }
+
+    const inst = multiInstanceState.instances[idToClose];
+    const name = inst ? inst.name : 'este projeto';
+
+    if (!confirm(`Deseja fechar a proposta "${name}"? Todas as alterações salvas permanecerão no banco local.`)) {
+        return;
+    }
+
+    if (multiInstanceState.activeInstanceId === idToClose) {
+        const nextId = keys.find(k => k !== idToClose);
+        switchInstance(nextId);
+    }
+
+    delete multiInstanceState.instances[idToClose];
+    saveMultiInstanceState(true);
+    renderMultiInstanceBar();
+
+    if (typeof showToast === 'function') {
+        showToast(`Proposta "${name}" fechada.`, "info");
+    }
+}
+
+function exportActiveInstanceJson() {
+    saveMultiInstanceState(true);
+    const activeId = multiInstanceState.activeInstanceId;
+    const inst = multiInstanceState.instances[activeId];
+    if (!inst) return;
+
+    const exportBundle = {
+        app: "EditalAudit AI",
+        format: "multi-instance-project",
+        version: "3.0",
+        exportedAt: new Date().toISOString(),
+        instance: inst
+    };
+
+    const blob = new Blob([JSON.stringify(exportBundle, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeTitle = (inst.name || 'projeto').replace(/[^a-zA-Z0-9_-]/g, '_');
+    a.download = `EditalAudit_${safeTitle}_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    if (typeof showToast === 'function') {
+        showToast("✓ Projeto exportado em arquivo JSON com sucesso!", "success");
+    }
+}
+
+function importInstanceJson(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            let importedInst = null;
+
+            if (data.instance && data.instance.state) {
+                importedInst = data.instance;
+            } else if (data.cover && data.documentContent) {
+                importedInst = {
+                    id: 'inst-' + Date.now(),
+                    name: data.cover.title || file.name.replace('.json', ''),
+                    updatedAt: new Date().toISOString(),
+                    state: data
+                };
+            }
+
+            if (!importedInst || !importedInst.state) {
+                throw new Error("Formato de arquivo de projeto inválido.");
+            }
+
+            const newId = 'inst-' + Date.now();
+            importedInst.id = newId;
+            multiInstanceState.instances[newId] = importedInst;
+            saveMultiInstanceState(true);
+            switchInstance(newId);
+
+            if (typeof showToast === 'function') {
+                showToast(`✓ Projeto "${importedInst.name}" importado com sucesso!`, "success");
+            }
+        } catch (err) {
+            console.error("Erro ao importar projeto:", err);
+            if (typeof showToast === 'function') {
+                showToast("Erro ao importar projeto: " + err.message, "error");
+            }
+        }
+    };
+    reader.readAsText(file, 'utf-8');
+}
+
+function setupMultiInstanceEventListeners() {
+    const btnNew = document.getElementById('btn-new-instance');
+    if (btnNew) {
+        btnNew.addEventListener('click', () => {
+            const name = prompt("Digite o título ou objeto do novo projeto/edital:", `Projeto ${Object.keys(multiInstanceState.instances).length + 1}`);
+            if (name !== null) {
+                createNewInstance(name.trim() || undefined);
+            }
+        });
+    }
+
+    const btnDup = document.getElementById('btn-duplicate-instance');
+    if (btnDup) {
+        btnDup.addEventListener('click', () => {
+            duplicateActiveInstance();
+        });
+    }
+
+    const btnSaveAll = document.getElementById('btn-save-all-instances');
+    if (btnSaveAll) {
+        btnSaveAll.addEventListener('click', () => {
+            saveMultiInstanceState(true);
+            if (typeof showToast === 'function') {
+                showToast("✓ Todas as propostas salvas com sucesso no banco local!", "success");
+            }
+        });
+    }
+
+    const btnExport = document.getElementById('btn-export-instance-json');
+    if (btnExport) {
+        btnExport.addEventListener('click', exportActiveInstanceJson);
+    }
+
+    const inputImport = document.getElementById('input-import-instance-json');
+    if (inputImport) {
+        inputImport.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (file) {
+                importInstanceJson(file);
+                e.target.value = '';
+            }
+        });
+    }
+
+    const listEl = document.getElementById('instance-tabs-list');
+    if (listEl) {
+        listEl.addEventListener('click', (e) => {
+            const closeBtn = e.target.closest('[data-close-instance]');
+            if (closeBtn) {
+                e.stopPropagation();
+                const idToClose = closeBtn.getAttribute('data-close-instance');
+                closeInstance(idToClose);
+                return;
+            }
+
+            const tabItem = e.target.closest('[data-instance-id]');
+            if (tabItem) {
+                const targetId = tabItem.getAttribute('data-instance-id');
+                switchInstance(targetId);
+            }
+        });
+    }
+
+    const btnToolbarElaborate = document.getElementById('btn-toolbar-elaborate');
+    if (btnToolbarElaborate) {
+        btnToolbarElaborate.addEventListener('click', () => {
+            if (typeof window.activateTab === 'function') {
+                window.activateTab('redator');
+            }
+            const redatorPrompt = document.getElementById('redator-prompt');
+            if (redatorPrompt) {
+                redatorPrompt.focus();
+                redatorPrompt.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+    }
+
+    const btnHeroGenerate = document.getElementById('btn-redator-generate-full-cross');
+    if (btnHeroGenerate) {
+        btnHeroGenerate.addEventListener('click', () => {
+            if (typeof generateBasicProposal === 'function') {
+                generateBasicProposal();
+            }
+        });
+    }
+
+    const btnHeroDraft = document.getElementById('btn-redator-quick-draft');
+    if (btnHeroDraft) {
+        btnHeroDraft.addEventListener('click', () => {
+            if (typeof generateBasicProposal === 'function') {
+                generateBasicProposal();
+            } else if (typeof showToast === 'function') {
+                showToast("Preencha as anotações do proponente abaixo e clique em '✨ Gerar Seção Selecionada'.", "info");
+            }
+        });
+    }
+
+    const btnHeroAbnt = document.getElementById('btn-redator-format-abnt-now');
+    if (btnHeroAbnt) {
+        btnHeroAbnt.addEventListener('click', () => {
+            const btnFormat = document.getElementById('btn-format-abnt-ai');
+            if (btnFormat) {
+                btnFormat.click();
+            }
+        });
+    }
+}
 
 let activeRevisor = 'justificativa';
 let geminiKey = "";
@@ -271,6 +784,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     loadSavedKey();
     restoreWorkspaceState();
+    initMultiInstanceManager();
+    setupMultiInstanceEventListeners();
     setupEditorToolbar();
     setupCoverSync();
     setupFileHandlers();
@@ -679,6 +1194,10 @@ let _saveTimeout = null;
 function saveWorkspaceState() {
     if (window._skipSaveWorkspace) return;
 
+    if (typeof saveMultiInstanceState === 'function') {
+        saveMultiInstanceState();
+    }
+
     if (window.StateIntegrityManager && typeof window.StateIntegrityManager.persistStateSafe === 'function') {
         window.StateIntegrityManager.persistStateSafe(workspaceState);
         return;
@@ -812,7 +1331,7 @@ function setupTabSwitching() {
     });
 
     // Set initially active tab
-    const initialTab = workspaceState.currentTab || 'setup';
+    const initialTab = workspaceState.currentTab || 'redator';
     activateTab(initialTab);
 }
 
@@ -1572,16 +2091,21 @@ async function runChainedSequentialGeneration(extraInstrucoes = "", webSearchCon
 }
 
 async function generateBasicProposal() {
-    const btn = document.getElementById('btn-generate-basic-proposal');
-    if (!btn) return;
+    const btn1 = document.getElementById('btn-generate-basic-proposal');
+    const btn2 = document.getElementById('btn-redator-generate-full-cross');
+    const setBtnState = (disabled, text) => {
+        if (btn1) { btn1.disabled = disabled; if (text) btn1.textContent = text; }
+        if (btn2) { btn2.disabled = disabled; if (text) btn2.textContent = text; }
+    };
+
+    if (!btn1 && !btn2) return;
 
     if (_isProcessingAPI) {
         showToast("Aguarde o processamento atual terminar.", "warning");
         return;
     }
     _isProcessingAPI = true;
-    btn.disabled = true;
-    btn.textContent = "⚖️ Mapeando seções exigidas pelo edital...";
+    setBtnState(true, "⚖️ Mapeando seções exigidas pelo edital...");
 
     try {
         pushProposalHistoryState("Antes da Geração pelo Ingestor");
@@ -1626,8 +2150,8 @@ async function generateBasicProposal() {
         for (let i = 0; i < requiredSections.length; i++) {
             const secKey = requiredSections[i];
             const displayTitle = secKey.toUpperCase();
-            btn.textContent = `✍️ Redigindo [${i + 1}/${requiredSections.length}] ${displayTitle}...`;
-            showToast(`✍️ [Ingestor ${i + 1}/${requiredSections.length}] Redigindo seção ${displayTitle} com profundidade e rigor...`, "info");
+            setBtnState(true, `✍️ Redigindo [${i + 1}/${requiredSections.length}] ${displayTitle}...`);
+            showToast(`✍️ [Studio ${i + 1}/${requiredSections.length}] Redigindo seção ${displayTitle} com profundidade...`, "info");
 
             let text = "";
             let secWebContext = "";
@@ -1710,12 +2234,11 @@ async function generateBasicProposal() {
         showToast(`✓ [Ingestor] Proposta completa gerada para as ${requiredSections.length} seções exigidas pelo edital com profundidade total!`, "success");
 
     } catch (err) {
-        console.error("Erro na geração pelo ingestor:", err);
-        showToast("Erro ao gerar proposta pelo ingestor: " + err.message, "error");
+        console.error("Erro na geração de proposta completa:", err);
+        showToast("Erro ao gerar proposta: " + err.message, "error");
     } finally {
         _isProcessingAPI = false;
-        btn.disabled = false;
-        btn.textContent = "⚡ Gerar Proposta Completa Cruzada";
+        setBtnState(false, "⚡ Gerar Proposta Completa Cruzada");
     }
 }
 

@@ -1,0 +1,175 @@
+{
+  "name": "EditalAudit AI - Gerador Autônomo de Carrosséis para Instagram",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1,3,5"
+            }
+          ]
+        }
+      },
+      "name": "Disparo Agendado (Seg/Qua/Sex 09h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "id": "node-schedule-instagram"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "dataInicial",
+              "value": "={{ new Date(Date.now() - 3*86400000).toISOString().slice(0,10).replace(/-/g, '') }}"
+            },
+            {
+              "name": "codigoModalidadeContratacao",
+              "value": "6"
+            },
+            {
+              "name": "pagina",
+              "value": "1"
+            },
+            {
+              "name": "tamanhoPagina",
+              "value": "5"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Radar PNCP (Editais Recentes)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300],
+      "id": "node-pncp-fetch"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "={{ $env.GEMINI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contents",
+              "value": "={{ [{\"role\": \"user\", \"parts\": [{\"text\": \"Você é o Diretor de Marketing & Especialista Jurídico da EditalAudit AI. Crie um carrossel educativo para o Instagram de altíssima autoridade técnica (estilo OpenDesign, anti-slop, sem enrolação).\\nTema: '3 Erros Fatais no Orçamento de Editais (Lei 14.133 e Lei 14.903)'.\\nGere um JSON estrito com o formato:\\n{\\n  \\\"titulo\\\": \\\"...\\\",\\n  \\\"slides\\\": [\\n    {\\\"numero\\\": 1, \\\"manchete\\\": \\\"...\\\", \\\"corpo\\\": \\\"...\\\"},\\n    {\\\"numero\\\": 2, \\\"manchete\\\": \\\"...\\\", \\\"corpo\\\": \\\"...\\\"},\\n    {\\\"numero\\\": 3, \\\"manchete\\\": \\\"...\\\", \\\"corpo\\\": \\\"...\\\"},\\n    {\\\"numero\\\": 4, \\\"manchete\\\": \\\"...\\\", \\\"corpo\\\": \\\"...\\\"},\\n    {\\\"numero\\\": 5, \\\"manchete\\\": \\\"CTA\\\", \\\"corpo\\\": \\\"Audite seu projeto gratuitamente no EditalAudit AI. 1 crédito grátis no cadastro.\\\"}\\n  ],\\n  \\\"legenda\\\": \\\"...\\\",\\n  \\\"hashtags\\\": [\\\"#editaisculturais\\\", \\\"#licitacoes\\\", \\\"#lei14133\\\", \\\"#lei14903\\\", \\\"#leipaulogustavo\\\"]\\n}\"}]}] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "LLM Gerador de Carrossel Técnico",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300],
+      "id": "node-llm-carousel"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';\nconst cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();\nlet parsed = {};\ntry {\n  parsed = JSON.parse(cleanJson);\n} catch(e) {\n  parsed = { titulo: 'Auditoria de Editais', legenda: 'Acesse editalaudit.ai', slides: [] };\n}\n\nreturn [{\n  json: {\n    ...parsed,\n    bufferPayload: {\n      profile_ids: [ $env.BUFFER_INSTAGRAM_PROFILE_ID ],\n      text: parsed.titulo + '\\n\\n' + (parsed.legenda || '') + '\\n\\n' + (parsed.hashtags ? parsed.hashtags.join(' ') : ''),\n      scheduled_at: new Date(Date.now() + 3600000).toISOString()\n    }\n  }\n}];"
+      },
+      "name": "Montar Payload Buffer / Canva",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "id": "node-format-buffer"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.bufferapp.com/1/updates/create.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $env.BUFFER_ACCESS_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.bufferPayload.text }}"
+            },
+            {
+              "name": "profile_ids[]",
+              "value": "={{ $json.bufferPayload.profile_ids[0] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Buffer API (Fila de Postagem)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 300],
+      "id": "node-send-buffer"
+    }
+  ],
+  "connections": {
+    "Disparo Agendado (Seg/Qua/Sex 09h)": {
+      "main": [
+        [
+          {
+            "node": "Radar PNCP (Editais Recentes)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Radar PNCP (Editais Recentes)": {
+      "main": [
+        [
+          {
+            "node": "LLM Gerador de Carrossel Técnico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Gerador de Carrossel Técnico": {
+      "main": [
+        [
+          {
+            "node": "Montar Payload Buffer / Canva",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Payload Buffer / Canva": {
+      "main": [
+        [
+          {
+            "node": "Buffer API (Fila de Postagem)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

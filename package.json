@@ -1,0 +1,13 @@
+{
+  "name": "edital-audit-portal",
+  "version": "3.0.0",
+  "private": true,
+  "description": "EditalAudit AI — Portal SaaS Multiusuário e Motor Híbrido de Auditoria",
+  "scripts": {
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "backend": ".\\.venv\\Scripts\\python.exe server.py",
+    "start": ".\\.venv\\Scripts\\python.exe launcher.py",
+    "test": ".\\.venv\\Scripts\\python.exe -m unittest discover tests"
+  }
+}

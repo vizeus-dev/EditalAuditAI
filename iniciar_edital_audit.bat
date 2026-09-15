@@ -1,5 +1,5 @@
 @echo off
-title EditalAudit AI - Enterprise Launcher
+title EditalAudit AI - Studio de Elaboracao e Criacao de Projetos
 cd /d "%~dp0"
 
 if exist ".venv\Scripts\python.exe" (
@@ -10,3 +10,4 @@ if exist ".venv\Scripts\python.exe" (
 
 "%PY_CMD%" launcher.py
 exit /b 0
+

@@ -48,615 +48,56 @@ try:
 except Exception as e:
     print(f"[SERVER][WARN] ReportLab não disponível no ambiente atual: {e}")
 
-# Global divider helper for ReportLab reports
-def get_divider():
-    line = Table([['']], colWidths=[487], rowHeights=[1])
-    line.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#e2e8f0')),
-        ('PADDING', (0,0), (-1,-1), 0),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-        ('TOPPADDING', (0,0), (-1,-1), 0),
-    ]))
-    return line
+# Importações Modulares do Pacote services.backend (Padrão Ponytail)
+from services.backend import (
+    PORT,
+    SERVER_START_TIME,
+    USER_AGENTS,
+    SECURITY_HEADERS,
+    validate_safe_url,
+    safe_encode_cp1252,
+    fix_double_encoded_utf8,
+    search_ddg_html,
+    search_ddg_lite,
+    search_wikipedia_api,
+    search_yahoo,
+    search_ddg,
+    extract_document_links,
+    HTMLTextExtractor,
+    HTMLTableParser,
+    get_divider,
+    add_reportlab_footer,
+    format_ptbr_currency,
+    clean_html_tags,
+    make_reportlab_safe,
+    append_html_content_to_story,
+    handle_anki_export,
+    handle_llm_generate,
+    handle_llm_stream,
+    llm_gateway,
+    handle_budget_audit_request,
+    get_surgical_context_for_parecerista,
+    extract_surgical_bundle,
+    extract_text_and_metadata,
+    detect_edital_metadata,
+    generate_proposal_draft_suggestion,
+    generate_proposal_abnt_pdf,
+    generate_budget_xlsx,
+    evaluate_musa_deep_review,
+    AuditReportRepository,
+    NotFoundError,
+    ValidationError,
+    ApiError
+)
 
-def add_reportlab_footer(canvas, doc):
-    """
-    Função utilitária unificada para desenho de rodapé padronizado em PDFs ReportLab.
-    Suporta layouts Portrait e Landscape automaticamente calculando a largura da página.
-    """
-    canvas.saveState()
-    canvas.setFont('Helvetica', 8)
-    canvas.setFillColor(colors.HexColor('#64748b'))
-    date_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-    page_width = getattr(doc, 'pagesize', A4)[0]
-    canvas.drawString(54, 30, f"Gerado por EditalAudit AI em {date_str}")
-    canvas.drawRightString(page_width - 54, 30, f"Página {doc.page}")
-    canvas.restoreState()
+gateway = llm_gateway
+audit_report_repo = AuditReportRepository()
 
-gateway = LLMGateway()
-
-def safe_encode_cp1252(s):
-    b = bytearray()
-    for char in s:
-        cp = ord(char)
-        if 0x80 <= cp <= 0x9f:
-            try:
-                b.extend(char.encode('cp1252'))
-            except UnicodeEncodeError:
-                b.append(cp)
-        else:
-            b.extend(char.encode('cp1252'))
-    return bytes(b)
-
-def fix_double_encoded_utf8(text):
-    if not isinstance(text, str) or not text:
-        return text
-    
-    if any(c in text for c in ('Ã', 'Â', 'â', 'Ê', 'Ô')):
-        for enc in ('cp1252', 'latin-1'):
-            try:
-                if enc == 'cp1252':
-                    return safe_encode_cp1252(text).decode('utf-8')
-                else:
-                    return text.encode(enc).decode('utf-8')
-            except (UnicodeEncodeError, UnicodeDecodeError):
-                pass
-            
-    def _sub_fix(match):
-        for enc in ('cp1252', 'latin-1'):
-            try:
-                if enc == 'cp1252':
-                    return safe_encode_cp1252(match.group(0)).decode('utf-8')
-                else:
-                    return match.group(0).encode(enc).decode('utf-8')
-            except (UnicodeEncodeError, UnicodeDecodeError):
-                pass
-        return match.group(0)
-
-    # In cp1252/latin-1 double-encoding:
-    # 2-byte UTF-8 starts with 0xc2-0xdf, followed by continuation byte
-    # 3-byte UTF-8 starts with 0xe0-0xef, followed by two continuation bytes
-    pattern = re.compile(r'[\u00c2-\u00df].|[\u00e0-\u00ef].{2}')
-    text = pattern.sub(_sub_fix, text)
-    return text
-
-def format_ptbr_currency(val):
-    if isinstance(val, (int, float)):
-        return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-    if isinstance(val, str) and val.strip():
-        if val.startswith("R$"):
-            return val
-        try:
-            clean_str = val.replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
-            float_val = float(clean_str)
-            return f"R$ {float_val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-        except ValueError:
-            return val
-    return str(val) if val is not None else "R$ 0,00"
-
-def clean_html_tags(temp_text):
-    if not temp_text:
-        return ""
-    # 1. Strip HTML comments
-    temp_text = re.sub(r'<!--[\s\S]*?-->', '', temp_text)
-    # 2. Strip style and script tags and contents
-    temp_text = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', temp_text, flags=re.IGNORECASE)
-    temp_text = re.sub(r'<script[^>]*>[\s\S]*?</script>', '', temp_text, flags=re.IGNORECASE)
-    # 3. Headers to bold + br
-    temp_text = re.sub(r'<h[1-6][^>]*>(.*?)</h[1-6]>', r'<br/><b>\1</b><br/>', temp_text, flags=re.DOTALL | re.IGNORECASE)
-    # 4. List items to bullets
-    temp_text = re.sub(r'<li[^>]*>(.*?)</li>', r'• \1<br/>', temp_text, flags=re.DOTALL | re.IGNORECASE)
-    temp_text = re.sub(r'</?(?:ul|ol)[^>]*>', r'<br/>', temp_text, flags=re.IGNORECASE)
-    
-    # 5. Table cells and headers
-    temp_text = re.sub(r'<th[^>]*>(.*?)</th>', r' | <b>\1</b> ', temp_text, flags=re.DOTALL | re.IGNORECASE)
-    temp_text = re.sub(r'<td[^>]*>(.*?)td>', r' | \1 ', temp_text, flags=re.DOTALL | re.IGNORECASE)
-    temp_text = re.sub(r'<tr[^>]*>', '', temp_text, flags=re.IGNORECASE)
-    temp_text = re.sub(r'</tr>', '<br/>', temp_text, flags=re.IGNORECASE)
-    temp_text = re.sub(r'</?(?:table|tbody|thead|tfoot)[^>]*>', '<br/>', temp_text, flags=re.IGNORECASE)
-    
-    # 6. Strong / em to b / i
-    temp_text = re.sub(r'<strong[^>]*>', '<b>', temp_text, flags=re.IGNORECASE)
-    temp_text = re.sub(r'</strong>', '</b>', temp_text, flags=re.IGNORECASE)
-    temp_text = re.sub(r'<em[^>]*>', '<i>', temp_text, flags=re.IGNORECASE)
-    temp_text = re.sub(r'</em>', '</i>', temp_text, flags=re.IGNORECASE)
-    temp_text = re.sub(r'</?(?:p|div|section|article|header|footer)[^>]*>', r'<br/>', temp_text, flags=re.IGNORECASE)
-    
-    # 7. Strip any other tag except ReportLab allowed: b, i, u, sub, sup, font, a, br
-    allowed_prefixes = ('<b', '</b', '<i', '</i', '<u', '</u', '<sub', '</sub', '<sup', '</sup', '<font', '</font', '<a', '</a', '<br', '</br')
-    def strip_unallowed(m):
-        tag = m.group(0)
-        tag_lower = tag.lower()
-        if any(tag_lower.startswith(prefix) for prefix in allowed_prefixes):
-            return tag
-        return ''
-        
-    temp_text = re.sub(r'<[^>]+>', strip_unallowed, temp_text)
-    return temp_text
-
-def append_html_content_to_story(html_content, story, body_style, h2_style):
-    if not html_content:
-        return
-
-    clean_html = re.sub(r'<!--[\s\S]*?-->', '', html_content)
-    clean_html = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', clean_html, flags=re.IGNORECASE)
-    clean_html = re.sub(r'<script[^>]*>[\s\S]*?</script>', '', clean_html, flags=re.IGNORECASE)
-
-    table_pattern = re.compile(r'(<table[\s\S]*?>[\s\S]*?</table>)', re.IGNORECASE)
-    blocks = table_pattern.split(clean_html)
-
-    for block in blocks:
-        block_str = block.strip()
-        if not block_str:
-            continue
-
-        if block_str.lower().startswith('<table'):
-            parser = HTMLTableParser()
-            parser.feed(block_str)
-            rows = parser.rows
-            if rows:
-                N = max(len(r) for r in rows)
-                col_widths = [487.0 / N] * N
-                table_content = []
-                for row in rows:
-                    row_cells = []
-                    for cell in row:
-                        cell_text = make_reportlab_safe(cell["text"])
-                        try:
-                            if cell["is_header"]:
-                                cell_p = Paragraph(f"<b>{cell_text}</b>", ParagraphStyle('ThCustom', parent=body_style, fontName='Helvetica-Bold', textColor=colors.HexColor('#0f172a')))
-                            else:
-                                cell_p = Paragraph(cell_text, body_style)
-                        except Exception as e:
-                            esc_txt = html.escape(re.sub(r'<[^>]+>', '', cell_text))
-                            cell_p = Paragraph(esc_txt, body_style)
-                        row_cells.append(cell_p)
-                    while len(row_cells) < N:
-                        row_cells.append(Paragraph("", body_style))
-                    table_content.append(row_cells)
-
-                report_table = Table(table_content, colWidths=col_widths)
-                t_style = TableStyle([
-                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
-                    ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
-                    ('PADDING', (0,0), (-1,-1), 5),
-                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ])
-                for r_idx in range(1, len(table_content)):
-                    if r_idx % 2 == 1:
-                        t_style.add('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor('#f8fafc'))
-                report_table.setStyle(t_style)
-                story.append(Spacer(1, 4))
-                story.append(report_table)
-                story.append(Spacer(1, 6))
-        else:
-            temp_text = clean_html_tags(block_str)
-            parts = re.split(r'<br/>|<br>', temp_text)
-            for part in parts:
-                clean_part = part.strip()
-                if clean_part:
-                    safe_part = make_reportlab_safe(clean_part)
-                    if safe_part.strip():
-                        if safe_part.startswith('<b>') and safe_part.endswith('</b>') and len(safe_part) < 100:
-                            story.append(Paragraph(safe_part, h2_style))
-                        else:
-                            try:
-                                story.append(Paragraph(safe_part, body_style))
-                            except Exception as pe:
-                                plain_text = re.sub(r'<[^>]+>', '', safe_part)
-                                story.append(Paragraph(html.escape(plain_text), body_style))
-
-
-def make_reportlab_safe(text):
-    if not text:
-        return ""
-    text = str(text)
-    
-    # Fix double-encoded UTF-8 first
-    text = fix_double_encoded_utf8(text)
-    
-    # Replace common MS Word / Unicode smart quotes, dashes, bullets and special characters
-    replacements = {
-        '\u201c': '"', '\u201d': '"', '\u201e': '"', '\u201f': '"', '\u2033': '"', '\u2036': '"',
-        '\u2018': "'", '\u2019': "'", '\u201a': "'", '\u201b': "'", '\u2032': "'", '\u2035': "'",
-        '\u2012': '-', '\u2013': '-', '\u2014': '-', '\u2015': '-',
-        '\u2022': '*', '\u2023': '*', '\u2043': '*', '\u204c': '*', '\u204d': '*', '\u2219': '*', '\u25aa': '*', '\u25ab': '*',
-        '\u2026': '...',
-        '\u00a0': ' ',
-        '\u200b': '', '\u200c': '', '\u200d': '', '\ufeff': '',
-    }
-    for orig, rep in replacements.items():
-        text = text.replace(orig, rep)
-        
-    # Decode HTML entities if any
-    text = html.unescape(text)
-    # Escape HTML special characters (< and >) safely without turning quotes into &quot;
-    text = html.escape(text, quote=False)
-    
-    # Restore allowed ReportLab tags
-    text = text.replace("&lt;b&gt;", "<b>").replace("&lt;/b&gt;", "</b>")
-    text = text.replace("&lt;i&gt;", "<i>").replace("&lt;/i&gt;", "</i>")
-    text = text.replace("&lt;u&gt;", "<u>").replace("&lt;/u&gt;", "</u>")
-    text = text.replace("&lt;sub&gt;", "<sub>").replace("&lt;/sub&gt;", "</sub>")
-    text = text.replace("&lt;sup&gt;", "<sup>").replace("&lt;/sup&gt;", "</sup>")
-    text = text.replace("&lt;br&gt;", "<br/>").replace("&lt;br/&gt;", "<br/>").replace("&lt;br /&gt;", "<br/>")
-    
-    # Restore font tags: &lt;font (.*?)&gt; -> <font \1>
-    text = re.sub(r'&lt;font\s+(.*?)&gt;', r'<font \1>', text, flags=re.IGNORECASE)
-    text = text.replace("&lt;/font&gt;", "</font>").replace("&lt;/FONT&gt;", "</font>")
-    
-    # Restore a tags: &lt;a\s+(.*?)&gt; -> <a \1>
-    text = re.sub(r'&lt;a\s+(.*?)&gt;', r'<a \1>', text, flags=re.IGNORECASE)
-    text = text.replace("&lt;/a&gt;", "</a>").replace("&lt;/A&gt;", "</a>")
-    
-    return text
-
-PORT = int(os.environ.get('PORT', 8085))
-
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-]
-
-def search_ddg_html(query, timeout=7):
-    """Tier 1: DuckDuckGo HTML Search"""
-    import random
-    ua = random.choice(USER_AGENTS)
-    headers = {
-        "User-Agent": ua,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Referer": "https://duckduckgo.com/"
-    }
-    url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query, "kl": "br-pt"})
-    req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            html_raw = response.read()
-            charset = response.info().get_content_charset() or 'utf-8'
-            try:
-                html_content = html_raw.decode(charset)
-            except Exception as e:
-                html_content = html_raw.decode('utf-8', errors='ignore')
-                
-            results = []
-            pattern = re.compile(r'<a[^>]+class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>')
-            matches = pattern.findall(html_content)
-            
-            for href, title in matches:
-                title_clean = html.unescape(re.sub(r'<[^>]+>', '', title).strip())
-                title_clean = fix_double_encoded_utf8(title_clean)
-                if "/l/?kh=" in href or "uddg=" in href:
-                    parsed_url = urllib.parse.urlparse(href)
-                    qs = urllib.parse.parse_qs(parsed_url.query)
-                    if 'uddg' in qs:
-                        href = qs['uddg'][0]
-                
-                results.append({
-                    "title": title_clean,
-                    "url": href,
-                    "snippet": ""
-                })
-            
-            snippet_pattern = re.compile(r'<a class="result__snippet"[^>]*>([\s\S]*?)</a>')
-            snippets = snippet_pattern.findall(html_content)
-            for i, snip in enumerate(snippets):
-                if i < len(results):
-                    snippet_clean = html.unescape(re.sub(r'<[^>]+>', '', snip).strip())
-                    snippet_clean = fix_double_encoded_utf8(snippet_clean)
-                    results[i]["snippet"] = snippet_clean
-            
-            valid_results = [r for r in results if r["title"] and len(r["title"]) > 3]
-            return valid_results
-    except Exception as e:
-        print(f"[SEARCH][DDG_HTML_FAIL] {e}")
-        return []
-
-def search_ddg_lite(query, timeout=7):
-    """Tier 2: DuckDuckGo Lite Fallback"""
-    import random
-    ua = random.choice(USER_AGENTS)
-    headers = {
-        "User-Agent": ua,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Content-Type": "application/x-www-form-urlencoded"
-    }
-    url = "https://lite.duckduckgo.com/lite/"
-    data = urllib.parse.urlencode({"q": query, "kl": "br-pt"}).encode('utf-8')
-    req = urllib.request.Request(url, data=data, headers=headers, method='POST')
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            html_raw = response.read()
-            html_content = html_raw.decode('utf-8', errors='ignore')
-            results = []
-            
-            links = re.findall(r'<a[^>]+class="result-link"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>', html_content)
-            snippets = re.findall(r'<td[^>]+class="result-snippet"[^>]*>([\s\S]*?)</td>', html_content)
-            
-            for idx, (href, title) in enumerate(links):
-                title_clean = html.unescape(re.sub(r'<[^>]+>', '', title).strip())
-                title_clean = fix_double_encoded_utf8(title_clean)
-                snippet_clean = ""
-                if idx < len(snippets):
-                    snippet_clean = html.unescape(re.sub(r'<[^>]+>', '', snippets[idx]).strip())
-                    snippet_clean = fix_double_encoded_utf8(snippet_clean)
-                
-                if href.startswith('http') or 'uddg=' in href:
-                    if 'uddg=' in href:
-                        parsed_url = urllib.parse.urlparse(href)
-                        qs = urllib.parse.parse_qs(parsed_url.query)
-                        if 'uddg' in qs:
-                            href = qs['uddg'][0]
-                    results.append({
-                        "title": title_clean,
-                        "url": href,
-                        "snippet": snippet_clean or "Diretriz e referência regulatória de fomento cultural público."
-                    })
-            return results
-    except Exception as e:
-        print(f"[SEARCH][DDG_LITE_FAIL] {e}")
-        return []
-
-def search_wikipedia_api(query, timeout=5):
-    """Tier 3: Wikipedia & Public Norms Fallback for Cultural & Legal Terms"""
-    try:
-        clean_terms = " ".join([w for w in query.split() if len(w) > 3][:6])
-        url = "https://pt.wikipedia.org/w/api.php?" + urllib.parse.urlencode({
-            "action": "query",
-            "list": "search",
-            "srsearch": clean_terms,
-            "format": "json",
-            "utf8": "1",
-            "srlimit": "3"
-        })
-        req = urllib.request.Request(url, headers={"User-Agent": "EditalAuditAI/3.0 (auditoria.cultural@editalaudit.internal)"})
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            data = json.loads(response.read().decode('utf-8'))
-            items = data.get("query", {}).get("search", [])
-            results = []
-            for it in items:
-                title = it.get("title", "")
-                snippet_raw = it.get("snippet", "")
-                snippet_clean = html.unescape(re.sub(r'<[^>]+>', '', snippet_raw).strip())
-                snippet_clean = fix_double_encoded_utf8(snippet_clean)
-                page_url = f"https://pt.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
-                results.append({
-                    "title": f"Norma / Verbete: {title}",
-                    "url": page_url,
-                    "snippet": snippet_clean
-                })
-            return results
-    except Exception as e:
-        print(f"[SEARCH][WIKI_FAIL] {e}")
-        return []
-
-def search_yahoo(query, timeout=6):
-    """Tier 2: Yahoo Web Search (Altamente resiliente para fomento público e normas brasileiras)"""
-    import random
-    ua = random.choice(USER_AGENTS)
-    headers = {
-        "User-Agent": ua,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
-    }
-    url = "https://search.yahoo.com/search?" + urllib.parse.urlencode({"p": query, "ei": "UTF-8"})
-    req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as res:
-            html_raw = res.read().decode('utf-8', errors='ignore')
-            results = []
-            
-            algo_matches = re.findall(r'<div[^>]+class="[^"]*algo[^"]*"[^>]*>([\s\S]*?)(?:</div>\s*</li>|</li>)', html_raw)
-            for b in algo_matches:
-                link_match = re.search(r'<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)</a>', b)
-                if not link_match:
-                    continue
-                raw_href, raw_title = link_match.groups()
-                
-                aria_match = re.search(r'aria-label="([^"]+)"', link_match.group(0))
-                if aria_match:
-                    title_clean = html.unescape(aria_match.group(1)).strip()
-                else:
-                    title_clean = html.unescape(re.sub(r'<[^>]+>', '', raw_title).strip())
-                    if "http" in title_clean and " - " in title_clean:
-                        parts = title_clean.split(" - ")
-                        if len(parts) > 1 and "http" in parts[0]:
-                            title_clean = " - ".join(parts[1:])
-                
-                title_clean = fix_double_encoded_utf8(title_clean)
-                
-                real_url = raw_href
-                if "/RU=" in raw_href:
-                    ru_part = raw_href.split("/RU=")[1].split("/RK=")[0]
-                    try:
-                        real_url = urllib.parse.unquote(ru_part)
-                    except Exception as e:
-                        real_url = raw_href
-                
-                snippet_match = re.search(r'<div[^>]+class="[^"]*compText[^"]*"[^>]*>([\s\S]*?)</div>', b) or re.search(r'<p[^>]*>([\s\S]*?)</p>', b)
-                snippet_clean = ""
-                if snippet_match:
-                    snippet_clean = html.unescape(re.sub(r'<[^>]+>', '', snippet_match.group(1)).strip())
-                    snippet_clean = fix_double_encoded_utf8(snippet_clean)
-                    
-                if title_clean and len(title_clean) > 3 and not title_clean.lower().startswith("yahoo"):
-                    results.append({
-                        "title": title_clean,
-                        "url": real_url,
-                        "snippet": snippet_clean or "Referência de fomento cultural e diretrizes públicas."
-                    })
-            return results
-    except Exception as e:
-        print(f"[SEARCH][YAHOO_FAIL] {e}")
-        return []
-
-def search_ddg(query, agent_key=None, max_results=6):
-    """Motor de busca web unificado multi-tier"""
-    query_clean = re.sub(r'\s+', ' ', str(query or '')).strip()
-    if not query_clean:
-        return []
-        
-    print(f"[SEARCH][ENGINE] Executando busca real: '{query_clean}' (Agente: {agent_key})")
-    
-    # 1. DuckDuckGo HTML
-    results = search_ddg_html(query_clean, timeout=6)
-    
-    # 2. Yahoo Web Search
-    if not results:
-        print("[SEARCH] Tentando motor Yahoo Web Search...")
-        results = search_yahoo(query_clean, timeout=6)
-        
-    # 3. DuckDuckGo Lite Fallback
-    if not results:
-        print("[SEARCH] Tentando DuckDuckGo Lite...")
-        results = search_ddg_lite(query_clean, timeout=6)
-        
-    # 4. Query simplificada com palavras nucleares
-    if not results:
-        stop_words = {'para', 'com', 'das', 'dos', 'uma', 'como', 'sobre', 'regras', 'normas', 'geral', 'editais'}
-        salient_words = [w for w in query_clean.split() if len(w) > 3 and w.lower() not in stop_words]
-        if len(salient_words) >= 2:
-            simplified_query = " ".join(salient_words[:5])
-            print(f"[SEARCH] Tentando com termos nucleares: '{simplified_query}'...")
-            results = search_yahoo(simplified_query, timeout=5) or search_ddg_html(simplified_query, timeout=5)
-        
-    # 5. Fallback normativo da Wikipedia
-    if not results:
-        print("[SEARCH] Tentando fallback enciclopédico de normas...")
-        results = search_wikipedia_api(query_clean, timeout=4)
-        
-    return results[:max_results]
-
-def extract_document_links(html_content, base_url):
-    link_pattern = re.compile(r'<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)</a>', re.IGNORECASE)
-    matches = link_pattern.findall(html_content)
-    
-    links = []
-    seen_urls = set()
-    
-    doc_extensions = ('.pdf', '.docx', '.doc', '.txt', '.odt')
-    
-    for href, text in matches:
-        href = href.strip()
-        href = href.replace('&amp;', '&')
-        full_url = urllib.parse.urljoin(base_url, href)
-        
-        parsed = urllib.parse.urlparse(full_url)
-        if parsed.scheme not in ('http', 'https'):
-            continue
-            
-        text_clean = re.sub(r'<[^>]+>', '', text).strip()
-        text_clean = " ".join(text_clean.split())
-        text_clean = text_clean.replace('&amp;', '&').replace('&quot;', '"').replace('&#39;', "'")
-        
-        if not text_clean:
-            text_clean = os.path.basename(parsed.path) or "Documento"
-            
-        is_doc = any(parsed.path.lower().endswith(ext) for ext in doc_extensions)
-        contains_keywords = any(kw in text_clean.lower() or kw in parsed.path.lower() for kw in ['edital', 'regulamento', 'anexo', 'chamada', 'retificacao', 'cronograma', 'contrato'])
-        
-        if (is_doc or contains_keywords) and full_url not in seen_urls:
-            seen_urls.add(full_url)
-            links.append({
-                "name": text_clean,
-                "url": full_url,
-                "is_direct_doc": is_doc
-            })
-            
-    return links
-
-class HTMLTextExtractor(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.text = []
-        self.ignored_tags = set()
-
-    def handle_starttag(self, tag, attrs):
-        if tag in ["script", "style", "head", "title", "meta", "link"]:
-            self.ignored_tags.add(tag)
-
-    def handle_endtag(self, tag):
-        if tag in ["script", "style", "head", "title", "meta", "link"]:
-            self.ignored_tags.discard(tag)
-
-    def handle_data(self, data):
-        if not self.ignored_tags:
-            self.text.append(data)
-
-    def get_clean_text(self):
-        full_text = " ".join(self.text)
-        return " ".join(full_text.split())
-
-
-class HTMLTableParser(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.rows = []
-        self.current_row = []
-        self.current_cell = []
-        self.in_cell = False
-        self.is_header = False
-
-    def handle_starttag(self, tag, attrs):
-        if tag == 'tr':
-            self.current_row = []
-        elif tag in ['td', 'th']:
-            self.in_cell = True
-            self.is_header = (tag == 'th')
-            self.current_cell = []
-
-    def handle_endtag(self, tag):
-        if tag == 'tr':
-            if self.current_row:
-                self.rows.append(self.current_row)
-        elif tag in ['td', 'th']:
-            self.in_cell = False
-            cell_text = "".join(self.current_cell).strip()
-            self.current_row.append({"text": cell_text, "is_header": self.is_header})
-
-    def handle_data(self, data):
-        if self.in_cell:
-            self.current_cell.append(data)
-
-
-def validate_safe_url(target_url: str):
-    """
-    Valida se uma URL é segura para requisição (Anti-SSRF).
-    Permite apenas HTTP/HTTPS e bloqueia endereços de loopback (127.0.0.1, localhost),
-    redes privadas (RFC 1918: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) e metadados de nuvem (169.254.169.254).
-    """
-    if not target_url or not isinstance(target_url, str):
-        raise ValueError("URL inválida ou não fornecida.")
-        
-    parsed = urllib.parse.urlparse(target_url.strip())
-    if parsed.scheme not in ('http', 'https'):
-        raise ValueError(f"Esquema de URL inválido '{parsed.scheme}'. Apenas HTTP e HTTPS são permitidos.")
-        
-    hostname = parsed.hostname
-    if not hostname:
-        raise ValueError("Hostname inválido na URL fornecida.")
-        
-    # Bloqueio explícito de hostnames de loopback comuns
-    if hostname.lower() in ('localhost', '127.0.0.1', '::1'):
-        raise ValueError(f"Acesso bloqueado ao endereço local/loopback: {hostname}")
-        
-    try:
-        resolved_ips = socket.getaddrinfo(hostname, None)
-        if not resolved_ips:
-            raise ValueError(f"Não foi possível resolver o hostname: {hostname}")
-            
-        for item in resolved_ips:
-            ip_str = item[4][0]
-            ip_obj = ipaddress.ip_address(ip_str)
-            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_reserved or ip_obj.is_link_local or ip_obj.is_multicast:
-                raise ValueError(f"Acesso bloqueado ao endereço de rede privada/interna: {ip_str}")
-            if str(ip_obj) == "169.254.169.254":
-                raise ValueError("Acesso bloqueado a endpoint de metadados da nuvem.")
-    except socket.gaierror:
-        raise ValueError(f"Falha na resolução de DNS para o domínio: {hostname}")
+# Armazenamento em memória resiliente para créditos de usuário (Pay-Per-Use / Asaas Pix)
+# Mapeia user_id -> int (saldo de créditos)
+USER_CREDIT_STORE = {}
+# Mapeia charge_id -> dict (metadados da cobrança Pix)
+PIX_CHARGES_STORE = {}
 
 
 class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
@@ -703,6 +144,60 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
             threading.Thread(target=_restart, daemon=True).start()
             return
 
+        if self.path.startswith('/api/auth/quota'):
+            query_str = self.path.split('?', 1)[1] if '?' in self.path else ''
+            user_id = 'demo-local-user'
+            for param in query_str.split('&'):
+                if param.startswith('user_id='):
+                    user_id = urllib.parse.unquote(param.split('=', 1)[1])
+                    break
+
+            credits = USER_CREDIT_STORE.get(user_id, 1) # 1 crédito inicial gratuito para degustação
+            self.send_json_response(200, {
+                "user_id": user_id,
+                "credits": credits,
+                "used_credits": 0,
+                "total_audits": 1,
+                "limit": 5,
+                "plan": "freemium",
+                "price_per_credit": 9.90,
+                "currency": "BRL",
+                "features": {
+                    "musa_14_pareceristas": True,
+                    "local_cross_audit": True,
+                    "abnt_export": True,
+                    "cloud_sync": True,
+                    "asaas_pix_instant": True
+                }
+            })
+            return
+
+        if self.path.startswith('/api/pix/status'):
+            query_str = self.path.split('?', 1)[1] if '?' in self.path else ''
+            charge_id = ''
+            for param in query_str.split('&'):
+                if param.startswith('charge_id='):
+                    charge_id = urllib.parse.unquote(param.split('=', 1)[1])
+                    break
+
+            if not charge_id or charge_id not in PIX_CHARGES_STORE:
+                self.send_json_response(404, {"error": "Cobrança Pix não encontrada."})
+                return
+
+            charge = PIX_CHARGES_STORE[charge_id]
+            self.send_json_response(200, charge)
+            return
+
+        if self.path.startswith('/api/share/'):
+            token = self.path.split('/api/share/', 1)[1].split('?')[0].strip()
+            self.send_json_response(200, {
+                "share_token": token,
+                "status": "active",
+                "read_only": True,
+                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            })
+            return
+
         super().do_GET()
 
     def send_header(self, keyword, value):
@@ -712,7 +207,7 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     value += '; charset=utf-8'
         super().send_header(keyword, value)
 
-    def read_limited_body(self, max_bytes=50 * 1024 * 1024):
+    def read_limited_body(self, max_bytes=75 * 1024 * 1024):
         """
         Lê e valida o corpo da requisição HTTP garantindo um teto máximo de bytes (Anti-DoS).
         Retorna os bytes lidos ou None caso uma resposta de erro (400, 411, 413) já tenha sido enviada.
@@ -762,22 +257,10 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
         # NÃO CONECTADO AO FRONTEND ATUAL (Persistência real via StateIntegrityManager IndexedDB). Reservado para uso futuro / exportações batch.
         if self.path == '/api/load-audit-report':
             try:
-                submissions_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "submissions")
-                if os.path.exists('relatorio_auditoria.json'):
-                    with open('relatorio_auditoria.json', 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                    self.send_json_response(200, data)
-                elif os.path.exists(submissions_dir):
-                    sub_files = [os.path.join(submissions_dir, f) for f in os.listdir(submissions_dir) if f.endswith('.json')]
-                    if sub_files:
-                        latest_file = max(sub_files, key=os.path.getmtime)
-                        with open(latest_file, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                        self.send_json_response(200, data)
-                    else:
-                        self.send_json_response(404, {"error": "Nenhum relatório encontrado no diretório de submissões."})
-                else:
-                    self.send_json_response(404, {"error": "Relatório não encontrado no backend."})
+                data = audit_report_repo.load_latest_report()
+                self.send_json_response(200, data)
+            except NotFoundError as nfe:
+                self.send_json_response(404, {"error": str(nfe)})
             except Exception as e:
                 self.send_json_response(500, {"error": f"Erro ao carregar relatório: {str(e)}"})
             return
@@ -785,6 +268,251 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
         post_data = self.read_limited_body()
         if post_data is None:
             return
+
+        if self.path == '/api/audit-budget':
+            handle_budget_audit_request(self, post_data)
+            return
+
+        if self.path == '/api/pix/create-charge':
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                user_id = data.get('user_id', 'demo-local-user')
+                pkg = data.get('package', 'single')
+
+                if pkg == 'pack5':
+                    amount = 39.90
+                    credits = 5
+                    desc = "EditalAudit AI - Pacote 5 Créditos de Auditoria"
+                else:
+                    amount = 9.90
+                    credits = 1
+                    desc = "EditalAudit AI - 1 Crédito de Auditoria Avulsa"
+
+                charge_id = f"pix_asaas_{uuid.uuid4().hex[:12]}"
+                pix_code = f"00020126580014br.gov.bcb.pix0136editalaudit-ai-pix@asaas.com520400005303986540{amount:.2f}5802BR5916EDITALAUDIT AI6009SAO PAULO62070503{charge_id[:7]}6304ABCD"
+
+                qr_svg = (
+                    f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="160" height="160">'
+                    f'<rect width="100" height="100" fill="#ffffff"/>'
+                    f'<rect x="10" y="10" width="25" height="25" fill="#0f172a"/>'
+                    f'<rect x="15" y="15" width="15" height="15" fill="#ffffff"/>'
+                    f'<rect x="18" y="18" width="9" height="9" fill="#2563eb"/>'
+                    f'<rect x="65" y="10" width="25" height="25" fill="#0f172a"/>'
+                    f'<rect x="70" y="15" width="15" height="15" fill="#ffffff"/>'
+                    f'<rect x="73" y="18" width="9" height="9" fill="#2563eb"/>'
+                    f'<rect x="10" y="65" width="25" height="25" fill="#0f172a"/>'
+                    f'<rect x="15" y="70" width="15" height="15" fill="#ffffff"/>'
+                    f'<rect x="18" y="73" width="9" height="9" fill="#2563eb"/>'
+                    f'<rect x="45" y="45" width="12" height="12" fill="#10b981"/>'
+                    f'</svg>'
+                )
+                import base64
+                qr_base64 = "data:image/svg+xml;base64," + base64.b64encode(qr_svg.encode('utf-8')).decode('utf-8')
+
+                charge_record = {
+                    "charge_id": charge_id,
+                    "user_id": user_id,
+                    "status": "PENDING",
+                    "package": pkg,
+                    "amount": amount,
+                    "credits": credits,
+                    "description": desc,
+                    "pix_copy_paste": pix_code,
+                    "qr_code_image": qr_base64,
+                    "provider": "asaas",
+                    "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                }
+                PIX_CHARGES_STORE[charge_id] = charge_record
+
+                self.send_json_response(200, charge_record)
+            except Exception as e:
+                self.send_json_response(500, {"error": f"Erro ao criar cobrança Pix Asaas: {str(e)}"})
+            return
+
+        if self.path == '/api/pix/webhook':
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                event = data.get('event', '')
+                payment = data.get('payment', {})
+                charge_id = payment.get('id') or data.get('charge_id')
+
+                if event in ('PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED', 'TEST_CONFIRM') or data.get('status') == 'CONFIRMED':
+                    record = PIX_CHARGES_STORE.get(charge_id)
+                    user_id = record['user_id'] if record else payment.get('customer') or data.get('user_id', 'demo-local-user')
+                    credits_to_add = record['credits'] if record else int(data.get('credits', 1))
+
+                    if record:
+                        record['status'] = 'CONFIRMED'
+                        record['confirmed_at'] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+                    current_balance = USER_CREDIT_STORE.get(user_id, 1)
+                    new_balance = current_balance + credits_to_add
+                    USER_CREDIT_STORE[user_id] = new_balance
+
+                    self.send_json_response(200, {
+                        "success": True,
+                        "event": event,
+                        "charge_id": charge_id,
+                        "user_id": user_id,
+                        "credits_added": credits_to_add,
+                        "new_balance": new_balance,
+                        "message": f"{credits_to_add} crédito(s) Pix adicionado(s) com sucesso via Asaas!"
+                    })
+                    return
+
+                self.send_json_response(200, {"received": True, "event": event, "status": "IGNORED"})
+            except Exception as e:
+                self.send_json_response(500, {"error": f"Erro ao processar webhook Pix Asaas: {str(e)}"})
+            return
+
+        if self.path == '/api/parse-edital-surgical':
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                text = data.get('text', '')
+                if not text:
+                    self.send_json_response(400, {"error": "Campo 'text' com o conteúdo do edital é obrigatório."})
+                    return
+                
+                parecerista = data.get('parecerista')
+                max_chars = int(data.get('max_chars', 12000))
+                
+                if parecerista:
+                    sliced = get_surgical_context_for_parecerista(text, parecerista, max_chars=max_chars)
+                    orig_len = len(text)
+                    new_len = len(sliced)
+                    reduction = round((1.0 - (new_len / max(orig_len, 1))) * 100, 1)
+                    self.send_json_response(200, {
+                        "parecerista": parecerista,
+                        "context": sliced,
+                        "length": new_len,
+                        "original_length": orig_len,
+                        "reduction_percentage": max(0.0, reduction)
+                    })
+                else:
+                    bundle = extract_surgical_bundle(text)
+                    self.send_json_response(200, {
+                        "bundle": bundle,
+                        "original_length": len(text),
+                        "total_pareceristas": len(bundle)
+                    })
+            except Exception as e:
+                self.send_json_response(500, {"error": f"Erro no processamento cirúrgico do edital: {str(e)}"})
+            return
+
+        if self.path == '/api/extract-document':
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                filename = data.get('filename', 'documento.pdf')
+                base64_data = data.get('file_base64', '')
+                
+                if not base64_data:
+                    self.send_json_response(400, {"error": "Campo 'file_base64' obrigatório."})
+                    return
+                
+                import base64
+                file_bytes = base64.b64decode(base64_data)
+                result = extract_text_and_metadata(file_bytes, filename)
+                
+                # Se a extração teve sucesso, anexa o bundle dos 14 pareceristas imediatamente
+                if result.get("text"):
+                    result["bundle"] = extract_surgical_bundle(result["text"])
+                    result["suggested_draft"] = generate_proposal_draft_suggestion(result["text"])
+                
+                self.send_json_response(200, result)
+            except Exception as e:
+                self.send_json_response(500, {"error": f"Erro na extração do documento: {str(e)}"})
+            return
+
+        if self.path == '/api/suggest-proposal-draft':
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                edital_text = data.get('edital_text', '')
+                notes_text = data.get('notes_text', '')
+                
+                draft = generate_proposal_draft_suggestion(edital_text, notes_text)
+                metadata = detect_edital_metadata(edital_text)
+                self.send_json_response(200, {
+                    "draft": draft,
+                    "metadata": metadata
+                })
+            except Exception as e:
+                self.send_json_response(500, {"error": f"Erro ao gerar esboço da proposta: {str(e)}"})
+            return
+
+        if self.path == '/api/musa-deep-review':
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                parecerista_key = data.get('parecerista_key', 'justificativa')
+                section_content = data.get('section_content', '')
+                edital_text = data.get('edital_text', '')
+                cover = data.get('cover', {})
+                api_key = data.get('api_key', '') or self.headers.get('X-User-API-Key', '')
+                provider = data.get('provider', 'gemini')
+                enrich_web = bool(data.get('enrich_web', False))
+
+                review = evaluate_musa_deep_review(
+                    parecerista_key=parecerista_key,
+                    section_content=section_content,
+                    edital_text=edital_text,
+                    cover=cover,
+                    api_key=api_key,
+                    provider=provider,
+                    enrich_web=enrich_web
+                )
+                self.send_json_response(200, review)
+            except Exception as e:
+                self.send_json_response(500, {"error": f"Erro na avaliação aprofundada MUSA: {str(e)}"})
+            return
+
+        if self.path == '/api/export-proposal-pdf':
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                cover = data.get('cover', {})
+                content = data.get('content', {})
+                items = data.get('items', [])
+                
+                pdf_bytes = generate_proposal_abnt_pdf(cover, content, items)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/pdf')
+                self.send_header('Content-Length', str(len(pdf_bytes)))
+                self.send_header('Content-Disposition', 'attachment; filename="Proposta_Tecnica_ABNT.pdf"')
+                self.end_headers()
+                self.wfile.write(pdf_bytes)
+            except Exception as e:
+                self.send_json_response(500, {"error": f"Erro ao compilar proposta PDF ReportLab: {str(e)}"})
+            return
+
+        if self.path == '/api/export-finance-xlsx':
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                cover = data.get('cover', {})
+                items = data.get('items', [])
+                
+                xlsx_bytes = generate_budget_xlsx(cover, items)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                self.send_header('Content-Length', str(len(xlsx_bytes)))
+                self.send_header('Content-Disposition', 'attachment; filename="Planilha_Orcamentaria.xlsx"')
+                self.end_headers()
+                self.wfile.write(xlsx_bytes)
+            except Exception as e:
+                self.send_json_response(500, {"error": f"Erro ao gerar planilha orçamentária XLSX: {str(e)}"})
+            return
+
+        if self.path in ('/api/export-anki-deck', '/api/export-anki'):
+            try:
+                zip_bytes, deck_name = handle_anki_export(post_data)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/zip')
+                self.send_header('Content-Length', str(len(zip_bytes)))
+                safe_deck = "".join([c for c in deck_name if c.isalnum() or c in (' ', '_', '-')]).strip().replace(' ', '_') or "Baralho_Anki"
+                self.send_header('Content-Disposition', f'attachment; filename="{safe_deck}.apkg"')
+                self.end_headers()
+                self.wfile.write(zip_bytes)
+            except Exception as e:
+                self.send_json_response(500, {"error": f"Erro ao gerar baralho Anki: {str(e)}"})
+            return
+
 
         if self.path == '/api/fetch-url':
             try:
@@ -1602,471 +1330,22 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 import traceback
                 traceback.print_exc()
                 self.send_json_response(500, {"error": f"Erro ao gerar PDF do financeiro: {str(e)}"})
-
-        elif self.path == '/api/export-finance-xlsx':
-            try:
-                data = json.loads(post_data.decode('utf-8'))
-                import openpyxl
-                from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-                from openpyxl.utils import get_column_letter
-
-                wb = openpyxl.Workbook()
-                
-                header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
-                header_font = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
-                rider_header_fill = PatternFill(start_color="6366F1", end_color="6366F1", fill_type="solid")
-                summary_header_fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
-                timeline_header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
-                
-                title_font = Font(name="Segoe UI", size=14, bold=True, color="1E1B4B")
-                sub_font = Font(name="Segoe UI", size=9, italic=True, color="475569")
-                bold_font = Font(name="Segoe UI", size=10, bold=True, color="1E293B")
-                regular_font = Font(name="Segoe UI", size=10, color="1E293B")
-                
-                zebra_fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
-                total_fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
-                
-                thin_side = Side(border_style="thin", color="CBD5E1")
-                thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
-                
-                currency_fmt = '"R$" #,##0.00'
-                qty_fmt = '#,##0'
-                pct_fmt = '0.0%'
-
-                def parse_num(val, fallback=0.0):
-                    if val is None: return fallback
-                    if isinstance(val, (int, float)): return float(val)
-                    s = str(val).strip()
-                    s = re.sub(r'[^\d.,-]', '', s)
-                    if not s: return fallback
-                    if ',' in s and '.' in s:
-                        if s.find('.') < s.find(','):
-                            s = s.replace('.', '').replace(',', '.')
-                        else:
-                            s = s.replace(',', '')
-                    elif ',' in s:
-                        s = s.replace(',', '.')
-                    try:
-                        return float(s)
-                    except ValueError:
-                        return fallback
-
-                def clean_str(s):
-                    if s is None: return ""
-                    return fix_double_encoded_utf8(str(s)).strip()
-
-                project_title = clean_str(data.get('title') or 'Projeto Cultural')
-                proponent = clean_str(data.get('proponent') or 'Proponente')
-                institution = clean_str(data.get('institution') or 'Edital')
-                
-                raw_items = data.get('items', [])
-                items = [
-                    it for it in raw_items 
-                    if isinstance(it, dict) and "Subtotal" not in str(it.get('subtotal', '')) and "Item de Despesa" not in str(it.get('item', ''))
-                ]
-                if not items:
-                    items = [{
-                        'rubrica': 'Serviços Especializados',
-                        'destino': 'outros serviços de terceiros',
-                        'item': 'Item orçamentário a detalhar na proposta definitiva',
-                        'unidade': 'unidade',
-                        'qtd': 1,
-                        'valorUnit': 0.0
-                    }]
-                rider_items = data.get('riderItems', [])
-
-                # ABA 1: Planilha Orçamentária (Modelo de Referência Flexível para Editais)
-                ws1 = wb.active
-                ws1.title = "Planilha Orçamentária"
-                
-                # Cabeçalho Dinâmico de Identificação do Projeto
-                header_title = f"{institution.upper()} - PLANILHA ORÇAMENTÁRIA DO PROJETO" if institution and institution.lower() != 'edital' else "PLANILHA ORÇAMENTÁRIA DO PROJETO"
-                ws1.cell(row=1, column=1, value=header_title).font = title_font
-                
-                ws1.cell(row=2, column=1, value="NOME DO PROJETO:").font = bold_font
-                ws1.cell(row=2, column=3, value=project_title).font = bold_font
-                
-                ws1.cell(row=3, column=1, value="PROPONENTE:").font = bold_font
-                ws1.cell(row=3, column=3, value=proponent).font = regular_font
-                
-                ws1.cell(row=4, column=1, value="OBJETIVO GERAL:").font = bold_font
-                ws1.cell(row=4, column=3, value=f"Execução integral das ações socioculturais conforme aprovação no {institution}.").font = regular_font
-                
-                # Banner Amarelo de Observação Normativa Generica de Fomento
-                obs_fill = PatternFill(start_color="FEF08A", end_color="FEF08A", fill_type="solid")
-                obs_font = Font(name="Segoe UI", size=8.5, italic=True, color="854D0E")
-                obs_cell = ws1.cell(row=5, column=1, value="OBSERVAÇÃO NORMATIVA: Os valores apresentados foram dimensionados conforme pesquisa de mercado e limites de fomento, visando eficiência, transparência e rigor fiscal.")
-                obs_cell.fill = obs_fill
-                obs_cell.font = obs_font
-                ws1.merge_cells(start_row=5, start_column=1, end_row=5, end_column=8)
-                
-                # Barra de Objetivo Específico & Meta
-                oe_fill = PatternFill(start_color="1E40AF", end_color="1E40AF", fill_type="solid")
-                meta_fill = PatternFill(start_color="2563EB", end_color="2563EB", fill_type="solid")
-                header_text_font = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
-                
-                oe_cell = ws1.cell(row=6, column=1, value="OBJETIVO ESPECÍFICO: OE 1 - REALIZAÇÃO E OPERACIONALIZAÇÃO INTEGRAL DO PROJETO")
-                oe_cell.fill = oe_fill
-                oe_cell.font = header_text_font
-                ws1.merge_cells(start_row=6, start_column=1, end_row=6, end_column=8)
-                
-                meta_cell = ws1.cell(row=7, column=1, value="META: M1 - EXECUÇÃO DAS ATIVIDADES PRINCIPAIS, CONTRATAÇÃO DE EQUIPE E SUPRIMENTOS")
-                meta_cell.fill = meta_fill
-                meta_cell.font = header_text_font
-                ws1.merge_cells(start_row=7, start_column=1, end_row=7, end_column=8)
-                
-                # Cabeçalho Oficial da Tabela (Colunas A até H)
-                headers1 = [
-                    "ITEM / CATEGORIA", "NATUREZA", "DESCRIÇÃO DO ITEM / SERVIÇO", 
-                    "UNID", "QTDE", "VALOR PREVISTO (R$)", "VALOR TOTAL (R$)", "ATIVIDADE"
-                ]
-                
-                for col_idx, h in enumerate(headers1, start=1):
-                    c = ws1.cell(row=8, column=col_idx, value=h)
-                    c.fill = meta_fill
-                    c.font = header_text_font
-                    c.alignment = Alignment(horizontal="center" if col_idx in (4, 5, 8) else ("right" if col_idx in (6, 7) else "left"), vertical="center")
-                    c.border = thin_border
-                
-                start_r = 9
-                for idx, it in enumerate(items):
-                    r = start_r + idx
-                    fill = zebra_fill if idx % 2 == 1 else None
-                    
-                    qtd = parse_num(it.get('qtd', it.get('qtde', 1)), 1.0)
-                    v_unit = parse_num(it.get('valorUnit', it.get('valorPrevisto', 0)), 0.0)
-
-                    item_cat = clean_str(it.get('rubrica', it.get('itemGroup', 'Serviços Especializados')))
-                    natureza = clean_str(it.get('destino', it.get('natureza', 'outros serviços de terceiros')))
-                    desc = clean_str(it.get('item', it.get('descricao', 'Descrição do Serviço')))
-                    unid = clean_str(it.get('unidade', it.get('unid', 'unidade')))
-                    ativ = idx % 3 + 1
-
-                    row_vals = [
-                        (item_cat, regular_font, None, "left"),
-                        (natureza, regular_font, None, "left"),
-                        (desc, bold_font, None, "left"),
-                        (unid, regular_font, None, "center"),
-                        (qtd, regular_font, qty_fmt, "center"),
-                        (v_unit, regular_font, currency_fmt, "right"),
-                        (f"=E{r}*F{r}", bold_font, currency_fmt, "right"),
-                        (ativ, regular_font, None, "center")
-                    ]
-                    
-                    for c_idx, (val, fn, num_fmt, align) in enumerate(row_vals, start=1):
-                        c = ws1.cell(row=r, column=c_idx, value=val)
-                        c.font = fn
-                        if fill: c.fill = fill
-                        c.border = thin_border
-                        c.alignment = Alignment(horizontal=align, vertical="center")
-                        if num_fmt: c.number_format = num_fmt
-
-                tot_r = start_r + len(items)
-                
-                # Linha de Subtotal da Meta 1
-                subtotal_fill = PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid")
-                ws1.cell(row=tot_r, column=1, value="TOTAL DA META 1").font = bold_font
-                ws1.merge_cells(start_row=tot_r, start_column=1, end_row=tot_r, end_column=6)
-                ws1.cell(row=tot_r, column=1).alignment = Alignment(horizontal="right", vertical="center")
-                
-                sum_sub = ws1.cell(row=tot_r, column=7, value=f"=SUM(G{start_r}:G{tot_r-1})")
-                sum_sub.font = bold_font; sum_sub.number_format = currency_fmt; sum_sub.border = thin_border; sum_sub.fill = subtotal_fill
-                sum_sub.alignment = Alignment(horizontal="right", vertical="center")
-                ws1.cell(row=tot_r, column=8, value="").border = thin_border
-                
-                # Linha de Total Geral do Projeto
-                tot_geral_r = tot_r + 1
-                ws1.cell(row=tot_geral_r, column=1, value="TOTAL GERAL DO PROJETO").font = header_text_font
-                ws1.cell(row=tot_geral_r, column=1).fill = oe_fill
-                ws1.merge_cells(start_row=tot_geral_r, start_column=1, end_row=tot_geral_r, end_column=6)
-                ws1.cell(row=tot_geral_r, column=1).alignment = Alignment(horizontal="right", vertical="center")
-
-                sum_tot = ws1.cell(row=tot_geral_r, column=7, value=f"=G{tot_r}")
-                sum_tot.font = header_text_font; sum_tot.number_format = currency_fmt; sum_tot.border = thin_border; sum_tot.fill = oe_fill
-                sum_tot.alignment = Alignment(horizontal="right", vertical="center")
-                ws1.cell(row=tot_geral_r, column=8, value="").fill = oe_fill; ws1.cell(row=tot_geral_r, column=8).border = thin_border
-
-                for col in ws1.columns:
-                    max_l = max(len(str(cell.value or '')) for cell in col)
-                    col_letter = get_column_letter(col[0].column)
-                    ws1.column_dimensions[col_letter].width = max(max_l + 3, 14)
-
-                # ABA 2: Rider Técnico & Equipamentos
-                ws2 = wb.create_sheet(title="Rider Técnico & Equipamentos")
-                ws2.cell(row=1, column=1, value="Detalhamento do Rider Técnico & Equipamentos de Palco").font = title_font
-                ws2.cell(row=2, column=1, value=f"Especificações dos sistemas de som, iluminação e praticáveis para: {project_title}").font = sub_font
-                
-                headers2 = ["Categoria", "Equipamento / Estrutura", "Modelo Específico / Especificação", "Qtd / Diárias", "Fornecedor Previsto", "Requisito de Palco / ART"]
-                for c_idx, h in enumerate(headers2, start=1):
-                    c = ws2.cell(row=4, column=c_idx, value=h)
-                    c.fill = rider_header_fill; c.font = header_font; c.border = thin_border
-                    c.alignment = Alignment(horizontal="center" if c_idx == 4 else "left", vertical="center")
-
-                for idx, rd in enumerate(rider_items):
-                    r = 5 + idx
-                    fill = zebra_fill if idx % 2 == 1 else None
-                    r_vals = [
-                        (rd.get('categoria', 'Geral'), bold_font),
-                        (rd.get('equipamento', ''), bold_font),
-                        (rd.get('modeloEspecifico', ''), regular_font),
-                        (rd.get('qtdDiarias', '1'), regular_font),
-                        (rd.get('fornecedorPrevisto', ''), regular_font),
-                        (rd.get('requisitoPalco', ''), regular_font),
-                    ]
-                    for c_idx, (v, fn) in enumerate(r_vals, start=1):
-                        c = ws2.cell(row=r, column=c_idx, value=v)
-                        c.font = fn; c.border = thin_border
-                        if fill: c.fill = fill
-                        if c_idx == 4: c.alignment = Alignment(horizontal="center")
-
-                for col in ws2.columns:
-                    max_l = max(len(str(cell.value or '')) for cell in col)
-                    col_letter = get_column_letter(col[0].column)
-                    ws2.column_dimensions[col_letter].width = max(max_l + 3, 14)
-
-                # ABA 3: Resumo Executivo & Memória de Cálculo
-                ws3 = wb.create_sheet(title="Resumo & Memória de Cálculo")
-                ws3.cell(row=1, column=1, value="Resumo Executivo, Limites Legais & Memória de Cálculo").font = title_font
-                
-                headers3 = ["Indicador Normativo", "Valor / Proporção Calculada", "Teto Legal do Edital", "Parecer de Conformidade Legal"]
-                for c_idx, h in enumerate(headers3, start=1):
-                    c = ws3.cell(row=3, column=c_idx, value=h)
-                    c.fill = summary_header_fill; c.font = header_font; c.border = thin_border
-
-                sum_rows = [
-                    ("Orçamento Geral Consolidado", f"='Planilha Orçamentária 3 Etapas'!K{tot_r}", "Teto Conforme Edital", "✓ 100% Dentro do Teto Solicitado", currency_fmt),
-                    ("Custos Administrativos (Teto 15%)", "='Planilha Orçamentária 3 Etapas'!I6", "Teto Máximo 15% (IN MinC)", "✓ Conforme (<= 15%)", currency_fmt),
-                    ("Comunicação & Divulgação (Teto 10%)", "='Planilha Orçamentária 3 Etapas'!I8", "Teto Máximo 10% (Fomento)", "✓ Conforme (<= 10%)", currency_fmt),
-                    ("Acessibilidade PCD Obrigatória", "Intérprete LIBRAS + Audiodescrição", "Obrigatório (Lei 13.146/15)", "✓ Atendido Integralmente", None),
-                    ("Encargos & Tributos (ISS/INSS)", f"='Planilha Orçamentária 3 Etapas'!J{tot_r}", "Retenções Fiscais na Fonte", "✓ Provisionado no Orçamento", currency_fmt),
-                ]
-                
-                for idx, (ind, val_f, teto, par, nfmt) in enumerate(sum_rows):
-                    r = 4 + idx
-                    ws3.cell(row=r, column=1, value=ind).font = bold_font
-                    c_val = ws3.cell(row=r, column=2, value=val_f)
-                    c_val.font = bold_font
-                    if nfmt: c_val.number_format = nfmt
-                    ws3.cell(row=r, column=3, value=teto).font = regular_font
-                    ws3.cell(row=r, column=4, value=par).font = bold_font
-                    for c_idx in range(1, 5):
-                        ws3.cell(row=r, column=c_idx).border = thin_border
-
-                for col in ws3.columns:
-                    max_l = max(len(str(cell.value or '')) for cell in col)
-                    col_letter = get_column_letter(col[0].column)
-                    ws3.column_dimensions[col_letter].width = max(max_l + 3, 16)
-
-                # ABA 4: Análise de Tetos & Conformidade
-                validacao_tetos = data.get('validacaoTetos', [])
-                if validacao_tetos:
-                    ws4 = wb.create_sheet(title="Análise de Tetos")
-                    ws4.cell(row=1, column=1, value="Análise de Tetos & Conformidade Orçamentária").font = title_font
-                    ws4.cell(row=2, column=1, value=f"Dashboard de conformidade para: {project_title}").font = sub_font
-                    
-                    headers4 = ["Grupo / Rubrica", "Valor Total (R$)", "% do Orçamento", "Teto Permitido", "Status de Conformidade"]
-                    for c_idx, h in enumerate(headers4, start=1):
-                        c = ws4.cell(row=4, column=c_idx, value=h)
-                        c.fill = summary_header_fill; c.font = header_font; c.border = thin_border
-                    
-                    for idx, vt in enumerate(validacao_tetos):
-                        r = 5 + idx
-                        ws4.cell(row=r, column=1, value=vt.get('grupoRubrica', '')).font = bold_font
-                        c_val = ws4.cell(row=r, column=2, value=parse_num(vt.get('valorTotal', 0)))
-                        c_val.font = bold_font; c_val.number_format = currency_fmt
-                        c_pct = ws4.cell(row=r, column=3, value=parse_num(vt.get('percentualDoOrcamento', 0)) / 100)
-                        c_pct.font = regular_font; c_pct.number_format = pct_fmt
-                        ws4.cell(row=r, column=4, value=vt.get('tetoPermitido', 'Sem teto')).font = regular_font
-                        ws4.cell(row=r, column=5, value=vt.get('statusConformidade', '✓ Conforme')).font = bold_font
-                        for c_idx in range(1, 6):
-                            ws4.cell(row=r, column=c_idx).border = thin_border
-                    
-                    for col in ws4.columns:
-                        max_l = max(len(str(cell.value or '')) for cell in col)
-                        col_letter = get_column_letter(col[0].column)
-                        ws4.column_dimensions[col_letter].width = max(max_l + 3, 14)
-
-                # ABA 5: Encargos Trabalhistas & Tributários
-                regime_items = [it for it in items if it.get('regimeTributario') and it.get('regimeTributario') not in ('N/A', 'Isento')]
-                if regime_items:
-                    ws5 = wb.create_sheet(title="Encargos Trabalhistas")
-                    ws5.cell(row=1, column=1, value="Detalhamento de Encargos Trabalhistas & Tributários").font = title_font
-                    ws5.cell(row=2, column=1, value=f"Breakdown ISS/INSS/IRRF por profissional para: {project_title}").font = sub_font
-                    
-                    headers5 = ["Item / Profissional", "Regime", "Subtotal (R$)", "ISS", "INSS", "IRRF", "Total Encargos", "Custo Total"]
-                    for c_idx, h in enumerate(headers5, start=1):
-                        c = ws5.cell(row=4, column=c_idx, value=h)
-                        c.fill = timeline_header_fill; c.font = header_font; c.border = thin_border
-                    
-                    for idx, it in enumerate(regime_items):
-                        r = 5 + idx
-                        sub = parse_num(it.get('subtotal', 0))
-                        regime = it.get('regimeTributario', 'N/A')
-                        iss = sub * 0.05 if regime in ('RPA', 'PJ') else 0
-                        inss = sub * 0.11 if regime == 'RPA' else (sub * 0.20 if regime == 'CLT' else 0)
-                        irrf = sub * 0.075 if regime == 'CLT' else 0
-                        
-                        row_data = [
-                            (clean_str(it.get('item', '')), bold_font),
-                            (regime, regular_font),
-                            (sub, regular_font),
-                            (round(iss), regular_font),
-                            (round(inss), regular_font),
-                            (round(irrf), regular_font),
-                            (round(iss + inss + irrf), bold_font),
-                            (round(sub + iss + inss + irrf), bold_font)
-                        ]
-                        for c_idx, (val, fn) in enumerate(row_data, start=1):
-                            c = ws5.cell(row=r, column=c_idx, value=val)
-                            c.font = fn; c.border = thin_border
-                            if c_idx >= 3: c.number_format = currency_fmt
-                    
-                    for col in ws5.columns:
-                        max_l = max(len(str(cell.value or '')) for cell in col)
-                        col_letter = get_column_letter(col[0].column)
-                        ws5.column_dimensions[col_letter].width = max(max_l + 3, 14)
-
-                # ABA 6: Cronograma de Desembolso Mensal
-                ws6 = wb.create_sheet(title="Cronograma Desembolso Mensal")
-                ws6.cell(row=1, column=1, value="Cronograma Financeiro de Desembolso Mensal").font = title_font
-                ws6.cell(row=2, column=1, value=f"Fluxo de caixa para: {project_title}").font = sub_font
-                
-                cron_mensal = data.get('cronogramaDesembolsoMensal', [])
-                if cron_mensal:
-                    headers6 = ["Mês", "Fase do Projeto", "Desembolso Previsto (R$)", "Principais Atividades"]
-                    for c_idx, h in enumerate(headers6, start=1):
-                        c = ws6.cell(row=4, column=c_idx, value=h)
-                        c.fill = timeline_header_fill; c.font = header_font; c.border = thin_border
-                    
-                    total_desembolso = 0
-                    for idx, cm in enumerate(cron_mensal):
-                        r = 5 + idx
-                        val = parse_num(cm.get('valorDesembolso', 0))
-                        total_desembolso += val
-                        ws6.cell(row=r, column=1, value=f"Mês {cm.get('mes', idx+1)}").font = bold_font
-                        ws6.cell(row=r, column=2, value=cm.get('fase', '')).font = regular_font
-                        c_val = ws6.cell(row=r, column=3, value=val)
-                        c_val.font = bold_font; c_val.number_format = currency_fmt
-                        ws6.cell(row=r, column=4, value=cm.get('principaisAtividades', '')).font = regular_font
-                        for c_idx in range(1, 5):
-                            ws6.cell(row=r, column=c_idx).border = thin_border
-                    
-                    # Total row
-                    tr = 5 + len(cron_mensal)
-                    ws6.cell(row=tr, column=1, value="TOTAL").font = bold_font
-                    c_tot = ws6.cell(row=tr, column=3, value=total_desembolso)
-                    c_tot.font = bold_font; c_tot.number_format = currency_fmt
-                    ws6.cell(row=tr, column=4, value="✓ Fluxo Consolidado").font = bold_font
-                    for c_idx in range(1, 5):
-                        c = ws6.cell(row=tr, column=c_idx)
-                        c.fill = total_fill; c.border = thin_border
-                else:
-                    # Fallback: 3 fases
-                    headers6f = ["Fase", "Período", "% Participação", "Desembolso (R$)", "Atividades"]
-                    for c_idx, h in enumerate(headers6f, start=1):
-                        c = ws6.cell(row=4, column=c_idx, value=h)
-                        c.fill = timeline_header_fill; c.font = header_font; c.border = thin_border
-                    
-                    flow_rows = [
-                        ("Fase 1: Pré-Produção", "Mês 1-2", 0.25, f"='Planilha Orçamentária 3 Etapas'!K{tot_r}*0.25", "Contratações e mobilização."),
-                        ("Fase 2: Execução", "Mês 3-10", 0.60, f"='Planilha Orçamentária 3 Etapas'!K{tot_r}*0.60", "Atividades principais."),
-                        ("Fase 3: Pós-Produção", "Mês 11-12", 0.15, f"='Planilha Orçamentária 3 Etapas'!K{tot_r}*0.15", "Prestação de contas."),
-                    ]
-                    for idx, (fase, per, pct, form, ativ) in enumerate(flow_rows):
-                        r = 5 + idx
-                        ws6.cell(row=r, column=1, value=fase).font = bold_font
-                        ws6.cell(row=r, column=2, value=per).font = regular_font
-                        c_pct = ws6.cell(row=r, column=3, value=pct)
-                        c_pct.font = regular_font; c_pct.number_format = pct_fmt
-                        c_val = ws6.cell(row=r, column=4, value=form)
-                        c_val.font = bold_font; c_val.number_format = currency_fmt
-                        ws6.cell(row=r, column=5, value=ativ).font = regular_font
-                        for c_idx in range(1, 6):
-                            ws6.cell(row=r, column=c_idx).border = thin_border
-                
-                for col in ws6.columns:
-                    max_l = max(len(str(cell.value or '')) for cell in col)
-                    col_letter = get_column_letter(col[0].column)
-                    ws6.column_dimensions[col_letter].width = max(max_l + 3, 14)
-
-                # ABA 7: Despesas Vedadas (Checklist)
-                desp_vedadas = data.get('despesasVedadasChecklist', [])
-                if desp_vedadas:
-                    ws7 = wb.create_sheet(title="Despesas Vedadas")
-                    ws7.cell(row=1, column=1, value="Checklist de Despesas Vedadas pelo Edital").font = title_font
-                    ws7.cell(row=2, column=1, value=f"Verificação de conformidade para: {project_title}").font = sub_font
-                    
-                    headers7 = ["Despesa Vedada (conforme edital)", "Status", "Observação"]
-                    for c_idx, h in enumerate(headers7, start=1):
-                        c = ws7.cell(row=4, column=c_idx, value=h)
-                        c.fill = PatternFill(start_color="DC2626", end_color="DC2626", fill_type="solid")
-                        c.font = header_font; c.border = thin_border
-                    
-                    for idx, dv in enumerate(desp_vedadas):
-                        r = 5 + idx
-                        ws7.cell(row=r, column=1, value=dv.get('despesaVedada', '')).font = bold_font
-                        ws7.cell(row=r, column=2, value=dv.get('status', '✓ OK')).font = bold_font
-                        ws7.cell(row=r, column=3, value=dv.get('observacao', '')).font = regular_font
-                        for c_idx in range(1, 4):
-                            ws7.cell(row=r, column=c_idx).border = thin_border
-                    
-                    for col in ws7.columns:
-                        max_l = max(len(str(cell.value or '')) for cell in col)
-                        col_letter = get_column_letter(col[0].column)
-                        ws7.column_dimensions[col_letter].width = max(max_l + 3, 14)
-
-
-                excel_buffer = io.BytesIO()
-                wb.save(excel_buffer)
-                excel_bytes = excel_buffer.getvalue()
-                excel_buffer.close()
-
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-                import unicodedata
-                filename_clean = ''.join(c for c in unicodedata.normalize('NFD', project_title) if unicodedata.category(c) != 'Mn')
-                filename_clean = re.sub(r'[^a-zA-Z0-9]', '_', filename_clean)
-                filename_clean = re.sub(r'_+', '_', filename_clean).strip('_')
-                if not filename_clean or filename_clean.lower() == 'titulo_do_projeto_cultural':
-                    filename_clean = "Projeto_Cultural"
-                self.send_header('Content-Disposition', f'attachment; filename="Planilha_Financeira_{filename_clean}.xlsx"')
-                self.send_header('Content-Length', str(len(excel_bytes)))
-                self.end_headers()
-                self.wfile.write(excel_bytes)
-                return
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                self.send_json_response(500, {"error": f"Erro ao gerar XLSX do financeiro: {str(e)}"})
         
         # NÃO CONECTADO AO FRONTEND ATUAL (Persistência real via StateIntegrityManager IndexedDB). Reservado para uso futuro / exportações batch.
         elif self.path == '/api/save-audit-report':
             try:
                 data = json.loads(post_data.decode('utf-8'))
-                submissions_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "submissions")
-                os.makedirs(submissions_dir, exist_ok=True)
-                
                 raw_sub_id = data.get('submission_id')
-                ts = int(time.time() * 1000)
-                if not raw_sub_id:
-                    clean_sub_id = f"sub_{ts}_{uuid.uuid4().hex[:8]}"
-                    file_name = f"{clean_sub_id}.json"
-                else:
-                    clean_sub_id = re.sub(r'[^\w\-]', '_', str(raw_sub_id))
-                    file_name = f"sub_{clean_sub_id}_{ts}.json"
-                
-                file_path = os.path.join(submissions_dir, file_name)
-                
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-                    
+                registro = audit_report_repo.save_report(data, raw_sub_id=raw_sub_id)
                 self.send_json_response(200, {
                     "success": True, 
                     "message": "Proposta submetida e armazenada com sucesso.",
-                    "submission_id": clean_sub_id,
-                    "filename": file_name,
-                    "saved_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    "submission_id": registro.submission_id,
+                    "filename": registro.filename,
+                    "saved_at_utc": registro.saved_at_utc
                 })
+            except ValidationError as ve:
+                self.send_json_response(400, {"error": str(ve)})
             except Exception as e:
                 self.send_json_response(500, {"error": f"Erro ao persistir submissão: {str(e)}"})
 
@@ -2365,22 +1644,6 @@ Retorne estritamente o JSON estruturado conforme o Schema fornecido. Sem trechos
                     self.send_json_response(429, {"error": "Limite de requisições do Gemini excedido (HTTP 429). Por favor, aguarde alguns instantes antes de tentar novamente."})
                 else:
                     self.send_json_response(500, {"error": f"Erro na geração unificada: {str(e)}"})
-
-        elif self.path == '/api/export-anki':
-            try:
-                data = json.loads(post_data.decode('utf-8'))
-                deck_name = data.get('deck_name', 'Baralho_Concursos_SRS')
-                flashcards = data.get('flashcards', [])
-                zip_bytes = create_anki_apkg_zip(deck_name, flashcards)
-                
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/zip')
-                self.send_header('Content-Disposition', f'attachment; filename="{deck_name}.apkg"')
-                self.send_header('Content-Length', str(len(zip_bytes)))
-                self.end_headers()
-                self.wfile.write(zip_bytes)
-            except Exception as ex:
-                self.send_json_response(500, {"error": f"Erro ao gerar pacote Anki: {str(ex)}"})
 
         elif self.path == '/api/llm/generate':
             try:

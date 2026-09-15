@@ -1,0 +1,174 @@
+{
+  "name": "EditalAudit AI - Agente de Atendimento WhatsApp (Evolution API)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "editalaudit-lead-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Lead Typebot/Portal",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "id": "node-webhook-typebot"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrai e sanitiza os dados do proponente\nconst body = $json.body || $json;\nconst rawPhone = String(body.telefone || body.phone || '').replace(/\\D/g, '');\nconst phone = rawPhone.startsWith('55') ? rawPhone : (rawPhone.length >= 10 ? '55' + rawPhone : '');\nconst nome = body.nome || body.name || 'Proponente';\nconst duvida = body.duvida || body.mensagem || 'Gostaria de saber como aprovar meu projeto no edital';\nconst editalNome = body.edital_nome || 'Edital Cultural / Licitação';\n\nreturn [{\n  json: {\n    phone,\n    nome,\n    duvida,\n    editalNome,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "name": "Sanitizar Dados do Proponente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "id": "node-sanitize-lead"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "={{ $env.GEMINI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contents",
+              "value": "={{ [{\"role\": \"user\", \"parts\": [{\"text\": \"Você é o Consultor Técnico Sênior de Editais da EditalAudit AI. Responda de forma extremamente profissional, acolhedora e fundamentada na Lei 14.133/2021 ou Lei 14.903/2024 (Marco da Cultura). Proponente: \" + $json.nome + \" | Edital: \" + $json.editalNome + \" | Dúvida: \" + $json.duvida + \". Finalize convidando-o a testar o 1º crédito grátis no portal com os 14 pareceristas M.U.S.A. Sem clichês, direto ao ponto.\"}]}] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "LLM Gemini 2.0 Flash (Especialista MUSA)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300],
+      "id": "node-llm-consultant"
+    },
+    {
+      "parameters": {
+        "jsCode": "const llmRaw = $json.candidates?.[0]?.content?.parts?.[0]?.text || 'Olá! Recebemos sua dúvida sobre o edital. Nossa plataforma EditalAudit AI está pronta para auditar sua proposta com os 14 pareceristas M.U.S.A. Acesse com seu primeiro crédito gratuito!';\nconst lead = $('Sanitizar Dados do Proponente').first().json;\n\nconst msgWhatsApp = `⚖️ *EditalAudit AI — Consultoria Especializada*\n\nOlá, *${lead.nome}*!\n\n${llmRaw.trim()}\n\n🔗 *Acesse sua bancada de auditoria:* https://editalaudit.ai\n💳 *Seu 1º crédito gratuito já está disponível!*`;\n\nreturn [{\n  json: {\n    number: lead.phone,\n    text: msgWhatsApp\n  }\n}];"
+      },
+      "name": "Formatar Mensagem WhatsApp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "id": "node-format-whatsapp"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE_NAME }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $json.number }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Evolution API (Disparo WhatsApp)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 300],
+      "id": "node-send-whatsapp"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Mensagem enviada com sucesso via WhatsApp!\", \"phone\": $json.number } }}"
+      },
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 300],
+      "id": "node-respond-webhook"
+    }
+  ],
+  "connections": {
+    "Webhook Lead Typebot/Portal": {
+      "main": [
+        [
+          {
+            "node": "Sanitizar Dados do Proponente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sanitizar Dados do Proponente": {
+      "main": [
+        [
+          {
+            "node": "LLM Gemini 2.0 Flash (Especialista MUSA)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Gemini 2.0 Flash (Especialista MUSA)": {
+      "main": [
+        [
+          {
+            "node": "Formatar Mensagem WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Mensagem WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Evolution API (Disparo WhatsApp)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evolution API (Disparo WhatsApp)": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

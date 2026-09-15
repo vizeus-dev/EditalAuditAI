@@ -17,11 +17,11 @@ ps_script_template = """
 $WshShell = New-Object -ComObject WScript.Shell
 $shortcutPath = "{lnk_path}"
 $shortcut = $WshShell.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = "wscript.exe"
-$shortcut.Arguments = "`"{vbs_path}`""
+$shortcut.TargetPath = "{bat_path}"
+$shortcut.Arguments = ""
 $shortcut.WorkingDirectory = "{work_dir}"
 $shortcut.IconLocation = "{icon_path},0"
-$shortcut.Description = "EditalAudit AI - High-Tech Enterprise (Avaliador Mestre de Editais)"
+$shortcut.Description = "EditalAudit AI - Studio de Elaboracao e Criacao de Projetos"
 $shortcut.WindowStyle = 1
 $shortcut.Save()
 Write-Host "[+] Atalho criado/atualizado com sucesso em: $shortcutPath"
@@ -32,7 +32,7 @@ for d in desktop_dirs:
         lnk_path = os.path.join(d, "Edital Audit AI.lnk")
         ps_code = ps_script_template.format(
             lnk_path=lnk_path.replace("\\", "\\\\"),
-            vbs_path=VBS_PATH.replace("\\", "\\\\"),
+            bat_path=BAT_PATH.replace("\\", "\\\\"),
             work_dir=SCRIPT_DIR.replace("\\", "\\\\"),
             icon_path=ICON_PATH.replace("\\", "\\\\")
         )
