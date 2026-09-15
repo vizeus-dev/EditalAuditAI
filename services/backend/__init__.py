@@ -67,6 +67,7 @@ from services.backend.errors import (
     format_error_response
 )
 from services.backend.repositories import AuditReportRepository
+from services.backend.handlers.asaas_handler import create_asaas_pix_charge, check_asaas_payment_status
 
 
 

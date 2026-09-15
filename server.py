@@ -84,6 +84,8 @@ from services.backend import (
     generate_proposal_abnt_pdf,
     generate_budget_xlsx,
     evaluate_musa_deep_review,
+    create_asaas_pix_charge,
+    check_asaas_payment_status,
     AuditReportRepository,
     NotFoundError,
     ValidationError,
@@ -185,6 +187,18 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                 return
 
             charge = PIX_CHARGES_STORE[charge_id]
+
+            # Polling ativo com Asaas se for cobrança real pay_...
+            if charge.get('status') == 'PENDING' and charge_id.startswith('pay_'):
+                real_status = check_asaas_payment_status(charge_id)
+                if real_status in ('CONFIRMED', 'RECEIVED'):
+                    charge['status'] = 'CONFIRMED'
+                    charge['confirmed_at'] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                    u_id = charge['user_id']
+                    c_add = charge['credits']
+                    USER_CREDIT_STORE[u_id] = USER_CREDIT_STORE.get(u_id, 1) + c_add
+                    print(f"[ASAAS] Pagamento Pix {charge_id} confirmado via polling! Liberados {c_add} créditos para {u_id}.", flush=True)
+
             self.send_json_response(200, charge)
             return
 
@@ -295,26 +309,19 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
                     credits = 1
                     desc = "EditalAudit AI - 1 Crédito de Auditoria Avulsa"
 
-                charge_id = f"pix_asaas_{uuid.uuid4().hex[:12]}"
-                pix_code = f"00020126580014br.gov.bcb.pix0136editalaudit-ai-pix@asaas.com520400005303986540{amount:.2f}5802BR5916EDITALAUDIT AI6009SAO PAULO62070503{charge_id[:7]}6304ABCD"
-
-                qr_svg = (
-                    f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="160" height="160">'
-                    f'<rect width="100" height="100" fill="#ffffff"/>'
-                    f'<rect x="10" y="10" width="25" height="25" fill="#0f172a"/>'
-                    f'<rect x="15" y="15" width="15" height="15" fill="#ffffff"/>'
-                    f'<rect x="18" y="18" width="9" height="9" fill="#2563eb"/>'
-                    f'<rect x="65" y="10" width="25" height="25" fill="#0f172a"/>'
-                    f'<rect x="70" y="15" width="15" height="15" fill="#ffffff"/>'
-                    f'<rect x="73" y="18" width="9" height="9" fill="#2563eb"/>'
-                    f'<rect x="10" y="65" width="25" height="25" fill="#0f172a"/>'
-                    f'<rect x="15" y="70" width="15" height="15" fill="#ffffff"/>'
-                    f'<rect x="18" y="73" width="9" height="9" fill="#2563eb"/>'
-                    f'<rect x="45" y="45" width="12" height="12" fill="#10b981"/>'
-                    f'</svg>'
+                # Cria cobrança Pix real no Asaas (com fallback determinístico local)
+                asaas_charge = create_asaas_pix_charge(
+                    amount=amount,
+                    desc=desc,
+                    user_id=user_id,
+                    cpf_cnpj=data.get('cpf_cnpj'),
+                    name=data.get('name'),
+                    email=data.get('email')
                 )
-                import base64
-                qr_base64 = "data:image/svg+xml;base64," + base64.b64encode(qr_svg.encode('utf-8')).decode('utf-8')
+
+                charge_id = asaas_charge['charge_id']
+                pix_code = asaas_charge['pix_copy_paste']
+                qr_base64 = asaas_charge['qr_code_image']
 
                 charge_record = {
                     "charge_id": charge_id,

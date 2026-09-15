@@ -253,5 +253,20 @@ tags: [memoria-ativa, aprendizados, diario, historico]
       - Configuração de rewrites de proxy reverso em `vercel.json` encaminhando requisições `/api/:match*` ao backend remoto com preservação de URLs relativas.
       - Para hospedagem 100% gratuita ($0/mês sem cartão/PRO), documentado o caminho padrão com Render.com (Web Service gratuito com 750h/mês) ou Koyeb.
     - Suíte de 131 testes unitários 100% preservada e aprovada (0 erros, 0 falhas).
+  - **Integração Oficial com API de Produção do Asaas (Pix Pay-Per-Use):**
+    - Chave de produção configurada e validada diretamente na API do Asaas (`$aact_prod_...`).
+    - Implementação de `services/backend/handlers/asaas_handler.py`:
+      - Criação automática de cliente no Asaas com validação de CPF/CNPJ.
+      - Criação de cobrança Pix oficial (`POST /v3/payments`) com retorno do QR Code PNG oficial (`GET /v3/payments/{id}/pixQrCode`) e chave Copia-e-Cola do Banco Central.
+      - Polling reativo em `GET /api/pix/status`: consulta ativa na API do Asaas a cada 3s para liberação dos créditos na tela imediatamente quando o cliente conclui o pagamento.
+      - Fallback determinístico offline preservado para isolamento de testes e resiliência total.
+      - Ajuste de timeout no frontend (`cloudSyncController.js`) de 3.5s para 8.0s para absorver latência de rede com a API de produção do Asaas.
+    - Suíte de testes: **131/131 testes unitários 100% aprovados**.
+  - **Backend Python em Produção no Render.com Conectado à Vercel:**
+    - Serviço Web provisionado e operacional em `https://editalauditai.onrender.com`.
+    - Health check validado ao vivo: `HTTP 200 OK` (`version: 3.0.0`, `cwd: /opt/render/project/src`).
+    - Configurado proxy reverso no `vercel.json` encaminhando todas as rotas `/api/:match*` para `https://editalauditai.onrender.com/api/:match*`.
+    - Atualizado o guia de deploy gratuito `docs/GUIA-DEPLOY-GRATUITO-CUSTO-ZERO.md`.
+    - Suíte de testes: **131/131 testes unitários 100% aprovados (0 erros, 0 falhas)**.
 
 

@@ -8,8 +8,24 @@ Configurações e Constantes Centrais do Backend EditalAudit AI
 import os
 import time
 
+# Carrega variáveis de ambiente de .env local se existir (Padrão Ponytail - Zero dependências externas)
+_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
+if os.path.exists(_env_path):
+    try:
+        with open(_env_path, 'r', encoding='utf-8') as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith('#') and '=' in _line:
+                    _k, _v = _line.split('=', 1)
+                    os.environ.setdefault(_k.strip(), _v.strip())
+    except Exception:
+        pass
+
 SERVER_START_TIME = time.time()
 PORT = int(os.environ.get('PORT', 8085))
+
+ASAAS_API_KEY = os.environ.get('ASAAS_API_KEY', '')
+ASAAS_BASE_URL = os.environ.get('ASAAS_BASE_URL', 'https://api.asaas.com/v3')
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",

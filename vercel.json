@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/:match*",
-      "destination": "https://vizeusdev-edital-audit-ai.hf.space/api/:match*"
+      "destination": "https://editalauditai.onrender.com/api/:match*"
     }
   ],
   "headers": [

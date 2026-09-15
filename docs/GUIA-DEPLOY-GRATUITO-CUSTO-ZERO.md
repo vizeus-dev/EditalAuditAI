@@ -57,31 +57,25 @@ graph LR
 
 ---
 
-## 2. Deploy do Backend Python (Hugging Face Spaces)
+## 2. Deploy do Backend Python (Render.com — Ativo em Produção)
 
-O **Hugging Face Spaces** é atualmente o melhor serviço para hospedar backends Python gratuitamente:
-- **Recursos Gratuitos:** 2 vCPUs dedicadas, **16 GB de memória RAM** e armazenamento local permanente.
-- **Sem "Cold Sleep" Agressivo:** Mantém o serviço respondendo sem interrupções repentinas.
+O backend Python oficial do EditalAudit AI está hospedado e ativo no **Render.com**:
+- **URL Oficial de Produção:** `https://editalauditai.onrender.com`
+- **Health Check:** `https://editalauditai.onrender.com/api/health`
+- **Recursos Gratuitos:** 750 horas/mês (suficiente para operação contínua 24/7 sem custo).
 
-### Passo a Passo no Hugging Face:
-1. Crie uma conta em [huggingface.co](https://huggingface.co).
-2. Clique em **New Space** > Selecione **Docker** (Blank) ou **Gradio/Streamlit**.
-3. No arquivo `Dockerfile` na raiz do Space:
-   ```dockerfile
-   FROM python:3.11-slim
-   WORKDIR /app
-   COPY requirements.txt .
-   RUN pip install --no-cache-dir -r requirements.txt
-   COPY . .
-   EXPOSE 7860
-   ENV PORT=7860
-   CMD ["python", "server.py"]
-   ```
-4. Em **Settings > Variables and secrets**, configure suas chaves gratuitas:
-   - `GEMINI_API_KEY`: Sua chave gratuita do [Google AI Studio](https://aistudio.google.com/).
-   - `GROQ_API_KEY`: Sua chave gratuita do [Groq Console](https://console.groq.com/).
-   - `EDITAL_ADMIN_TOKEN`: Um token secreto gerado por você para comandos de reinicialização remota.
-5. Seu backend responderá publicamente em `https://<seu-usuario>-<seu-space>.hf.space`.
+### Configurações no Render:
+- **Environment:** `Python 3`
+- **Build Command:** `pip install -r requirements.txt`
+- **Start Command:** `python server.py`
+- **Variáveis de Ambiente Recomendadas (Settings > Environment):**
+  - `ASAAS_API_KEY`: `$aact_prod_...` (Chave de produção Asaas para geração de Pix real).
+  - `GEMINI_API_KEY`: Chave gratuita do Google AI Studio.
+  - `GROQ_API_KEY`: Chave gratuita do Groq Console (fallback de altíssima velocidade).
+
+> [!TIP]
+> **Réplica Estática no Hugging Face Spaces:**
+> O Space [`vizeusdev/edital-audit-ai`](https://huggingface.co/spaces/vizeusdev/edital-audit-ai) atua como portal demonstrador estático de alta disponibilidade em `https://vizeusdev-edital-audit-ai.static.hf.space`.
 
 ---
 

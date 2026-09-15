@@ -549,7 +549,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, package: pkg })
-            }), 3500);
+            }), 8000);
 
             if (!resp.ok) throw new Error('Falha ao gerar cobrança Pix');
             const data = await resp.json();
