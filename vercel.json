@@ -3,6 +3,12 @@
   "outputDirectory": ".",
   "installCommand": "echo 'No install needed'",
   "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/api/:match*",
+      "destination": "https://vizeusdev-edital-audit-ai.hf.space/api/:match*"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

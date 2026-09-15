@@ -1,0 +1,16 @@
+.venv/
+.git/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+web/
+node_modules/
+vault/
+server_run.log
+*.log
+.agents/
+graphify-out/
+tests/
+.oxlintrc.json

@@ -232,7 +232,14 @@ class CustomHTTPRequestHandler(SimpleHTTPRequestHandler):
 
         return self.rfile.read(content_length)
 
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.end_headers()
+
     def end_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-API-Key, X-Admin-Token')
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
         self.send_header('Pragma', 'no-cache')
         self.send_header('Expires', '0')
@@ -1867,9 +1874,10 @@ def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     
     ThreadingHTTPServer.allow_reuse_address = True
-    server_address = ('127.0.0.1', PORT)
+    host = os.environ.get('HOST', '0.0.0.0')
+    server_address = (host, PORT)
     httpd = ThreadingHTTPServer(server_address, CustomHTTPRequestHandler)
-    print(f"Servidor EditalAudit AI rodando em http://127.0.0.1:{PORT}/")
+    print(f"Servidor EditalAudit AI rodando em http://{host}:{PORT}/")
     
     # Inicia o auto-reloader de código
     start_auto_reloader()
