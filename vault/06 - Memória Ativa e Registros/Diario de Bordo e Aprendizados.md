@@ -279,5 +279,13 @@ tags: [memoria-ativa, aprendizados, diario, historico]
     - Configurado proxy reverso no `vercel.json` encaminhando todas as rotas `/api/:match*` para `https://editalauditai.onrender.com/api/:match*`.
     - Atualizado o guia de deploy gratuito `docs/GUIA-DEPLOY-GRATUITO-CUSTO-ZERO.md`.
     - Suíte de testes: **131/131 testes unitários 100% aprovados (0 erros, 0 falhas)**.
-
-
+  - **Integração do Pool de Chaves Google Gemini (Tiered Rotation: 4 Gratuitas + 1 Paga):**
+    - **Diagnóstico do Formato `AQ.Ab8...`:** Mapeado o novo formato de credenciais emitido pelo Google AI Studio / Vertex AI em substituição ao legado `AIza...`.
+    - **Validação das 5 Chaves:** Todas as 4 chaves gratuitas e a chave paga foram testadas e validadas diretamente contra a API oficial do Google, com 50 modelos disponíveis (incluindo `gemini-3.6-flash`, `gemini-flash-latest` e `gemini-2.5-flash-lite`).
+    - **Implementação do `GeminiKeyPool` (`services/api.py`):**
+      - *Tier 1 (Gratuito):* Rotação Round-Robin entre as 4 chaves gratuitas (atingindo 60 RPM combinadas sem custo).
+      - *Tier 2 (Pago):* Fallback automático e transparente para a chave paga de produção caso as gratuitas atinjam erro 429 ou esgotem cota por minuto.
+      - *Tier 3 (Groq):* Fallback final automático para o modelo Llama 3.3 70B da Groq caso o ecossistema Gemini sofra indisponibilidade geral.
+      - *BYOK Preservado:* Chaves passadas via header `X-User-API-Key` ou corpo da requisição possuem prioridade absoluta sobre o pool do servidor.
+    - **Segurança de Segredos:** As chaves reais foram blindadas no `.env` local (protegido por `.gitignore`). O código em `config.py` e `api.py` consome estritamente variáveis de ambiente (`os.environ`), prevenindo qualquer exposição em commits.
+    - **Verificação Contínua:** Suíte completa de **131/131 testes automatizados 100% aprovados** (0 falhas, 0 erros). Zero Git Push preservado.
