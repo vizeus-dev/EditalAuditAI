@@ -8,8 +8,8 @@
     'use strict';
 
     // Configuração Supabase (via window.ENV ou localStorage ou Fallback Seguro)
-    const SUPABASE_URL = window.SUPABASE_URL || localStorage.getItem('edital_supabase_url') || 'https://placeholder-project.supabase.co';
-    const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || localStorage.getItem('edital_supabase_anon_key') || 'placeholder-anon-key-with-valid-padding-length';
+    const SUPABASE_URL = window.SUPABASE_URL || localStorage.getItem('edital_supabase_url') || 'https://mpbhbhjqvyjczpohtgid.supabase.co';
+    const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || localStorage.getItem('edital_supabase_anon_key') || 'sb_publishable_QMW-b1VbVbaqBZ_LFMo4Ew_ZiTPALSM';
 
     /**
      * Verifica se o Supabase possui credenciais válidas configuradas

@@ -19,9 +19,9 @@ export const isSupabaseConfigured = (): boolean => {
   );
 };
 
-// Se não configurado, cria um cliente dummy para não quebrar inicialização
-const defaultUrl = 'https://placeholder-project.supabase.co';
-const defaultKey = 'placeholder-anon-key-with-valid-minimum-length-padding';
+// Se não configurado via env, usa o projeto padrão configurado
+const defaultUrl = 'https://mpbhbhjqvyjczpohtgid.supabase.co';
+const defaultKey = 'sb_publishable_QMW-b1VbVbaqBZ_LFMo4Ew_ZiTPALSM';
 
 export const supabase: SupabaseClient = createClient(
   isSupabaseConfigured() ? (supabaseUrl as string) : defaultUrl,

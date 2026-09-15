@@ -231,6 +231,20 @@ tags: [memoria-ativa, aprendizados, diario, historico]
   - **Expansão da Suíte de Testes Automatizada:**
     - Criação de `tests/test_pix_and_asaas_endpoints.py` cobrindo o ciclo de vida completo: criação de cobrança, polling de status, webhook de pagamento Asaas e atualização de cota de créditos.
     - Suíte expandida para **131/131 testes automatizados 100% aprovados** (0 erros, 0 falhas) em 12.35s.
-    - **Zero Git Push:** 100% cumprido. Operação e persistência locais.
+  - **Implantação e Ativação do Space no Hugging Face (`vizeusdev/edital-audit-ai`):**
+    - Autenticação concluída via OAuth na CLI `hf` (usuário: `vizeusdev`).
+    - Instalação da skill oficial `huggingface-spaces` em `~/.agents/skills/huggingface-spaces`.
+    - Criação bem-sucedida do Space: `vizeusdev/edital-audit-ai` (`sdk: static`, tier 100% gratuito perpétuo).
+    - Upload dos artefatos do portal: `README.md` (com frontmatter oficial HF), `index.html`, `styles.css`, `app.js`, `sample_data.js`, `app_icon.ico` e todos os 8 controladores em `src/controllers/`.
+    - **Space Ativo e Operacional:** Status `stage: RUNNING` em `https://vizeusdev-edital-audit-ai.static.hf.space` e `https://huggingface.co/spaces/vizeusdev/edital-audit-ai`.
+    - Suíte de 131 testes unitários 100% preservada e aprovada. Zero Git Push para repositórios externos mantido no código local.
+  - **Conexão Oficial com Projeto Supabase Cloud (`mpbhbhjqvyjczpohtgid`):**
+    - Configuração das credenciais ativas do usuário:
+      - Project URL: `https://mpbhbhjqvyjczpohtgid.supabase.co`
+      - Publishable / Anon Key: `sb_publishable_QMW-b1VbVbaqBZ_LFMo4Ew_ZiTPALSM`
+    - Atualização de fallbacks em `src/controllers/cloudSyncController.js` e `web/src/services/supabaseClient.ts`.
+    - Injeção das credenciais diretamente no `<head>` de `index.html` e no `.env` do app React.
+    - Sincronização e upload imediato para o Hugging Face Space (`vizeusdev/edital-audit-ai`) via CLI `hf`.
+    - Validação de integridade: **131/131 testes unitários 100% aprovados (0 erros, 0 falhas)**.
 
 
