@@ -245,6 +245,13 @@ tags: [memoria-ativa, aprendizados, diario, historico]
     - Atualização de fallbacks em `src/controllers/cloudSyncController.js` e `web/src/services/supabaseClient.ts`.
     - Injeção das credenciais diretamente no `<head>` de `index.html` e no `.env` do app React.
     - Sincronização e upload imediato para o Hugging Face Space (`vizeusdev/edital-audit-ai`) via CLI `hf`.
-    - Validação de integridade: **131/131 testes unitários 100% aprovados (0 erros, 0 falhas)**.
+  - **Diagnóstico das Políticas de Hospedagem do Hugging Face Spaces & Backend:**
+    - Identificada mudança recente de política na API do Hugging Face: Spaces `static` continuam 100% gratuitos para todos os usuários, mas a execução de containers Docker/Gradio no flavor `cpu-basic` agora retorna HTTP `402 Payment Required` para contas sem assinatura PRO (`Quota exceeded for flavor cpu-basic: current=0, limit=0`).
+    - Preparação completa do backend Python para deploy em container:
+      - Adicionados cabeçalhos de CORS (`Access-Control-Allow-Origin: *`, `do_OPTIONS` 204) e suporte a bind em `HOST=0.0.0.0` no `server.py`.
+      - Criação do `.dockerignore` otimizado para exclusão de caches e `.venv`.
+      - Configuração de rewrites de proxy reverso em `vercel.json` encaminhando requisições `/api/:match*` ao backend remoto com preservação de URLs relativas.
+      - Para hospedagem 100% gratuita ($0/mês sem cartão/PRO), documentado o caminho padrão com Render.com (Web Service gratuito com 750h/mês) ou Koyeb.
+    - Suíte de 131 testes unitários 100% preservada e aprovada (0 erros, 0 falhas).
 
 
