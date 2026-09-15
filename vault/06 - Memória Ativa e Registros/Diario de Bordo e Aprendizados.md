@@ -252,7 +252,18 @@ tags: [memoria-ativa, aprendizados, diario, historico]
       - Criação do `.dockerignore` otimizado para exclusão de caches e `.venv`.
       - Configuração de rewrites de proxy reverso em `vercel.json` encaminhando requisições `/api/:match*` ao backend remoto com preservação de URLs relativas.
       - Para hospedagem 100% gratuita ($0/mês sem cartão/PRO), documentado o caminho padrão com Render.com (Web Service gratuito com 750h/mês) ou Koyeb.
-    - Suíte de 131 testes unitários 100% preservada e aprovada (0 erros, 0 falhas).
+    - Suíte de 131 testes unitários 100% preservada e aprovada (0 erros, 0 falhas). Zero Git Push para repositórios externos mantido no código local.
+  - **Validação de Produção — Supabase Cloud, Asaas Pix e Vercel Proxy:**
+    - **Banco de Dados & Autenticação Supabase:**
+      - Execução do script `docs/SUPABASE_SETUP.sql` concluída com êxito no SQL Editor do projeto `mpbhbhjqvyjczpohtgid`.
+      - Tabelas `public.profiles` e `public.editais` configuradas com Row Level Security (RLS) estrito.
+      - Gatilho `on_auth_user_created` ativado com provisionamento automático de perfil com 1 crédito gratuito de boas-vindas.
+      - Validação de endpoint de Auth realizada: `POST /auth/v1/signup` retornando `HTTP 200 OK`.
+    - **Integração Pix Asaas em Produção:**
+      - Emissão de QR Code Pix oficial e chave Copia-e-Cola do Banco Central validada em tempo real com resposta de `HTTP 200 OK` via proxy reverso Vercel (`https://edital-audit-ai.vercel.app/api/pix/create-charge`).
+    - **Confiabilidade & Testes:**
+      - Suíte completa de **131/131 testes unitários aprovados (100% verde)**.
+      - Zero Git Push cumprido rigorosamente.
   - **Integração Oficial com API de Produção do Asaas (Pix Pay-Per-Use):**
     - Chave de produção configurada e validada diretamente na API do Asaas (`$aact_prod_...`).
     - Implementação de `services/backend/handlers/asaas_handler.py`:
